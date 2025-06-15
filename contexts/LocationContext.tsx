@@ -1,39 +1,140 @@
 "use client"
 
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { locations, type Location } from '@/lib/locations'
+import { supabase } from '@/lib/supabase'
 
-// Re-export for backward compatibility
-export type { Location }
-export { locations }
+export interface Location {
+  id: string
+  name: string
+  displayName: string
+  address: string
+  phone: string
+  email: string
+  hours: {
+    weekdays: string
+    saturday: string
+    sunday: string
+  }
+  services: string[]
+  menu: string
+  deliveryServices: string[]
+  description: string
+  image: string
+  coordinates: {
+    lat: number
+    lng: number
+  }
+  features: string[]
+}
 
 interface LocationContextType {
-  selectedLocation: Location
+  selectedLocation: Location | null
   setSelectedLocation: (location: Location) => void
   showLocationSelector: boolean
   setShowLocationSelector: (show: boolean) => void
   hasSelectedLocation: boolean
+  locations: Location[]
+  isLoading: boolean
 }
 
 const LocationContext = createContext<LocationContextType | undefined>(undefined)
 
 export function LocationProvider({ children }: { children: React.ReactNode }) {
-  const [selectedLocation, setSelectedLocationState] = useState<Location>(locations[0])
+  const [selectedLocation, setSelectedLocationState] = useState<Location | null>(null)
   const [showLocationSelector, setShowLocationSelector] = useState(false)
   const [hasSelectedLocation, setHasSelectedLocation] = useState(false)
+  const [locations, setLocations] = useState<Location[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Fetch locations from database
+  const fetchLocations = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('locations')
+        .select('*')
+        .eq('is_active', true)
+        .order('name')
+
+      if (error) throw error
+
+      // Transform database format to component format
+      const transformedLocations: Location[] = data.map(location => ({
+        id: location.id,
+        name: location.name,
+        displayName: location.display_name,
+        address: location.address,
+        phone: location.phone,
+        email: location.email,
+        description: location.description,
+        image: location.image_url,
+        coordinates: { 
+          lat: parseFloat(location.latitude), 
+          lng: parseFloat(location.longitude) 
+        },
+        services: location.services || [],
+        features: location.features || [],
+        hours: location.opening_hours || {
+          weekdays: "11.00 – 21.00",
+          saturday: "12.00 – 21.00", 
+          sunday: "15.00 – 21.00"
+        },
+        menu: location.menu_type || 'full',
+        deliveryServices: ["Foodora"] // Default for now
+      }))
+
+      setLocations(transformedLocations)
+      
+      // Set default location if none selected
+      if (!selectedLocation && transformedLocations.length > 0) {
+        const savedLocationId = localStorage.getItem('moi-sushi-location')
+        const savedLocation = transformedLocations.find(loc => loc.id === savedLocationId)
+        
+        if (savedLocation) {
+          setSelectedLocationState(savedLocation)
+          setHasSelectedLocation(true)
+        } else {
+          // Default to first location (Trelleborg)
+          const defaultLocation = transformedLocations.find(loc => loc.id === 'trelleborg') || transformedLocations[0]
+          setSelectedLocationState(defaultLocation)
+          setShowLocationSelector(true)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching locations:', error)
+      
+      // Fallback to static data if database fails
+      const fallbackLocations: Location[] = [
+        {
+          id: "trelleborg",
+          name: "Trelleborg", 
+          displayName: "Moi Sushi Trelleborg",
+          address: "Corfitz-Beck-Friisgatan 5B, 231 43, Trelleborg",
+          phone: "0410-28110",
+          email: "trelleborg@moisushi.se",
+          hours: {
+            weekdays: "11.00 – 21.00",
+            saturday: "12.00 – 21.00",
+            sunday: "15.00 – 21.00",
+          },
+          services: ["delivery", "pickup", "dine-in"],
+          menu: "full",
+          deliveryServices: ["Foodora"],
+          description: "Vår första och flaggskeppsrestaurang i hjärtat av Trelleborg.",
+          image: "https://images.unsplash.com/photo-1579952363873-27d3bfad9c0d?w=800&h=600&fit=crop",
+          coordinates: { lat: 55.3755, lng: 13.1567 },
+          features: ["Fullständig meny", "Dine-in", "Leverans", "Avhämtning", "Catering"]
+        }
+      ]
+      
+      setLocations(fallbackLocations)
+      setSelectedLocationState(fallbackLocations[0])
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
-    // Check if user has previously selected a location
-    const savedLocationId = localStorage.getItem('moi-sushi-location')
-    const savedLocation = locations.find(loc => loc.id === savedLocationId)
-    
-    if (savedLocation) {
-      setSelectedLocationState(savedLocation)
-      setHasSelectedLocation(true)
-    } else {
-      // Show location selector for first-time visitors
-      setShowLocationSelector(true)
-    }
+    fetchLocations()
   }, [])
 
   const setSelectedLocation = (location: Location) => {
@@ -49,7 +150,9 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       setSelectedLocation,
       showLocationSelector,
       setShowLocationSelector,
-      hasSelectedLocation
+      hasSelectedLocation,
+      locations,
+      isLoading
     }}>
       {children}
     </LocationContext.Provider>
@@ -62,4 +165,7 @@ export function useLocation() {
     throw new Error('useLocation must be used within a LocationProvider')
   }
   return context
-} 
+}
+
+// Export locations for backward compatibility
+export const locations = [] // Will be populated from database 

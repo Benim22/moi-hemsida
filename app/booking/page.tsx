@@ -16,11 +16,10 @@ import { AnimatedSection, AnimatedText } from "@/components/ui-components"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useLocation } from "@/contexts/LocationContext"
-import { locations } from "@/lib/locations"
 
 export default function BookingPage() {
   const { toast } = useToast()
-  const { selectedLocation, setSelectedLocation } = useLocation()
+  const { selectedLocation, setSelectedLocation, locations, isLoading } = useLocation()
   const [date, setDate] = useState<Date>()
   const [time, setTime] = useState<string>("")
   const [guests, setGuests] = useState<string>("2")
@@ -116,8 +115,8 @@ export default function BookingPage() {
     }
   }
 
-  // Show loading state if selectedLocation is not loaded yet
-  if (!selectedLocation) {
+  // Show loading state while fetching locations or if no location selected
+  if (isLoading || !selectedLocation) {
     return (
       <div className="pt-20 md:pt-24 pb-24">
         <div className="container mx-auto px-4">
@@ -125,7 +124,7 @@ export default function BookingPage() {
             <div className="text-center mb-12">
               <AnimatedText text="Boka Bord" element="h1" className="text-4xl md:text-5xl font-bold mb-4" />
               <AnimatedText
-                text="Laddar restaurangdata..."
+                text={isLoading ? "Laddar restaurangdata..." : "Ingen restaurang vald..."}
                 element="p"
                 className="text-lg text-white/80"
                 delay={0.2}

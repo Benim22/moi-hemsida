@@ -4,12 +4,12 @@ import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, UtensilsCrossed, Calendar, ShoppingBag, Mail, MapPin, ChevronDown } from "lucide-react"
+import { Home, UtensilsCrossed, Calendar, ShoppingBag, Mail, MapPin, ChevronDown, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { CartIcon } from "@/components/shopping-cart"
 import { useCart } from "@/context/cart-context"
 import { UserMenu } from "@/components/user-menu"
-import { useLocation, locations } from "@/contexts/LocationContext"
+import { useLocation } from "@/contexts/LocationContext"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -26,7 +26,7 @@ export default function Navigation() {
   const [lastScrollY, setLastScrollY] = useState(0)
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   const { totalItems, setIsCartOpen } = useCart()
-  const { selectedLocation, setSelectedLocation, setShowLocationSelector } = useLocation()
+  const { selectedLocation, setSelectedLocation, setShowLocationSelector, locations, isLoading } = useLocation()
 
   useEffect(() => {
     const handleScroll = () => {
@@ -136,9 +136,19 @@ export default function Navigation() {
                       variant="outline" 
                       size="sm"
                       className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10 hover:border-[#e4d699]"
+                      disabled={isLoading || !selectedLocation}
                     >
                       <MapPin className="h-4 w-4 mr-2" />
-                      {selectedLocation.name}
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="h-3 w-3 animate-spin mr-2" />
+                          Laddar...
+                        </>
+                      ) : selectedLocation ? (
+                        selectedLocation.name
+                      ) : (
+                        "Välj plats"
+                      )}
                       <ChevronDown className="h-4 w-4 ml-2" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -152,7 +162,7 @@ export default function Navigation() {
                         onClick={() => setSelectedLocation(location)}
                         className={cn(
                           "cursor-pointer text-white hover:bg-[#e4d699]/10 hover:text-[#e4d699] focus:bg-[#e4d699]/10 focus:text-[#e4d699]",
-                          selectedLocation.id === location.id && "bg-[#e4d699]/20 text-[#e4d699]"
+                          selectedLocation?.id === location.id && "bg-[#e4d699]/20 text-[#e4d699]"
                         )}
                       >
                         <div className="flex items-center gap-2">

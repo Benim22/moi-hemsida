@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { AnimatedSection, AnimatedText } from '@/components/ui-components'
-import { useLocation, locations } from '@/contexts/LocationContext'
+import { useLocation } from '@/contexts/LocationContext'
 import { 
   MapPin, 
   Clock, 
@@ -20,14 +20,15 @@ import {
   Navigation as NavigationIcon,
   ExternalLink,
   Info,
-  X
+  X,
+  Loader2
 } from 'lucide-react'
 import Link from 'next/link'
 import GoogleMapComponent from '@/components/google-map'
 import { GoogleMapsLoader } from '@/components/google-maps-loader'
 
 export default function LocationsPage() {
-  const { selectedLocation, setSelectedLocation } = useLocation()
+  const { selectedLocation, setSelectedLocation, locations, isLoading } = useLocation()
   const [selectedLocationCard, setSelectedLocationCard] = useState<string | null>(null)
   const [modalLocation, setModalLocation] = useState<typeof locations[0] | null>(null)
 
@@ -63,6 +64,42 @@ export default function LocationsPage() {
 
   const closeModal = () => {
     setModalLocation(null)
+  }
+
+  // Show loading state while fetching locations
+  if (isLoading) {
+    return (
+      <div className="pt-20 md:pt-24 pb-24 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-[#e4d699] mx-auto mb-4" />
+          <p className="text-white/60">Laddar restauranger...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show message if no locations found
+  if (!locations.length) {
+    return (
+      <div className="pt-20 md:pt-24 pb-24 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <MapPin className="h-12 w-12 text-[#e4d699] mx-auto mb-4" />
+          <p className="text-white/60">Inga restauranger hittades.</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show message if selectedLocation is null
+  if (!selectedLocation) {
+    return (
+      <div className="pt-20 md:pt-24 pb-24 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <MapPin className="h-12 w-12 text-[#e4d699] mx-auto mb-4" />
+          <p className="text-white/60">Ingen restaurang vald.</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -135,6 +172,11 @@ export default function LocationsPage() {
                       src={location.image}
                       alt={location.displayName}
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                      onError={(e) => {
+                        // Fallback to default image if image fails to load
+                        const target = e.target as HTMLImageElement;
+                        target.src = "https://images.unsplash.com/photo-1579952363873-27d3bfad9c0d?w=800&h=600&fit=crop";
+                      }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                     
