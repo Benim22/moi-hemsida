@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Google Maps Loader</title>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key="></script>
+</head>
+<body>
+  <!-- This file is used to load the Google Maps API without exposing the API key -->
+  <script>
+    window.parent.postMessage('mapsLoaded', '*');
+  </script>
+</body>
+</html>
+
