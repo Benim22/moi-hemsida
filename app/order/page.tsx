@@ -14,7 +14,7 @@ import { motion } from "framer-motion"
 import { LinkPreview } from "@/components/link-preview"
 import { Instagram } from "lucide-react"
 import Link from "next/link"
-import { useLocation, locations as contextLocations } from "@/contexts/LocationContext"
+import { useLocation } from "@/contexts/LocationContext"
 
 // Delivery service data
 const deliveryServices = [
@@ -54,17 +54,29 @@ const deliveryServices = [
 
 export default function OrderPage() {
   const { toast } = useToast()
-  const { selectedLocation, setSelectedLocation } = useLocation()
+  const { selectedLocation, setSelectedLocation, locations, isLoading } = useLocation()
   const [orderType, setOrderType] = useState<string>("delivery")
 
 
   // Update order type when location changes
   useEffect(() => {
     // If the selected location doesn't support the current order type, switch to a supported one
-    if (!selectedLocation.services.includes(orderType) && selectedLocation.services.length > 0) {
+    if (selectedLocation && !selectedLocation.services.includes(orderType) && selectedLocation.services.length > 0) {
       setOrderType(selectedLocation.services[0])
     }
   }, [selectedLocation, orderType])
+
+  // Show loading state
+  if (isLoading || !selectedLocation) {
+    return (
+      <div className="pt-20 md:pt-24 pb-24 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#e4d699] mx-auto mb-4"></div>
+          <p className="text-white/60">{isLoading ? "Laddar..." : "Ingen plats vald"}</p>
+        </div>
+      </div>
+    )
+  }
 
   const handleDeliveryClick = (serviceName: string) => {
     toast({
@@ -110,14 +122,14 @@ export default function OrderPage() {
                 </CardHeader>
                 <CardContent>
                   <Select value={selectedLocation.id} onValueChange={(value) => {
-                    const location = contextLocations.find(loc => loc.id === value)
+                    const location = locations.find(loc => loc.id === value)
                     if (location) setSelectedLocation(location)
                   }}>
                     <SelectTrigger className="w-full md:w-[300px] border-[#e4d699]/30">
                       <SelectValue placeholder="Välj plats" />
                     </SelectTrigger>
                     <SelectContent className="bg-black border border-[#e4d699]/30">
-                      {contextLocations.map((location) => (
+                      {locations.map((location) => (
                         <SelectItem key={location.id} value={location.id} className="text-white">
                           <div className="flex items-center justify-between w-full">
                             <span>{location.name}</span>
