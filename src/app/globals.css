@@ -1,0 +1,249 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-gold: var(--gold);
+  --color-gold-dark: var(--gold-dark);
+  --color-light-bg: var(--light-bg);
+  --color-dark-bg: var(--dark-bg);
+  --color-light-card: var(--light-card);
+  --color-dark-card: var(--dark-card);
+  --color-border-light: var(--border-light);
+  --color-border-dark: var(--border-dark);
+  --color-success: var(--success);
+  --color-error-light: var(--error-light);
+  --color-error-dark: var(--error-dark);
+  --spacing-xs: var(--spacing-xs);
+  --spacing-sm: var(--spacing-sm);
+  --spacing-md: var(--spacing-md);
+  --spacing-lg: var(--spacing-lg);
+  --spacing-xl: var(--spacing-xl);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+}
+
+:root {
+  /* Moi Sushi Design Tokens */
+  --gold: #dcc991;
+  --gold-dark: #D4AF37;
+  --light-bg: #fff;
+  --dark-bg: #000;
+  --light-card: #f5f5f5;
+  --dark-card: linear-gradient(145deg, rgba(212, 175, 55, 0.1), rgba(184, 134, 11, 0.1));
+  --border-light: #e1e1e1;
+  --border-dark: rgba(212, 175, 55, 0.3);
+  --success: #4CAF50;
+  --error-light: #FF3B30;
+  --error-dark: #FF453A;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  
+  /* shadcn/ui tokens */
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: linear-gradient(145deg, rgba(212, 175, 55, 0.1), rgba(184, 134, 11, 0.1));
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: #dcc991;
+  --primary-foreground: oklch(0.145 0 0);
+  --secondary: #111;
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: #000;
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: #dcc991;
+  --accent-foreground: oklch(0.145 0 0);
+  --destructive: #FF3B30;
+  --border: rgba(212, 175, 55, 0.3);
+  --input: oklch(0.922 0 0);
+  --ring: #dcc991;
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+}
+
+.dark {
+  --background: #000;
+  --foreground: oklch(0.985 0 0);
+  --card: linear-gradient(145deg, rgba(212, 175, 55, 0.1), rgba(184, 134, 11, 0.1));
+  --card-foreground: oklch(0.985 0 0);
+  --popover: linear-gradient(145deg, rgba(212, 175, 55, 0.1), rgba(184, 134, 11, 0.1));
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: #D4AF37;
+  --primary-foreground: oklch(0.145 0 0);
+  --secondary: #111;
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: #000;
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: #D4AF37;
+  --accent-foreground: oklch(0.145 0 0);
+  --destructive: #FF453A;
+  --border: rgba(212, 175, 55, 0.3);
+  --input: oklch(1 0 0 / 15%);
+  --ring: #D4AF37;
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-black text-white font-sans;
+  }
+  
+  /* Ensure specialty section is gold gradient */
+  .specialty-section {
+    background: linear-gradient(145deg, rgba(212, 175, 55, 0.1), rgba(184, 134, 11, 0.1)) !important;
+    border: 1px solid rgba(212, 175, 55, 0.3) !important;
+  }
+  
+  /* Ensure restaurant cards are gold gradient */
+  .restaurant-card {
+    background: linear-gradient(145deg, rgba(212, 175, 55, 0.1), rgba(184, 134, 11, 0.1)) !important;
+    border-color: rgba(212, 175, 55, 0.3) !important;
+  }
+  
+  /* Custom gold gradient utilities */
+  .bg-custom-dark {
+    background: linear-gradient(145deg, rgba(212, 175, 55, 0.1), rgba(184, 134, 11, 0.1)) !important;
+    border: 1px solid rgba(212, 175, 55, 0.3) !important;
+  }
+  
+  .bg-custom-dark-lighter {
+    background: linear-gradient(145deg, rgba(212, 175, 55, 0.15), rgba(184, 134, 11, 0.15)) !important;
+    border: 1px solid rgba(212, 175, 55, 0.4) !important;
+  }
+  
+  .border-custom-dark {
+    border-color: rgba(212, 175, 55, 0.3) !important;
+  }
+  
+  /* Cursor pointer for interactive elements */
+  button,
+  [role="button"],
+  .cursor-pointer,
+  a,
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"],
+  select,
+  .btn {
+    @apply cursor-pointer;
+  }
+  
+  /* Hover effects for buttons and links */
+  button:hover,
+  [role="button"]:hover,
+  a:hover,
+  .btn:hover {
+    @apply transition-all duration-200;
+  }
+  
+  /* Custom Moi Sushi Styles */
+  .hero-section {
+    height: 600px;
+  }
+  
+  .specialty-card {
+    height: 200px;
+    border-radius: var(--radius-lg);
+  }
+  
+  .menu-card {
+    background: linear-gradient(145deg, rgba(212, 175, 55, 0.1), rgba(184, 134, 11, 0.1));
+    border: 1px solid rgba(212, 175, 55, 0.3);
+  }
+  
+  .menu-card img {
+    height: 180px;
+    object-fit: cover;
+  }
+  
+  .gold-accent {
+    color: var(--gold);
+  }
+  
+  .dark .gold-accent {
+    color: var(--gold-dark);
+  }
+  
+  .price-text {
+    color: var(--gold);
+    font-weight: 600;
+  }
+  
+  .dark .price-text {
+    color: var(--gold-dark);
+  }
+  
+  .gradient-overlay {
+    background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.7) 100%);
+  }
+  
+  .video-overlay {
+    background: rgba(0,0,0,0.4);
+  }
+}
+
+@layer utilities {
+  .text-gold {
+    color: var(--gold);
+  }
+  
+  .text-gold-dark {
+    color: var(--gold-dark);
+  }
+  
+  .bg-gold {
+    background-color: var(--gold);
+  }
+  
+  .bg-gold-dark {
+    background-color: var(--gold-dark);
+  }
+  
+  .border-gold {
+    border-color: var(--gold);
+  }
+  
+  .border-gold-dark {
+    border-color: var(--gold-dark);
+  }
+}

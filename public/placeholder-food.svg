@@ -1,0 +1,11 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="200" height="200" fill="#1a1a1a"/>
+  <g opacity="0.3">
+    <path d="M100 50C124.853 50 145 70.1472 145 95C145 119.853 124.853 140 100 140C75.1472 140 55 119.853 55 95C55 70.1472 75.1472 50 100 50Z" fill="#D4AF37"/>
+    <path d="M85 80L100 95L115 80" stroke="#D4AF37" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M85 110L100 95L115 110" stroke="#D4AF37" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="100" y="170" font-family="Arial, sans-serif" font-size="12" fill="#666" text-anchor="middle">
+    Mat Bild
+  </text>
+</svg> 
