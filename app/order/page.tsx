@@ -16,47 +16,51 @@ import { Instagram } from "lucide-react"
 import Link from "next/link"
 import { useLocation } from "@/contexts/LocationContext"
 
-// Delivery service data
-const deliveryServices = [
-  {
-    name: "Foodora",
-    logo: "https://cloud.appwrite.io/v1/storage/buckets/678c0f710007dd361cec/files/67a7365a002c60c2a215/view?project=678bfed4002a8a6174c4",
-    color: "bg-pink-900/20",
-    textColor: "text-pink-300",
-    borderColor: "border-pink-800/30",
-    estimatedTime: "30-45 min",
-    estimatedCost: "39 kr",
-    link: "https://www.foodora.se/restaurant/z1xp/moi-sushi-and-pokebowl",
-  },
-  {
-    name: "Uber Eats",
-    logo: "https://cloud.appwrite.io/v1/storage/buckets/678c0f710007dd361cec/files/67a7365b00396bd1708f/view?project=678bfed4002a8a6174c4",
-    color: "bg-green-900/20",
-    textColor: "text-green-300",
-    borderColor: "border-green-800/30",
-    estimatedTime: "35-50 min",
-    estimatedCost: "45 kr",
-    link: "https://www.ubereats.com/",
-  },
-  {
-    name: "Wolt",
-    logo: "https://limassolpharmacy.com/wp-content/uploads/2024/09/wolt-logo.png",
-    color: "bg-blue-900/20",
-    textColor: "text-blue-300",
-    borderColor: "border-blue-800/30",
-    estimatedTime: "25-40 min",
-    estimatedCost: "35 kr",
-    link: "https://wolt.com/",
-  },
-]
-
-// Use locations from context
+// Foodora URLs mapping (same as in shopping-cart)
+const foodoraMappings = {
+  trelleborg: "https://www.foodora.se/en/restaurant/z1xp/moi-sushi-and-pokebowl",
+  ystad: "https://www.foodora.se/en/restaurant/fids/moi-poke-bowl", 
+  malmo: "https://www.foodora.se/en/restaurant/k5m5/moi-sushi-and-pokebowl-k5m5"
+}
 
 export default function OrderPage() {
   const { toast } = useToast()
   const { selectedLocation, setSelectedLocation, locations, isLoading } = useLocation()
   const [orderType, setOrderType] = useState<string>("delivery")
 
+  // Delivery service data - now dynamic based on selected location
+  const getDeliveryServices = (locationId: string) => [
+    {
+      name: "Foodora",
+      logo: "https://cloud.appwrite.io/v1/storage/buckets/678c0f710007dd361cec/files/67a7365a002c60c2a215/view?project=678bfed4002a8a6174c4",
+      color: "bg-pink-900/20",
+      textColor: "text-pink-300",
+      borderColor: "border-pink-800/30",
+      estimatedTime: "30-45 min",
+      estimatedCost: "39 kr",
+      link: foodoraMappings[locationId] || foodoraMappings.trelleborg, // Fallback to trelleborg
+    },
+    {
+      name: "Uber Eats",
+      logo: "https://cloud.appwrite.io/v1/storage/buckets/678c0f710007dd361cec/files/67a7365b00396bd1708f/view?project=678bfed4002a8a6174c4",
+      color: "bg-green-900/20",
+      textColor: "text-green-300",
+      borderColor: "border-green-800/30",
+      estimatedTime: "35-50 min",
+      estimatedCost: "45 kr",
+      link: "https://www.ubereats.com/",
+    },
+    {
+      name: "Wolt",
+      logo: "https://limassolpharmacy.com/wp-content/uploads/2024/09/wolt-logo.png",
+      color: "bg-blue-900/20",
+      textColor: "text-blue-300",
+      borderColor: "border-blue-800/30",
+      estimatedTime: "25-40 min",
+      estimatedCost: "35 kr",
+      link: "https://wolt.com/",
+    },
+  ]
 
   // Update order type when location changes
   useEffect(() => {
@@ -78,10 +82,12 @@ export default function OrderPage() {
     )
   }
 
-  const handleDeliveryClick = (serviceName: string) => {
+  const deliveryServices = getDeliveryServices(selectedLocation.id)
+
+  const handleDeliveryClick = (serviceName: string, locationName: string) => {
     toast({
       title: `Omdirigerar till ${serviceName}`,
-      description: "Du kommer nu att skickas vidare för att slutföra din beställning.",
+      description: `Du kommer nu att skickas vidare till ${serviceName} för ${locationName}.`,
       variant: "default",
     })
   }
@@ -93,8 +99,6 @@ export default function OrderPage() {
       variant: "default",
     })
   }
-
-
 
   return (
     <div className="pt-20 md:pt-24 pb-24">
@@ -274,7 +278,7 @@ export default function OrderPage() {
                                           : "border-[#e4d699]/30 text-[#e4d699]"
                                       }`}
                                       disabled={isDisabled}
-                                      onClick={() => !isDisabled && handleDeliveryClick(service.name)}
+                                      onClick={() => !isDisabled && handleDeliveryClick(service.name, selectedLocation.name)}
                                       asChild={!isDisabled}
                                     >
                                       {isDisabled ? (

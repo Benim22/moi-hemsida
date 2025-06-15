@@ -12,6 +12,7 @@ import { MoiSushiChat } from "@/components/moi-sushi-chat"
 import { LocationProvider } from "@/contexts/LocationContext"
 import { LocationSelector } from "@/components/LocationSelector"
 import { CookieBanner } from "@/components/CookieBanner"
+import { AnalyticsProvider } from "@/components/AnalyticsProvider"
 import { Footer } from "@/components/Footer"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -41,6 +42,7 @@ export default function RootLayout({
                 <MoiSushiChat />
                 <LocationSelector />
                 <CookieBanner />
+                <AnalyticsProvider />
                 <Toaster />
               </div>
             </LocationProvider>

@@ -6,6 +6,7 @@ import { ShoppingBag, Check, Plus } from "lucide-react"
 import { useCart } from "@/context/cart-context"
 import { useToast } from "@/hooks/use-toast"
 import { motion, AnimatePresence } from "framer-motion"
+import { trackEvent } from "@/lib/analytics"
 
 interface AddToCartButtonProps {
   product: {
@@ -27,6 +28,14 @@ export function AddToCartButton({ product, variant = "default", size = "default"
   const handleAddToCart = () => {
     addItem(product)
     setIsAdded(true)
+
+    // Spåra tillägg till kundvagn
+    trackEvent('cart', 'add_to_cart', {
+      product_id: product.id,
+      product_name: product.name,
+      product_price: product.price,
+      category: product.category || 'unknown'
+    })
 
     toast({
       title: "Tillagd i kundvagnen",

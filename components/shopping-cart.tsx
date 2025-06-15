@@ -19,6 +19,7 @@ import { useRouter } from "next/navigation"
 import { useSimpleAuth as useAuth } from "@/context/simple-auth-context"
 import { supabase } from "@/lib/supabase"
 import { useLocation } from "@/contexts/LocationContext"
+import { trackOrderStart, trackOrderComplete } from "@/lib/analytics"
 
 export function CartIcon() {
   const { totalItems, setIsCartOpen } = useCart()
@@ -180,6 +181,7 @@ function OrderSuccessModal({
 export function ShoppingCart() {
   const { items, totalPrice, isCartOpen, setIsCartOpen, clearCart, totalItems } = useCart()
   const { toast } = useToast()
+  const { selectedLocation } = useLocation()
   const [isCheckingOut, setIsCheckingOut] = useState(false)
 
   const handleClose = () => {
@@ -198,6 +200,9 @@ export function ShoppingCart() {
 
   const handleCheckout = () => {
     setIsCheckingOut(true)
+    
+    // Spåra start av checkout
+    trackOrderStart(selectedLocation?.name || 'unknown')
   }
 
   return (
@@ -515,6 +520,9 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         console.error("Error sending order confirmation email:", emailError)
         // Don't fail the order if email fails
       }
+
+      // Spåra slutförd beställning
+      trackOrderComplete(orderNumber, totalPrice, selectedLocation.name)
 
       // Show success message and navigate
       setShowSuccessModal(true)

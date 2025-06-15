@@ -11,6 +11,7 @@ import { AddToCartButton } from "@/components/add-to-cart-button"
 import { FoodItemModal, type FoodItemDetails } from "@/components/food-item-modal"
 import { Info, MapPin } from "lucide-react"
 import { useLocation } from "@/contexts/LocationContext"
+import { trackMenuInteraction, trackEvent } from "@/lib/analytics"
 
 // Complete menu data with added nutritional and allergen information
 const menuData = {
@@ -963,6 +964,13 @@ export default function MenuPage() {
   const handleCategoryChange = (category: string) => {
     setPreviousTab(activeTab)
     setActiveTab(category)
+    
+    // Spåra kategori-ändring
+    trackEvent('menu_navigation', 'category_change', {
+      from_category: activeTab,
+      to_category: category,
+      location: selectedLocation?.name || 'unknown'
+    })
   }
 
   // Auto-switch to available category when location changes to Ystad
@@ -976,6 +984,15 @@ export default function MenuPage() {
   const handleOpenItemDetails = (item: FoodItemDetails) => {
     setSelectedItem(item)
     setIsModalOpen(true)
+    
+    // Spåra meny-interaktion
+    trackMenuInteraction(item.name, item.category || activeTab, item.price)
+    trackEvent('menu_interaction', 'item_details_view', {
+      item_name: item.name,
+      item_price: item.price,
+      category: item.category || activeTab,
+      location: selectedLocation?.name || 'unknown'
+    })
   }
 
   return (

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Cookie, Shield, X } from 'lucide-react'
+import { initializeAnalytics, stopAnalytics } from '@/lib/analytics'
 
 export function CookieBanner() {
   const [showBanner, setShowBanner] = useState(false)
@@ -21,20 +22,27 @@ export function CookieBanner() {
     }
   }, [])
 
-  const handleAccept = () => {
+  const handleAccept = async () => {
     localStorage.setItem('moi-sushi-cookie-consent', 'accepted')
     setShowBanner(false)
     
-    // Here you can initialize analytics, tracking, etc.
-    console.log('Cookies accepted - Initialize tracking')
+    // Initialisera Analytics tracking
+    console.log('🍪 Cookies godkända - Startar Analytics tracking')
+    try {
+      await initializeAnalytics()
+      console.log('✅ Analytics tracking startad')
+    } catch (error) {
+      console.error('❌ Fel vid start av Analytics:', error)
+    }
   }
 
   const handleDecline = () => {
     localStorage.setItem('moi-sushi-cookie-consent', 'declined')
     setShowBanner(false)
     
-    // Here you can disable non-essential cookies
-    console.log('Cookies declined - Disable non-essential tracking')
+    // Stoppa Analytics tracking
+    console.log('🚫 Cookies avböjda - Stoppar Analytics tracking')
+    stopAnalytics()
   }
 
   if (!showBanner) return null
