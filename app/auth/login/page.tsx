@@ -8,6 +8,7 @@ import { useSearchParams, useRouter } from "next/navigation"
 export default function LoginPage() {
   const searchParams = useSearchParams()
   const redirect = searchParams.get("redirect")
+  const tab = searchParams.get("tab") // Nytt: för att hantera flik-växling
   const router = useRouter()
   const { user } = useAuth()
   const [isLoading, setIsLoading] = useState(true)
@@ -49,7 +50,7 @@ export default function LoginPage() {
   return (
     <div className="pt-20 md:pt-24 pb-24 min-h-screen flex items-center justify-center">
       <div className="container max-w-md mx-auto px-4">
-        <AuthCard mode="signin" onSuccess={handleLoginSuccess} />
+        <AuthCard mode={tab === "register" ? "signup" : "signin"} onSuccess={handleLoginSuccess} />
       </div>
     </div>
   )

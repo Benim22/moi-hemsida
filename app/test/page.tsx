@@ -1,9 +1,10 @@
 "use client"
 
 import { useSimpleAuth } from "@/context/simple-auth-context"
+import { Button } from "@/components/ui/button"
 
 export default function TestPage() {
-  const { user, profile, isAdmin } = useSimpleAuth()
+  const { user, profile, isAdmin, refreshSession } = useSimpleAuth()
 
   return (
     <div className="pt-20 md:pt-24 pb-24 min-h-screen">
@@ -31,8 +32,25 @@ export default function TestPage() {
             </div>
           )}
           
-          <div className="mt-6">
+          <div className="mt-6 space-y-4">
             <p className="text-green-400">✅ Applikationen fungerar! Auth context var problemet.</p>
+            
+            <div className="flex gap-2">
+              <Button 
+                onClick={() => refreshSession()}
+                className="bg-[#e4d699] text-black hover:bg-[#e4d699]/90"
+              >
+                🔄 Uppdatera Session
+              </Button>
+              
+              <Button 
+                onClick={() => window.location.reload()}
+                variant="outline"
+                className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+              >
+                🔄 Ladda om sida
+              </Button>
+            </div>
           </div>
         </div>
       </div>

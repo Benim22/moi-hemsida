@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 
 // Analytics konfiguration
 const ANALYTICS_CONFIG = {
-  ENABLE_TRACKING: true, // Aktivera alltid för att testa (kan ändras till production-only senare)
+  ENABLE_TRACKING: false, // Inaktiverat tills databastabeller skapas korrekt
   SESSION_TIMEOUT: 30 * 60 * 1000, // 30 minuter
   HEARTBEAT_INTERVAL: 30 * 1000, // 30 sekunder
 }
@@ -152,6 +152,12 @@ class Analytics {
     if (!this.session || !this.userInfo) return
 
     try {
+      // Kontrollera om Supabase är konfigurerat korrekt
+      if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+        console.warn('Analytics: Supabase not configured, skipping session creation')
+        return
+      }
+
       const { error } = await this.supabase
         .from('analytics_sessions')
         .insert({
@@ -171,10 +177,18 @@ class Analytics {
         })
 
       if (error) {
-        console.error('Fel vid skapande av session:', error)
+        // Logga bara som varning för att inte störa användaren
+        console.warn('Analytics: Database session creation failed (table may not exist):', error.code)
+        // Inaktivera analytics om tabellen inte finns
+        if (error.code === '42P01' || error.code === 'PGRST116') {
+          console.warn('Analytics: Disabling tracking due to missing tables')
+          this.isTracking = false
+        }
       }
     } catch (error) {
-      console.error('Analytics session error:', error)
+      console.warn('Analytics: Session creation failed:', error)
+      // Inaktivera tracking om det finns databasproblem
+      this.isTracking = false
     }
   }
 
@@ -223,7 +237,7 @@ class Analytics {
   }
 
   private async savePageView(): Promise<void> {
-    if (!this.currentPageView || !this.session) return
+    if (!this.currentPageView || !this.session || !this.isTracking) return
 
     try {
       const { error } = await this.supabase
@@ -236,10 +250,16 @@ class Analytics {
         })
 
       if (error) {
-        console.error('Fel vid sparande av sidvisning:', error)
+        console.warn('Analytics: Page view save failed:', error.code)
+        // Inaktivera analytics om tabellen inte finns eller det finns schema-problem
+        if (error.code === '42P01' || error.code === 'PGRST116' || error.code === 'PGRST204') {
+          console.warn('Analytics: Disabling tracking due to database issues')
+          this.isTracking = false
+        }
       }
     } catch (error) {
-      console.error('Analytics page view error:', error)
+      console.warn('Analytics: Page view error:', error)
+      this.isTracking = false
     }
   }
 
@@ -290,12 +310,18 @@ class Analytics {
         })
 
       if (error) {
-        console.error('Fel vid spårning av händelse:', error)
+        console.warn('Analytics: Event tracking failed:', error.code)
+        // Inaktivera analytics vid foreign key constraint fel (session_id finns inte)
+        if (error.code === '23503' || error.code === '42P01' || error.code === 'PGRST116') {
+          console.warn('Analytics: Disabling tracking due to database constraint issues')
+          this.isTracking = false
+        }
       } else {
         console.log('📊 Spårade händelse:', eventType, eventName)
       }
     } catch (error) {
-      console.error('Analytics event error:', error)
+      console.warn('Analytics: Event error:', error)
+      this.isTracking = false
     }
   }
 

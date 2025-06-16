@@ -4,11 +4,11 @@ import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, UtensilsCrossed, Calendar, ShoppingBag, Mail, MapPin, Menu, X, User, Settings } from "lucide-react"
+import { Home, UtensilsCrossed, Calendar, ShoppingBag, Mail, MapPin, Menu, X, User, Settings, Bell } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useSimpleAuth } from "@/context/simple-auth-context"
-import { useLocation, locations } from "@/contexts/LocationContext"
+import { useLocation } from "@/contexts/LocationContext"
 
 interface MobileNavigationProps {
   isOpen: boolean
@@ -17,8 +17,8 @@ interface MobileNavigationProps {
 
 export function MobileNavigation({ isOpen, setIsOpen }: MobileNavigationProps) {
   const pathname = usePathname()
-  const { user, profile, logout } = useSimpleAuth()
-  const { selectedLocation, setSelectedLocation } = useLocation()
+  const { user, profile, signOut } = useSimpleAuth()
+  const { selectedLocation, setSelectedLocation, locations } = useLocation()
 
   const navItems = [
     { name: "Hem", href: "/", icon: Home, color: "text-blue-400" },
@@ -31,7 +31,10 @@ export function MobileNavigation({ isOpen, setIsOpen }: MobileNavigationProps) {
 
   const userNavItems = user ? [
     { name: "Profil", href: "/profile", icon: User, color: "text-cyan-400" },
-    ...(profile?.role === 'admin' ? [{ name: "Admin", href: "/admin", icon: Settings, color: "text-yellow-400" }] : [])
+    ...(profile?.role === 'admin' ? [
+      { name: "Admin", href: "/admin", icon: Settings, color: "text-yellow-400" },
+      { name: "Terminal", href: "/terminal", icon: Bell, color: "text-green-400" }
+    ] : [])
   ] : []
 
   const handleClose = () => {
@@ -39,7 +42,7 @@ export function MobileNavigation({ isOpen, setIsOpen }: MobileNavigationProps) {
   }
 
   const handleLogout = async () => {
-    await logout()
+    await signOut()
     handleClose()
   }
 
@@ -201,7 +204,7 @@ export function MobileNavigation({ isOpen, setIsOpen }: MobileNavigationProps) {
                     </Link>
                   </Button>
                   <Button asChild variant="outline" className="w-full border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10">
-                    <Link href="/auth/register" onClick={handleClose}>
+                    <Link href="/auth/login?tab=register" onClick={handleClose}>
                       Registrera
                     </Link>
                   </Button>

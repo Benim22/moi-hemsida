@@ -30,7 +30,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="sv" className="dark">
-      <body className={`${inter.className} bg-black text-white`}>
+      <body className={`${inter.className} bg-black text-white`} suppressHydrationWarning={true}>
         <SimpleAuthProvider>
           <CartProvider>
             <LocationProvider>

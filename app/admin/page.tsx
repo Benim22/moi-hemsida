@@ -4,6 +4,7 @@ import { useState } from "react"
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { useSimpleAuth } from "@/context/simple-auth-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -14,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
-import { Loader2, Users, FileText, Settings, Gift, Plus, Edit, Trash2, AlertTriangle, Bell, BarChart3, Globe, Eye, Clock, Search, Target, TrendingUp, MapPin, Phone, Mail, Star, Save, X, Send, PauseCircle, PlayCircle, ShoppingCart, Package, Truck, CheckCircle, XCircle, AlertCircle, Filter, Download, Calendar, DollarSign, RefreshCw, ChevronDown, Menu } from "lucide-react"
+import { Loader2, Users, FileText, Settings, Gift, Plus, Edit, Trash2, AlertTriangle, Bell, BarChart3, Globe, Eye, Clock, Search, Target, TrendingUp, MapPin, Phone, Mail, Star, Save, X, Send, PauseCircle, PlayCircle, ShoppingCart, Package, Truck, CheckCircle, XCircle, AlertCircle, Filter, Download, Calendar, DollarSign, RefreshCw, ChevronDown, Menu, Monitor } from "lucide-react"
 
 export default function AdminPage() {
   const { user, profile, isAdmin, loading } = useSimpleAuth()
@@ -113,6 +114,7 @@ export default function AdminPage() {
                       className="w-full bg-black/70 border border-[#e4d699]/40 rounded-lg px-4 py-3 text-sm text-[#e4d699] appearance-none cursor-pointer hover:border-[#e4d699]/60 focus:border-[#e4d699] focus:outline-none transition-colors"
                     >
                       <option value="overview">📊 Översikt</option>
+                      <option value="terminal">🖥️ Restaurang Terminal</option>
                       <option value="orders">🍣 Beställningar</option>
                       <option value="bookings">📅 Bordsbokningar</option>
                       <option value="content">📝 Innehåll</option>
@@ -137,6 +139,7 @@ export default function AdminPage() {
 
           {/* Conditional Content Rendering */}
           {activeTab === 'overview' && <AdminOverview />}
+          {activeTab === 'terminal' && <RestaurantTerminalAdmin />}
           {activeTab === 'orders' && <OrderManagement />}
           {activeTab === 'bookings' && <BookingManagement />}
           {activeTab === 'content' && <ContentEditor />}
@@ -2375,7 +2378,7 @@ function NotificationManagement() {
   const [showUserLocationModal, setShowUserLocationModal] = useState(false)
   const [selectedUser, setSelectedUser] = useState(null)
   const [newNotification, setNewNotification] = useState({
-    type: "info",
+    type: "system",
     title: "",
     message: "",
     location: "all",
@@ -2458,7 +2461,7 @@ function NotificationManagement() {
 
       setNotifications(prev => [data, ...prev])
       setNewNotification({
-        type: "info",
+        type: "system",
         title: "",
         message: "",
         location: "all",
@@ -2537,11 +2540,11 @@ function NotificationManagement() {
     switch (type) {
       case "order":
         return "🍱"
-      case "warning":
-        return "⚠️"
-      case "success":
-        return "✅"
-      case "info":
+      case "booking":
+        return "📅"
+      case "promotion":
+        return "🎁"
+      case "system":
       default:
         return "ℹ️"
     }
@@ -2609,10 +2612,10 @@ function NotificationManagement() {
                       className="w-full p-2 rounded-md border border-[#e4d699]/30 bg-black/50 text-white"
                       required
                     >
-                      <option value="info">Information</option>
+                      <option value="system">System</option>
                       <option value="order">Beställning</option>
-                      <option value="warning">Varning</option>
-                      <option value="success">Framgång</option>
+                      <option value="booking">Bokning</option>
+                      <option value="promotion">Erbjudande</option>
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -4752,6 +4755,8 @@ function EmailManagement() {
   const [showStyleModal, setShowStyleModal] = useState(false)
   const [selectedText, setSelectedText] = useState("")
   const [currentField, setCurrentField] = useState("")
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [templateToDelete, setTemplateToDelete] = useState(null)
   const { toast } = useToast()
 
   const [templateForm, setTemplateForm] = useState({
@@ -4899,18 +4904,25 @@ function EmailManagement() {
     setShowTemplateModal(true)
   }
 
-  const handleDeleteTemplate = async (templateId) => {
-    if (!confirm("Är du säker på att du vill ta bort denna mall?")) return
+  const handleDeleteTemplate = (template) => {
+    setTemplateToDelete(template)
+    setShowDeleteModal(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!templateToDelete) return
 
     try {
       const { error } = await supabase
         .from('email_templates')
         .delete()
-        .eq('id', templateId)
+        .eq('id', templateToDelete.id)
 
       if (error) throw error
 
       await fetchTemplates()
+      setShowDeleteModal(false)
+      setTemplateToDelete(null)
       toast({
         title: "Mall borttagen",
         description: "E-postmallen har tagits bort.",
@@ -4924,6 +4936,11 @@ function EmailManagement() {
         variant: "destructive",
       })
     }
+  }
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false)
+    setTemplateToDelete(null)
   }
 
   const handleToggleActive = async (templateId, currentActive) => {
@@ -5314,7 +5331,7 @@ function EmailManagement() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleDeleteTemplate(template.id)}
+                      onClick={() => handleDeleteTemplate(template)}
                       className="text-red-400 hover:text-red-300"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -5877,18 +5894,71 @@ function EmailManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+        <DialogContent className="bg-black border border-[#e4d699]/30">
+          <DialogHeader>
+            <DialogTitle className="text-red-400">Ta bort e-postmall</DialogTitle>
+            <DialogDescription>
+              Är du säker på att du vill ta bort denna e-postmall?
+            </DialogDescription>
+          </DialogHeader>
+          {templateToDelete && (
+            <div className="space-y-4">
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-5 w-5 text-red-400" />
+                  <div>
+                    <h4 className="font-medium text-red-400">Varning</h4>
+                    <p className="text-sm text-white/70">
+                      Denna åtgärd kan inte ångras. Mallen kommer att tas bort permanent.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white/5 border border-[#e4d699]/30 rounded-lg p-4">
+                <h4 className="font-medium text-[#e4d699] mb-2">Mall att ta bort:</h4>
+                <div className="space-y-2">
+                  <p className="text-white"><strong>Namn:</strong> {templateToDelete.name}</p>
+                  <p className="text-white/70"><strong>Mall-nyckel:</strong> {templateToDelete.template_key}</p>
+                  <p className="text-white/70"><strong>Ämne:</strong> {templateToDelete.subject}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleCancelDelete}
+              className="border-[#e4d699]/30"
+            >
+              Avbryt
+            </Button>
+            <Button
+              onClick={handleConfirmDelete}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Ta bort mall
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
 // SEO Page Form Component
 function OrderManagement() {
-  const [activeOrders, setActiveOrders] = useState([])
+  const [allOrders, setAllOrders] = useState([])
   const [orderStats, setOrderStats] = useState({
-    total_active_orders: 0,
+    total_orders: 0,
     pending_orders: 0,
     preparing_orders: 0,
     ready_orders: 0,
+    delivered_orders: 0,
+    cancelled_orders: 0,
     todays_revenue: 0,
     todays_orders: 0
   })
@@ -5898,6 +5968,8 @@ function OrderManagement() {
   const [isUpdating, setIsUpdating] = useState(false)
   const [filterStatus, setFilterStatus] = useState('all')
   const [selectedLocation, setSelectedLocation] = useState('all')
+  const [sortBy, setSortBy] = useState('date_desc') // Ny sortering
+  const [dateFilter, setDateFilter] = useState('all') // Ny datumfilter
   const { toast } = useToast()
 
   useEffect(() => {
@@ -5910,38 +5982,65 @@ function OrderManagement() {
   const fetchOrderData = async () => {
     setIsLoading(true)
     try {
-      // Fetch active orders (filtered by selected location)
+      // Hämta ALLA ordrar från orders tabellen med mer information
       let ordersQuery = supabase
-        .from('active_orders_working')
-        .select('*')
+        .from('orders')
+        .select(`
+          *,
+          profiles (
+            name,
+            email
+          )
+        `)
 
       // Filtrera baserat på vald location
       if (selectedLocation && selectedLocation !== 'all') {
         ordersQuery = ordersQuery.eq('location', selectedLocation)
       }
 
+      // Hämta alla ordrar
       const { data: orders, error: ordersError } = await ordersQuery
         .order('created_at', { ascending: false })
 
       if (ordersError) throw ordersError
 
-      // Fetch order statistics
-      const { data: stats, error: statsError } = await supabase
-        .rpc('get_realtime_stats_working')
+      // Beräkna statistik från alla ordrar
+      const today = new Date().toISOString().split('T')[0]
+      const allOrdersData = orders || []
+      
+      const stats = {
+        total_orders: allOrdersData.length,
+        pending_orders: allOrdersData.filter(o => o.status === 'pending').length,
+        preparing_orders: allOrdersData.filter(o => o.status === 'preparing').length,
+        ready_orders: allOrdersData.filter(o => o.status === 'ready').length,
+        delivered_orders: allOrdersData.filter(o => o.status === 'delivered').length,
+        cancelled_orders: allOrdersData.filter(o => o.status === 'cancelled').length,
+        todays_orders: allOrdersData.filter(o => o.created_at?.startsWith(today)).length,
+        todays_revenue: allOrdersData
+          .filter(o => o.created_at?.startsWith(today))
+          .reduce((sum, o) => sum + (parseFloat(o.total_price || o.amount || 0)), 0),
+        total_revenue_all_time: allOrdersData
+          .reduce((sum, o) => sum + (parseFloat(o.total_price || o.amount || 0)), 0)
+      }
 
-      if (statsError) throw statsError
+      // Gruppera dagens försäljning per plats
+      const todaysOrdersByLocation = allOrdersData
+        .filter(o => o.created_at?.startsWith(today))
+        .reduce((acc, order) => {
+          const location = order.location || 'Okänd'
+          if (!acc[location]) {
+            acc[location] = { location, total_orders: 0, total_revenue: 0 }
+          }
+          acc[location].total_orders += 1
+          acc[location].total_revenue += parseFloat(order.total_price || order.amount || 0)
+          return acc
+        }, {})
 
-      // Fetch today's sales by location
-      const { data: sales, error: salesError } = await supabase
-        .from('todays_sales_working')
-        .select('*')
-        .order('total_revenue', { ascending: false })
+      const salesByLocation = Object.values(todaysOrdersByLocation)
 
-      if (salesError) throw salesError
-
-      setActiveOrders(orders || [])
-      setOrderStats(stats?.[0] || {})
-      setSalesReports(sales || [])
+      setAllOrders(allOrdersData)
+      setOrderStats(stats)
+      setSalesReports(salesByLocation)
 
     } catch (error) {
       console.error('Error fetching order data:', error)
@@ -5978,15 +6077,16 @@ function OrderManagement() {
 
       // Send status update notification
       try {
+        const updatedOrder = allOrders.find(o => o.id === orderId)
         await supabase
           .from('notifications')
           .insert({
             type: 'order',
             title: `Beställning uppdaterad`,
-            message: `Order #${activeOrders.find(o => o.id === orderId)?.order_number} - Status: ${newStatus}`,
+            message: `Order #${updatedOrder?.order_number || orderId} - Status: ${newStatus}`,
             user_role: 'admin',
             metadata: {
-              location: activeOrders.find(o => o.id === orderId)?.location || 'all',
+              location: updatedOrder?.location || 'all',
               order_id: orderId,
               status: newStatus,
               created_by: 'admin'
@@ -6066,9 +6166,71 @@ function OrderManagement() {
     }
   }
 
-  const filteredOrders = activeOrders.filter(order => 
-    filterStatus === 'all' || order.status === filterStatus
-  )
+  // Funktion för att sortera och filtrera ordrar
+  const getFilteredAndSortedOrders = () => {
+    let filtered = allOrders
+
+    // Filtrera efter status
+    if (filterStatus !== 'all') {
+      filtered = filtered.filter(order => order.status === filterStatus)
+    }
+
+    // Filtrera efter datum
+    if (dateFilter !== 'all') {
+      const today = new Date()
+      const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+      
+      switch (dateFilter) {
+        case 'today':
+          filtered = filtered.filter(order => {
+            const orderDate = new Date(order.created_at)
+            return orderDate >= startOfToday
+          })
+          break
+        case 'yesterday':
+          const yesterday = new Date(startOfToday)
+          yesterday.setDate(yesterday.getDate() - 1)
+          filtered = filtered.filter(order => {
+            const orderDate = new Date(order.created_at)
+            return orderDate >= yesterday && orderDate < startOfToday
+          })
+          break
+        case 'this_week':
+          const startOfWeek = new Date(startOfToday)
+          startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+          filtered = filtered.filter(order => {
+            const orderDate = new Date(order.created_at)
+            return orderDate >= startOfWeek
+          })
+          break
+        case 'this_month':
+          const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+          filtered = filtered.filter(order => {
+            const orderDate = new Date(order.created_at)
+            return orderDate >= startOfMonth
+          })
+          break
+      }
+    }
+
+    // Sortera
+    switch (sortBy) {
+      case 'date_desc':
+        return filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      case 'date_asc':
+        return filtered.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+      case 'amount_desc':
+        return filtered.sort((a, b) => (parseFloat(b.total_price || b.amount || 0)) - (parseFloat(a.total_price || a.amount || 0)))
+      case 'amount_asc':
+        return filtered.sort((a, b) => (parseFloat(a.total_price || a.amount || 0)) - (parseFloat(b.total_price || b.amount || 0)))
+      case 'status':
+        return filtered.sort((a, b) => (a.status || '').localeCompare(b.status || ''))
+      default:
+        return filtered
+    }
+  }
+
+  const filteredOrders = getFilteredAndSortedOrders()
 
   if (isLoading) {
     return (
@@ -6081,14 +6243,14 @@ function OrderManagement() {
   return (
     <div className="space-y-6">
       {/* Stats Cards - Mobile Responsive */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
               <ShoppingCart className="w-5 h-5 text-blue-500" />
               <div>
-                <p className="text-sm font-medium">Aktiva</p>
-                <p className="text-2xl font-bold">{orderStats.total_active_orders || 0}</p>
+                <p className="text-sm font-medium">Totalt</p>
+                <p className="text-2xl font-bold">{orderStats.total_orders || 0}</p>
               </div>
             </div>
           </CardContent>
@@ -6130,13 +6292,27 @@ function OrderManagement() {
           </CardContent>
         </Card>
 
+
+
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <DollarSign className="w-5 h-5 text-green-600" />
+              <CheckCircle className="w-5 h-5 text-blue-600" />
               <div>
-                <p className="text-sm font-medium">Idag</p>
-                <p className="text-lg font-bold">{orderStats.todays_revenue || 0} kr</p>
+                <p className="text-sm font-medium">Levererade</p>
+                <p className="text-2xl font-bold">{orderStats.delivered_orders || 0}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <XCircle className="w-5 h-5 text-red-500" />
+              <div>
+                <p className="text-sm font-medium">Inställda</p>
+                <p className="text-2xl font-bold">{orderStats.cancelled_orders || 0}</p>
               </div>
             </div>
           </CardContent>
@@ -6147,7 +6323,7 @@ function OrderManagement() {
             <div className="flex items-center space-x-2">
               <BarChart3 className="w-5 h-5 text-purple-500" />
               <div>
-                <p className="text-sm font-medium">Beställningar</p>
+                <p className="text-sm font-medium">Idag antal</p>
                 <p className="text-2xl font-bold">{orderStats.todays_orders || 0}</p>
               </div>
             </div>
@@ -6155,30 +6331,95 @@ function OrderManagement() {
         </Card>
       </div>
 
-      {/* Location Filter */}
+      {/* Filters and Sorting */}
       <Card className="mb-6">
         <CardContent className="p-4">
-          <div className="flex items-center gap-4">
-            <MapPin className="w-5 h-5 text-[#e4d699]" />
-            <div>
-              <Label htmlFor="location-select" className="text-sm font-medium">Filtrera efter plats:</Label>
-              <select
-                id="location-select"
-                value={selectedLocation}
-                onChange={(e) => setSelectedLocation(e.target.value)}
-                className="ml-2 bg-black/50 border border-[#e4d699]/30 rounded px-3 py-1 text-sm min-w-[150px]"
-              >
-                <option value="all">Alla platser</option>
-                <option value="malmo">Malmö</option>
-                <option value="trelleborg">Trelleborg</option>
-                <option value="ystad">Ystad</option>
-              </select>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Plats Filter */}
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-[#e4d699]" />
+              <div>
+                <Label htmlFor="location-select" className="text-sm font-medium">Plats:</Label>
+                <select
+                  id="location-select"
+                  value={selectedLocation}
+                  onChange={(e) => setSelectedLocation(e.target.value)}
+                  className="ml-2 bg-black/50 border border-[#e4d699]/30 rounded px-3 py-1 text-sm min-w-[120px]"
+                >
+                  <option value="all">Alla platser</option>
+                  <option value="malmo">Malmö</option>
+                  <option value="trelleborg">Trelleborg</option>
+                  <option value="ystad">Ystad</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Datum Filter */}
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-[#e4d699]" />
+              <div>
+                <Label htmlFor="date-filter" className="text-sm font-medium">Datum:</Label>
+                <select
+                  id="date-filter"
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
+                  className="ml-2 bg-black/50 border border-[#e4d699]/30 rounded px-3 py-1 text-sm min-w-[120px]"
+                >
+                  <option value="all">Alla datum</option>
+                  <option value="today">Idag</option>
+                  <option value="yesterday">Igår</option>
+                  <option value="this_week">Denna vecka</option>
+                  <option value="this_month">Denna månad</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Status Filter */}
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-[#e4d699]" />
+              <div>
+                <Label htmlFor="status-filter" className="text-sm font-medium">Status:</Label>
+                <select
+                  id="status-filter"
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="ml-2 bg-black/50 border border-[#e4d699]/30 rounded px-3 py-1 text-sm min-w-[120px]"
+                >
+                  <option value="all">Alla status</option>
+                  <option value="pending">Väntande</option>
+                  <option value="confirmed">Bekräftade</option>
+                  <option value="preparing">Tillagas</option>
+                  <option value="ready">Klara</option>
+                  <option value="delivered">Levererade</option>
+                  <option value="cancelled">Inställda</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Sortering */}
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-[#e4d699]" />
+              <div>
+                <Label htmlFor="sort-select" className="text-sm font-medium">Sortera:</Label>
+                <select
+                  id="sort-select"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="ml-2 bg-black/50 border border-[#e4d699]/30 rounded px-3 py-1 text-sm min-w-[120px]"
+                >
+                  <option value="date_desc">Nyast först</option>
+                  <option value="date_asc">Äldst först</option>
+                  <option value="amount_desc">Högst belopp</option>
+                  <option value="amount_asc">Lägst belopp</option>
+                  <option value="status">Status A-Ö</option>
+                </select>
+              </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Controls - Mobile Responsive */}
+      {/* Quick Filter Buttons and Results Summary */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex flex-wrap gap-2">
           <Button
@@ -6186,35 +6427,47 @@ function OrderManagement() {
             size="sm"
             onClick={() => setFilterStatus('all')}
           >
-            Alla ({activeOrders.length})
+            Alla ({allOrders.length})
           </Button>
           <Button
             variant={filterStatus === 'pending' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setFilterStatus('pending')}
           >
-            Väntande ({activeOrders.filter(o => o.status === 'pending').length})
+            Väntande ({allOrders.filter(o => o.status === 'pending').length})
           </Button>
           <Button
             variant={filterStatus === 'preparing' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setFilterStatus('preparing')}
           >
-            Tillagas ({activeOrders.filter(o => o.status === 'preparing').length})
+            Tillagas ({allOrders.filter(o => o.status === 'preparing').length})
           </Button>
           <Button
             variant={filterStatus === 'ready' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setFilterStatus('ready')}
           >
-            Klara ({activeOrders.filter(o => o.status === 'ready').length})
+            Klara ({allOrders.filter(o => o.status === 'ready').length})
+          </Button>
+          <Button
+            variant={filterStatus === 'delivered' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setFilterStatus('delivered')}
+          >
+            Levererade ({allOrders.filter(o => o.status === 'delivered').length})
           </Button>
         </div>
 
-        <Button onClick={fetchOrderData} disabled={isLoading} size="sm">
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Uppdatera
-        </Button>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-white/60">
+            Visar {filteredOrders.length} av {allOrders.length} ordrar
+          </span>
+          <Button onClick={fetchOrderData} disabled={isLoading} size="sm">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Uppdatera
+          </Button>
+        </div>
       </div>
 
       {/* Orders List - Mobile Responsive */}
@@ -6242,21 +6495,54 @@ function OrderManagement() {
                       <span className="text-sm text-gray-500">{order.location}</span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
                       <div>
-                        <span className="font-medium">Kund:</span> {order.customer_name}
+                        <span className="font-medium">Kund:</span> {order.customer_name || order.profiles?.name || order.customer_email || 'Gäst'}
                       </div>
                       <div>
-                        <span className="font-medium">Summa:</span> {order.total_amount} kr
+                        <span className="font-medium">Summa:</span> {parseFloat(order.total_price || order.amount || 0).toFixed(2)} kr
                       </div>
                       <div>
-                        <span className="font-medium">Tid:</span> {Math.round(order.minutes_since_created)} min sedan
+                        <span className="font-medium">Datum:</span> {new Date(order.created_at).toLocaleDateString('sv-SE')}
+                      </div>
+                      <div>
+                        <span className="font-medium">Tid:</span> {new Date(order.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
 
+                    {/* Extra orderinformation */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm mt-2">
+                      {order.delivery_type && (
+                        <div>
+                          <span className="font-medium">Typ:</span> {order.delivery_type === 'delivery' ? 'Leverans' : order.delivery_type === 'pickup' ? 'Avhämtning' : order.delivery_type}
+                        </div>
+                      )}
+                      {order.customer_email && (
+                        <div>
+                          <span className="font-medium">E-post:</span> {order.customer_email}
+                        </div>
+                      )}
+                      {order.customer_phone && (
+                        <div>
+                          <span className="font-medium">Telefon:</span> {order.customer_phone}
+                        </div>
+                      )}
+                      {order.order_items && (
+                        <div className="sm:col-span-2">
+                          <span className="font-medium">Varor:</span> {typeof order.order_items === 'string' ? order.order_items : JSON.stringify(order.order_items)}
+                        </div>
+                      )}
+                    </div>
+
                     {order.delivery_address && (
-                      <div className="text-sm">
-                        <span className="font-medium">Adress:</span> {order.delivery_address}
+                      <div className="text-sm mt-2">
+                        <span className="font-medium">Leveransadress:</span> {order.delivery_address}
+                      </div>
+                    )}
+
+                    {order.notes && (
+                      <div className="text-sm mt-2">
+                        <span className="font-medium">Anteckningar:</span> {order.notes}
                       </div>
                     )}
                   </div>
@@ -6344,6 +6630,44 @@ function OrderManagement() {
           ))
         )}
       </div>
+
+      {/* Revenue Summary */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <DollarSign className="w-5 h-5 text-[#e4d699]" />
+            Intäktssammanfattning
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+              <div className="text-sm text-green-400 mb-1">Dagens intäkter</div>
+              <div className="text-2xl font-bold text-green-300">{(orderStats.todays_revenue || 0).toFixed(2)} kr</div>
+              <div className="text-xs text-white/60 mt-1">Från {orderStats.todays_orders || 0} beställningar</div>
+            </div>
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+              <div className="text-sm text-yellow-400 mb-1">Totala intäkter (alla tider)</div>
+              <div className="text-2xl font-bold text-yellow-300">{(orderStats.total_revenue_all_time || 0).toFixed(2)} kr</div>
+              <div className="text-xs text-white/60 mt-1">Från {orderStats.total_orders || 0} beställningar</div>
+            </div>
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+              <div className="text-sm text-blue-400 mb-1">Genomsnitt per order</div>
+              <div className="text-2xl font-bold text-blue-300">
+                {orderStats.total_orders > 0 ? ((orderStats.total_revenue_all_time || 0) / orderStats.total_orders).toFixed(2) : '0.00'} kr
+              </div>
+              <div className="text-xs text-white/60 mt-1">Per beställning</div>
+            </div>
+            <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4">
+              <div className="text-sm text-purple-400 mb-1">Genomsnitt idag</div>
+              <div className="text-2xl font-bold text-purple-300">
+                {orderStats.todays_orders > 0 ? ((orderStats.todays_revenue || 0) / orderStats.todays_orders).toFixed(2) : '0.00'} kr
+              </div>
+              <div className="text-xs text-white/60 mt-1">Per dagens order</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Sales Reports - Mobile Responsive */}
       {salesReports.length > 0 && (
@@ -6788,6 +7112,96 @@ function BookingManagement() {
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+function RestaurantTerminalAdmin() {
+  return (
+    <div className="space-y-6">
+      <Card className="border border-[#e4d699]/20 bg-black/50">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-gradient-to-br from-[#e4d699] to-yellow-600 rounded-full flex items-center justify-center">
+                <Monitor className="h-6 w-6 text-black" />
+              </div>
+              <div>
+                <CardTitle className="text-xl">Restaurang Terminal</CardTitle>
+                <CardDescription>
+                  Hantera beställningar och kvitton för restaurangpersonal
+                </CardDescription>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="bg-gradient-to-r from-blue-900/20 to-blue-800/20 border border-blue-500/30 rounded-lg p-4">
+              <h3 className="font-semibold text-blue-400 mb-2">📱 För iPad/Tablet</h3>
+              <p className="text-white/70 mb-3">
+                Öppna terminalen på iPads eller tablets för att ta emot och hantera beställningar i realtid.
+              </p>
+              <Button asChild className="bg-gradient-to-r from-[#e4d699] to-yellow-600 text-black hover:from-yellow-600 hover:to-yellow-700">
+                <Link href="/terminal" target="_blank">
+                  <Monitor className="h-4 w-4 mr-2" />
+                  Öppna Terminal i Nytt Fönster
+                </Link>
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-gradient-to-r from-green-900/20 to-green-800/20 border border-green-500/30 rounded-lg p-4">
+                <h4 className="font-semibold text-green-400 mb-2">🔔 Real-time Notifikationer</h4>
+                <ul className="text-white/70 text-sm space-y-1">
+                  <li>• Automatiska notifikationer för nya beställningar</li>
+                  <li>• Webbläsarnotifikationer med ljud</li>
+                  <li>• Statusuppdateringar i realtid</li>
+                </ul>
+              </div>
+
+              <div className="bg-gradient-to-r from-purple-900/20 to-purple-800/20 border border-purple-500/30 rounded-lg p-4">
+                <h4 className="font-semibold text-purple-400 mb-2">🖨️ Kvittofunktioner</h4>
+                <ul className="text-white/70 text-sm space-y-1">
+                  <li>• Automatisk kvittogenerering</li>
+                  <li>• Direktutskrift till termiska skrivare</li>
+                  <li>• PDF-nedladdning av kvitton</li>
+                </ul>
+              </div>
+
+              <div className="bg-gradient-to-r from-orange-900/20 to-orange-800/20 border border-orange-500/30 rounded-lg p-4">
+                <h4 className="font-semibold text-orange-400 mb-2">⚡ Statushantering</h4>
+                <ul className="text-white/70 text-sm space-y-1">
+                  <li>• Enkla knappar för statusuppdatering</li>
+                  <li>• Väntande → Bekräftad → Tillagas → Klar</li>
+                  <li>• Automatiska notifikationer vid statusändring</li>
+                </ul>
+              </div>
+
+              <div className="bg-gradient-to-r from-yellow-900/20 to-yellow-800/20 border border-yellow-500/30 rounded-lg p-4">
+                <h4 className="font-semibold text-yellow-400 mb-2">📊 Live Statistik</h4>
+                <ul className="text-white/70 text-sm space-y-1">
+                  <li>• Realtidsöversikt av aktiva beställningar</li>
+                  <li>• Statusfördelning per plats</li>
+                  <li>• Senaste notifikationer</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-r from-gray-900/20 to-gray-800/20 border border-gray-500/30 rounded-lg p-4">
+              <h4 className="font-semibold text-gray-400 mb-2">📋 Instruktioner</h4>
+              <ol className="text-white/70 text-sm space-y-1 list-decimal list-inside">
+                <li>Öppna terminalen på iPad/tablet med länken ovan</li>
+                <li>Logga in med admin-konto för din plats</li>
+                <li>Tillåt webbläsarnotifikationer när du tillfrågas</li>
+                <li>Terminalen visar automatiskt beställningar för din plats</li>
+                <li>Använd knapparna för att uppdatera orderstatus</li>
+                <li>Skriv ut kvitton med "Skriv ut"-knappen</li>
+              </ol>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

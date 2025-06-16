@@ -379,6 +379,12 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
   }
 
   const handlePaymentComplete = async () => {
+    console.log("=== STARTING ORDER CREATION ===")
+    console.log("User:", user?.email || "Anonymous")
+    console.log("Total price:", totalPrice)
+    console.log("Items:", items)
+    console.log("Customer info:", { customerName, customerPhone, customerEmail })
+    
     try {
       // Show loading toast
       toast({
@@ -387,18 +393,40 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         variant: "default",
       })
 
-      if (!user) {
+      // Allow anonymous orders under 250kr to prevent fake orders
+      if (!user && totalPrice >= 250) {
+        console.log("=== BLOCKING: Anonymous order over 250kr ===")
         toast({
-          title: "Fel",
-          description: "Du måste vara inloggad för att lägga en beställning.",
+          title: "Inloggning krävs",
+          description: "För beställningar över 250kr krävs inloggning för att motverka falska beställningar.",
           variant: "destructive",
         })
         return
       }
 
+      // Validate required fields
+      if (!customerName || !customerPhone || !customerEmail || !pickupTime) {
+        console.log("=== BLOCKING: Missing required fields ===")
+        console.log("Missing:", {
+          customerName: !customerName,
+          customerPhone: !customerPhone, 
+          customerEmail: !customerEmail,
+          pickupTime: !pickupTime
+        })
+        toast({
+          title: "Saknade uppgifter",
+          description: "Alla fält måste fyllas i för att lägga en beställning.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // For anonymous orders, use a special UUID since RLS requires user_id match
+      const ANONYMOUS_USER_ID = '00000000-0000-0000-0000-000000000000'
+      
       // Prepare order data for database
       const orderData = {
-        user_id: user.id,
+        user_id: user?.id || ANONYMOUS_USER_ID, // Use special UUID for anonymous orders
         items: items,
         total_price: totalPrice,
         amount: totalPrice, // För kompatibilitet
@@ -407,6 +435,8 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         phone: customerPhone,
         delivery_address: deliveryType === "delivery" ? customerAddress : null,
         delivery_type: deliveryType,
+        customer_name: customerName, // Store customer name for anonymous orders
+        customer_email: customerEmail, // Store customer email for anonymous orders
         notes: `${deliveryType === "pickup" ? "Hämtningstid" : "Leveranstid"}: ${
           pickupTime === "asap"
             ? "Så snart som möjligt"
@@ -415,28 +445,47 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
               : pickupTime === "1hour"
                 ? "Om 1 timme"
                 : "Om 2 timmar"
-        }${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}`,
+        }${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}${!user ? " | ANONYM BESTÄLLNING (Under 250kr)" : ""}`,
         payment_method: 'cash', // Betala i restaurangen
         order_number: orderNumber
       }
 
+      console.log("=== ORDER DATA PREPARED ===")
+      console.log(orderData)
+
       // Save to database
+      console.log("=== SAVING TO DATABASE ===")
       const { data, error } = await supabase
         .from('orders')
         .insert([orderData])
         .select()
         .single()
 
+      console.log("=== DATABASE RESPONSE ===")
+      console.log("Data:", data)
+      console.log("Error:", error)
+
       if (error) {
         console.error('Database error details:', {
           message: error.message,
           details: error.details,
           hint: error.hint,
-          code: error.code
+          code: error.code,
+          orderData: orderData
         })
         toast({
           title: "Fel vid sparande",
           description: `Kunde inte spara beställningen: ${error.message}`,
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (!data) {
+        console.error('=== NO DATA RETURNED ===')
+        toast({
+          title: "Fel vid sparande",
+          description: "Ingen data returnerades från databasen",
           variant: "destructive",
         })
         return
@@ -451,6 +500,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
       console.log("========================")
 
       // Send location-based notification to admins
+      console.log("=== SENDING NOTIFICATION ===")
       try {
         const { error: notificationError } = await supabase
           .from('notifications')
@@ -480,6 +530,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
       }
 
       // Send order confirmation email
+      console.log("=== SENDING EMAIL ===")
       try {
         const emailResponse = await fetch('/api/send-order-confirmation', {
           method: 'POST',
@@ -510,7 +561,10 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
           }),
         })
 
+        console.log("Email response status:", emailResponse.status)
         const emailResult = await emailResponse.json()
+        console.log("Email result:", emailResult)
+        
         if (emailResult.success) {
           console.log("Order confirmation email sent successfully")
         } else {
@@ -522,16 +576,20 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
       }
 
       // Spåra slutförd beställning
+      console.log("=== TRACKING ORDER ===")
       trackOrderComplete(orderNumber, totalPrice, selectedLocation.name)
 
       // Show success message and navigate
+      console.log("=== SHOWING SUCCESS MODAL ===")
       setShowSuccessModal(true)
 
+      console.log("=== ORDER CREATION COMPLETED SUCCESSFULLY ===")
+
     } catch (error) {
-      console.error('Error creating order:', error)
+      console.error('=== ERROR CREATING ORDER ===', error)
       toast({
         title: "Fel",
-        description: "Ett oväntat fel inträffade. Försök igen.",
+        description: `Ett oväntat fel inträffade: ${error instanceof Error ? error.message : 'Okänt fel'}. Försök igen.`,
         variant: "destructive",
       })
     }
@@ -673,6 +731,25 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
             <span className="text-[#e4d699]">{totalPrice} kr</span>
           </div>
         </div>
+
+        {/* Information about anonymous orders */}
+        {!user && totalPrice < 250 && (
+          <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+            <p className="text-sm text-blue-400">
+              ℹ️ <strong>Anonym beställning tillåten</strong><br />
+              För beställningar under 250kr krävs ingen inloggning för att motverka falska beställningar.
+            </p>
+          </div>
+        )}
+        
+        {!user && totalPrice >= 250 && (
+          <div className="mt-3 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg">
+            <p className="text-sm text-orange-400">
+              ⚠️ <strong>Inloggning krävs för stora beställningar</strong><br />
+              För beställningar över 250kr krävs inloggning för att motverka falska beställningar.
+            </p>
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
