@@ -11,6 +11,16 @@ import { ArrowRight, CalendarCheck, ShoppingBag } from "lucide-react"
 export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null)
 
+  // Temporär debug-information
+  const supabaseDebug = {
+    url: process.env.NEXT_PUBLIC_SUPABASE_URL ? 'SET' : 'NOT SET',
+    key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'SET' : 'NOT SET',
+    urlValue: process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 20) + '...' || 'MISSING',
+    keyValue: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.substring(0, 20) + '...' || 'MISSING'
+  }
+
+  console.log('HomePage Supabase Debug:', supabaseDebug)
+
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.play().catch((error) => {

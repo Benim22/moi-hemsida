@@ -16,18 +16,26 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { User, Settings, ShoppingBag, LogOut, UserPlus } from "lucide-react"
+import React from "react"
 
 export function UserMenu() {
-  const { user, profile, signOut, isAdmin, refreshSession, loading } = useAuth()
+  const { user, profile, signOut, isAdmin, loading } = useAuth()
   const router = useRouter()
 
   // Check if Supabase environment variables are set
   const isSupabaseConfigured = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  useEffect(() => {
-    // Refresh the session when the component mounts (only once)
-    refreshSession()
-  }, []) // Removed refreshSession from dependencies to prevent loop
+  // Debug-information
+  React.useEffect(() => {
+    console.log('UserMenu Debug:', {
+      isSupabaseConfigured,
+      loading,
+      hasUser: !!user,
+      hasProfile: !!profile,
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ? 'SET' : 'NOT SET',
+      supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'SET' : 'NOT SET'
+    })
+  }, [loading, user, profile, isSupabaseConfigured])
 
   const getInitials = (name: string | null | undefined) => {
     if (!name) return "U"
@@ -54,7 +62,7 @@ export function UserMenu() {
     )
   }
 
-  // Show loading state
+  // Show loading state med timeout för att förhindra oändlig loading
   if (loading) {
     return (
       <Button

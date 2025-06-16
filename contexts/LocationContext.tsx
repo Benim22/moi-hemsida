@@ -25,6 +25,7 @@ export interface Location {
     lng: number
   }
   features: string[]
+  placeId?: string // Google Places ID för reviews
 }
 
 interface LocationContextType {
@@ -46,16 +47,99 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   const [locations, setLocations] = useState<Location[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  // Fetch locations from database
+  // Fallback locations för att förhindra loading loop
+  const fallbackLocations: Location[] = [
+    {
+      id: "trelleborg",
+      name: "Trelleborg", 
+      displayName: "Moi Sushi Trelleborg",
+      address: "Corfitz-Beck-Friisgatan 5B, 231 43, Trelleborg",
+      phone: "0410-28110",
+      email: "trelleborg@moisushi.se",
+      hours: {
+        weekdays: "11.00 – 21.00",
+        saturday: "12.00 – 21.00",
+        sunday: "15.00 – 21.00",
+      },
+      services: ["delivery", "pickup", "dine-in"],
+      menu: "full",
+      deliveryServices: ["Foodora"],
+      description: "Vår första och flaggskeppsrestaurang i hjärtat av Trelleborg.",
+      image: "https://images.unsplash.com/photo-1579952363873-27d3bfad9c0d?w=800&h=600&fit=crop",
+      coordinates: { lat: 55.3755, lng: 13.1567 },
+      features: ["Fullständig meny", "Dine-in", "Leverans", "Avhämtning", "Catering"],
+      placeId: "ChIJXXXXXXXXXXXXXXXXXXXX" // Lägg till rätt place_id här
+    },
+    {
+      id: "malmo",
+      name: "Malmö",
+      displayName: "Moi Sushi Malmö",
+      address: "Stora Nygatan 33, 211 37, Malmö",
+      phone: "040-123456",
+      email: "malmo@moisushi.se",
+      hours: {
+        weekdays: "11.00 – 21.00",
+        saturday: "12.00 – 21.00",
+        sunday: "15.00 – 21.00",
+      },
+      services: ["delivery", "pickup", "dine-in"],
+      menu: "full",
+      deliveryServices: ["Foodora"],
+      description: "Vår andra restaurang i centrala Malmö.",
+      image: "https://images.unsplash.com/photo-1579952363873-27d3bfad9c0d?w=800&h=600&fit=crop",
+      coordinates: { lat: 55.6050, lng: 13.0038 },
+      features: ["Fullständig meny", "Dine-in", "Leverans", "Avhämtning"],
+      placeId: "ChIJYYYYYYYYYYYYYYYYYYYY" // Lägg till rätt place_id här
+    }
+  ]
+
+  // Förbättrad fetchLocations med timeout och bättre error handling
   const fetchLocations = async () => {
+    // Kontrollera omedelbart om Supabase är konfigurerat
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      console.warn('LocationContext: Supabase not configured, using fallback data')
+      setLocations(fallbackLocations)
+      setSelectedLocationState(fallbackLocations[0])
+      setIsLoading(false)
+      return
+    }
+
+    // Sätt mycket kortare timeout för att förhindra oändlig loading
+    const timeout = setTimeout(() => {
+      console.warn('LocationContext: Database fetch timeout (3s), using fallback data')
+      setLocations(fallbackLocations)
+      setSelectedLocationState(fallbackLocations[0])
+      setIsLoading(false)
+    }, 3000) // Bara 3 sekunder timeout!
+
     try {
-      const { data, error } = await supabase
+      // Försök ansluta med Promise.race för att säkerställa snabb timeout
+      const fetchPromise = supabase
         .from('locations')
         .select('*')
         .eq('is_active', true)
         .order('name')
 
-      if (error) throw error
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 2500)
+      )
+
+      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any
+
+      clearTimeout(timeout)
+
+      if (error) {
+        console.error('LocationContext: Database error:', error)
+        throw error
+      }
+
+      if (!data || data.length === 0) {
+        console.warn('LocationContext: No locations found in database, using fallback data')
+        setLocations(fallbackLocations)
+        setSelectedLocationState(fallbackLocations[0])
+        setIsLoading(false)
+        return
+      }
 
       // Transform database format to component format
       const transformedLocations: Location[] = data.map(location => ({
@@ -100,32 +184,10 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch (error) {
-      console.error('Error fetching locations:', error)
+      clearTimeout(timeout)
+      console.error('LocationContext: Error fetching locations:', error)
       
-      // Fallback to static data if database fails
-      const fallbackLocations: Location[] = [
-        {
-          id: "trelleborg",
-          name: "Trelleborg", 
-          displayName: "Moi Sushi Trelleborg",
-          address: "Corfitz-Beck-Friisgatan 5B, 231 43, Trelleborg",
-          phone: "0410-28110",
-          email: "trelleborg@moisushi.se",
-          hours: {
-            weekdays: "11.00 – 21.00",
-            saturday: "12.00 – 21.00",
-            sunday: "15.00 – 21.00",
-          },
-          services: ["delivery", "pickup", "dine-in"],
-          menu: "full",
-          deliveryServices: ["Foodora"],
-          description: "Vår första och flaggskeppsrestaurang i hjärtat av Trelleborg.",
-          image: "https://images.unsplash.com/photo-1579952363873-27d3bfad9c0d?w=800&h=600&fit=crop",
-          coordinates: { lat: 55.3755, lng: 13.1567 },
-          features: ["Fullständig meny", "Dine-in", "Leverans", "Avhämtning", "Catering"]
-        }
-      ]
-      
+      // Använd omedelbart fallback data om det blir fel
       setLocations(fallbackLocations)
       setSelectedLocationState(fallbackLocations[0])
     } finally {

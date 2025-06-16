@@ -14,9 +14,11 @@ import { Mail, MapPin, Phone, Send } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import GoogleMapComponent from "@/components/google-map"
 import { GoogleMapsLoader } from "@/components/google-maps-loader"
+import { useLocation } from "@/contexts/LocationContext"
 
 export default function ContactPage() {
   const { toast } = useToast()
+  const { selectedLocation } = useLocation()
   const [email, setEmail] = useState("")
   const [name, setName] = useState("")
   const [message, setMessage] = useState("")
@@ -24,6 +26,21 @@ export default function ContactPage() {
   const [isSuccess, setIsSuccess] = useState(false)
   const [newsletterEmail, setNewsletterEmail] = useState("")
   const [newsletterSuccess, setNewsletterSuccess] = useState(false)
+
+  // Fallback till Trelleborg om ingen location är vald
+  const currentLocation = selectedLocation || {
+    id: "trelleborg",
+    name: "Trelleborg",
+    displayName: "Moi Sushi Trelleborg", 
+    address: "Corfitz-Beck-Friisgatan 5B, 231 43, Trelleborg",
+    phone: "0410-28110",
+    email: "trelleborg@moisushi.se",
+    hours: {
+      weekdays: "11.00 – 21.00",
+      saturday: "12.00 – 21.00",
+      sunday: "15.00 – 21.00"
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -122,9 +139,20 @@ export default function ContactPage() {
           <AnimatedText
             text="Vi ser fram emot att höra från dig"
             element="p"
-            className="text-lg text-white/80 max-w-2xl mx-auto"
+            className="text-lg text-white/80 max-w-2xl mx-auto mb-6"
             delay={0.2}
           />
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="inline-flex items-center px-4 py-2 bg-[#e4d699]/10 border border-[#e4d699]/30 rounded-full"
+          >
+            <MapPin className="h-4 w-4 text-[#e4d699] mr-2" />
+            <span className="text-[#e4d699] font-medium">
+              Visar information för: {currentLocation.displayName}
+            </span>
+          </motion.div>
         </div>
 
         <div className="max-w-6xl mx-auto">
@@ -136,12 +164,15 @@ export default function ContactPage() {
                     <MapPin className="h-6 w-6 text-[#e4d699]" />
                   </div>
                   <CardTitle>Adress</CardTitle>
+                  <CardDescription className="text-[#e4d699] text-sm">
+                    {currentLocation.displayName}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="text-center">
                   <p className="text-white/80">
-                    Corfitz-Beck-Friisgatan 5B
+                    {currentLocation.address.split(',')[0]}
                     <br />
-                    231 43, Trelleborg
+                    {currentLocation.address.split(',').slice(1).join(',').trim()}
                   </p>
                 </CardContent>
               </Card>
@@ -154,11 +185,14 @@ export default function ContactPage() {
                     <Phone className="h-6 w-6 text-[#e4d699]" />
                   </div>
                   <CardTitle>Telefon</CardTitle>
+                  <CardDescription className="text-[#e4d699] text-sm">
+                    {currentLocation.name}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="text-center">
                   <p className="text-white/80">
-                    <a href="tel:0410-28110" className="hover:text-[#e4d699]">
-                      0410-28110
+                    <a href={`tel:${currentLocation.phone}`} className="hover:text-[#e4d699]">
+                      {currentLocation.phone}
                     </a>
                   </p>
                 </CardContent>
@@ -172,11 +206,14 @@ export default function ContactPage() {
                     <Mail className="h-6 w-6 text-[#e4d699]" />
                   </div>
                   <CardTitle>E-post</CardTitle>
+                  <CardDescription className="text-[#e4d699] text-sm">
+                    {currentLocation.name}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="text-center">
                   <p className="text-white/80">
-                    <a href="mailto:moisushi@outlook.com" className="hover:text-[#e4d699]">
-                      moisushi@outlook.com
+                    <a href={`mailto:${currentLocation.email || 'moisushi@outlook.com'}`} className="hover:text-[#e4d699]">
+                      {currentLocation.email || 'moisushi@outlook.com'}
                     </a>
                   </p>
                 </CardContent>
@@ -261,15 +298,18 @@ export default function ContactPage() {
                 <Card className="border border-[#e4d699]/20">
                   <CardHeader>
                     <CardTitle>Öppettider</CardTitle>
+                    <CardDescription className="text-[#e4d699] text-sm">
+                      {currentLocation.displayName}
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="font-medium">Måndag–Fredag:</div>
-                      <div className="text-white/80">11.00 – 21.00</div>
+                      <div className="text-white/80">{currentLocation.hours?.weekdays || '11.00 – 21.00'}</div>
                       <div className="font-medium">Lördag:</div>
-                      <div className="text-white/80">12.00 – 21.00</div>
+                      <div className="text-white/80">{currentLocation.hours?.saturday || '12.00 – 21.00'}</div>
                       <div className="font-medium">Söndag:</div>
-                      <div className="text-white/80">15.00 – 21.00</div>
+                      <div className="text-white/80">{currentLocation.hours?.sunday || '15.00 – 21.00'}</div>
                     </div>
                   </CardContent>
                 </Card>
@@ -315,12 +355,15 @@ export default function ContactPage() {
                 <Card className="border border-[#e4d699]/20">
                   <CardHeader>
                     <CardTitle>Hitta oss</CardTitle>
+                    <CardDescription className="text-[#e4d699] text-sm">
+                      {currentLocation.displayName}
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="w-full h-full rounded-md overflow-hidden">
                       <GoogleMapComponent
-                        address="Corfitz-Beck-Friisgatan 5B, 231 43, Trelleborg"
-                        name="Moi Sushi"
+                        address={currentLocation.address}
+                        name={currentLocation.displayName}
                         height="300px"
                       />
                     </div>

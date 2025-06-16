@@ -143,8 +143,8 @@ export default function AboutPage() {
               <AnimatedCard delay={0.4}>
                 <div className="relative rounded-2xl overflow-hidden shadow-2xl">
                   <img
-                    src="https://img.freepik.com/free-photo/maki-roll-with-cucumber-served-with-sauce-sesame-seeds_141793-789.jpg?uid=R79426159&ga=GA1.1.712530254.1732280513&semt=ais_hybrid"
-                    alt="Artistiskt arrangerade sushirullar"
+                    src="https://ufplxaspddedhbqsuuvv.supabase.co/storage/v1/object/public/images//image1.jpeg"
+                    alt="Moi Sushi restaurangens eleganta interiör med moderna lampor och träbord"
                     className="w-full h-[400px] object-cover"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"></div>
@@ -159,8 +159,8 @@ export default function AboutPage() {
               <AnimatedCard delay={0.2}>
                 <div className="relative rounded-2xl overflow-hidden shadow-2xl">
                   <img
-                    src="https://img.freepik.com/free-photo/close-up-delicious-sushi-dish_23-2151349376.jpg?uid=R79426159&ga=GA1.1.712530254.1732280513&semt=ais_hybrid"
-                    alt="Konstnärlig sushi presentation"
+                    src="https://ufplxaspddedhbqsuuvv.supabase.co/storage/v1/object/public/images//image3.png"
+                    alt="Moi Sushi restaurangens välkomnande exteriör med tydlig skyltning"
                     className="w-full h-[400px] object-cover"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"></div>

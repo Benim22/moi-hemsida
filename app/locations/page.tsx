@@ -26,6 +26,7 @@ import {
 import Link from 'next/link'
 import GoogleMapComponent from '@/components/google-map'
 import { GoogleMapsLoader } from '@/components/google-maps-loader'
+import { GoogleReviews } from '@/components/google-reviews'
 
 export default function LocationsPage() {
   const { selectedLocation, setSelectedLocation, locations, isLoading } = useLocation()
@@ -492,6 +493,17 @@ export default function LocationsPage() {
                       </Badge>
                     ))}
                   </div>
+                </div>
+
+                {/* Google Reviews */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 text-[#e4d699]">Recensioner</h3>
+                  <GoogleReviews
+                    locationId={modalLocation.id}
+                    locationName={modalLocation.name}
+                    placeId={modalLocation.placeId}
+                    showMockData={true} // Sätt till false när ni har riktiga place_ids
+                  />
                 </div>
 
                 {/* Action Buttons */}

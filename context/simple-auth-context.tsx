@@ -66,26 +66,51 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
     })
 
+    // Sätt mycket kortare timeout för att förhindra oändlig loading
+    const loadingTimeout = setTimeout(() => {
+      if (loading) {
+        console.warn('SimpleAuthProvider: Loading timeout (5s), setting loading to false')
+        setLoading(false)
+      }
+    }, 5000) // Bara 5 sekunder timeout!
+
     return () => {
       subscription.unsubscribe()
+      clearTimeout(loadingTimeout)
     }
   }, [])
 
   const getInitialSession = async () => {
     try {
-      const { data: { session }, error } = await supabase.auth.getSession()
+      // Kontrollera omedelbart om Supabase är konfigurerat
+      if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+        console.warn('SimpleAuthProvider: Supabase not configured')
+        setLoading(false)
+        return
+      }
+
+      // Använd Promise.race för snabbare timeout
+      const sessionPromise = supabase.auth.getSession()
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Session timeout')), 3000)
+      )
+
+      const { data: { session }, error } = await Promise.race([sessionPromise, timeoutPromise]) as any
       
       if (error) {
         console.error("SimpleAuthProvider: Session error:", error)
+        setLoading(false)
+        return
       }
       
       if (session?.user) {
         setUser(session.user)
         await loadProfile(session.user.id)
+      } else {
+        setLoading(false)
       }
     } catch (error) {
       console.error("SimpleAuthProvider: Error getting initial session:", error)
-    } finally {
       setLoading(false)
     }
   }
@@ -301,6 +326,12 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
     if (!mounted) return
     
     try {
+      // Kontrollera om Supabase är konfigurerat
+      if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+        console.warn('SimpleAuthProvider: Supabase not configured for session refresh')
+        return
+      }
+
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user && session.user.id !== user?.id) {
         setUser(session.user)

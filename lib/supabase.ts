@@ -7,12 +7,24 @@ const isBrowser = typeof window !== "undefined"
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 
+// Log configuration status
+console.log('Supabase Configuration:', {
+  hasUrl: !!supabaseUrl,
+  hasKey: !!supabaseAnonKey,
+  urlPreview: supabaseUrl ? supabaseUrl.substring(0, 30) + '...' : 'MISSING',
+  keyPreview: supabaseAnonKey ? supabaseAnonKey.substring(0, 20) + '...' : 'MISSING'
+})
+
 // Create a dummy client for SSR if credentials are missing
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn("Missing Supabase environment variables. Authentication features will not work properly.")
+  console.warn("⚠️ VARNING: Supabase miljövariabler saknas!")
+  console.warn("⚠️ Skapa en .env.local fil med:")
+  console.warn("   NEXT_PUBLIC_SUPABASE_URL=din-supabase-url")
+  console.warn("   NEXT_PUBLIC_SUPABASE_ANON_KEY=din-supabase-nyckel")
+  console.warn("⚠️ Fallback-data kommer att användas istället.")
 }
 
-// Initialize the Supabase client with more explicit options
+// Initialize the Supabase client with more explicit options and shorter timeouts
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: isBrowser, // Only persist the session in browser environments
@@ -21,6 +33,14 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     flowType: "pkce", // Use PKCE flow for better security
     storage: isBrowser ? window.localStorage : undefined,
   },
+  db: {
+    schema: 'public',
+  },
+  global: {
+    headers: {
+      'X-Client-Info': 'moi-sushi-web'
+    }
+  }
 })
 
 // Helper function to check if Supabase is properly configured
