@@ -20,7 +20,17 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Moi Sushi & Poké Bowl | Trelleborg",
   description: "Din sushi & pokebowl restaurang i Trelleborg",
-    generator: 'v0.dev'
+  generator: 'v0.dev',
+  manifest: '/manifest.json',
+  other: {
+    'mobile-web-app-capable': 'yes',
+    'apple-mobile-web-app-capable': 'yes',
+    'apple-mobile-web-app-status-bar-style': 'black-translucent',
+    'apple-mobile-web-app-title': 'Moi Sushi',
+    'application-name': 'Moi Sushi',
+    'msapplication-TileColor': '#e4d699',
+    'theme-color': '#e4d699'
+  }
 }
 
 export default function RootLayout({

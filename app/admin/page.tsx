@@ -6092,8 +6092,6 @@ function SEOManagement() {
 
 function EmailManagement() {
   const [templates, setTemplates] = useState([])
-  const [emailLogs, setEmailLogs] = useState([])
-  const [emailSettings, setEmailSettings] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("templates")
   const [showTemplateModal, setShowTemplateModal] = useState(false)
@@ -6102,38 +6100,39 @@ function EmailManagement() {
   const [previewTemplate, setPreviewTemplate] = useState(null)
   const [showTestModal, setShowTestModal] = useState(false)
   const [testEmail, setTestEmail] = useState("")
-  const [showStyleModal, setShowStyleModal] = useState(false)
-  const [selectedText, setSelectedText] = useState("")
-  const [currentField, setCurrentField] = useState("")
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [templateToDelete, setTemplateToDelete] = useState(null)
+  const [emailConnectionStatus, setEmailConnectionStatus] = useState(null)
+  const [testingEmail, setTestingEmail] = useState(false)
+  const [emailLogs, setEmailLogs] = useState([])
+  const [emailSettings, setEmailSettings] = useState([])
   const { toast } = useToast()
 
   const [templateForm, setTemplateForm] = useState({
+    type: "order_confirmation",
     name: "",
     subject: "",
-    template_key: "",
     html_content: "",
     text_content: "",
     variables: [],
+    location: null,
     is_active: true
   })
 
   useEffect(() => {
     fetchTemplates()
-    fetchEmailLogs()
+    checkEmailConnection()
     fetchEmailSettings()
   }, [])
 
   const fetchTemplates = async () => {
     try {
-      const { data, error } = await supabase
-        .from('email_templates')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setTemplates(data || [])
+      const response = await fetch('/api/email/templates')
+      const result = await response.json()
+      
+      if (!response.ok) throw new Error(result.error)
+      
+      setTemplates(result.templates || [])
     } catch (error) {
       console.error('Error fetching templates:', error)
       toast({
@@ -6141,24 +6140,23 @@ function EmailManagement() {
         description: "Kunde inte hämta e-postmallar.",
         variant: "destructive",
       })
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const fetchEmailLogs = async () => {
+  const checkEmailConnection = async () => {
     try {
-      const { data, error } = await supabase
-        .from('email_logs')
-        .select(`
-          *,
-          template:email_templates(name)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(50)
-
-      if (error) throw error
-      setEmailLogs(data || [])
+      const response = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'verify' })
+      })
+      const result = await response.json()
+      setEmailConnectionStatus(result.success)
     } catch (error) {
-      console.error('Error fetching email logs:', error)
+      console.error('Error checking email connection:', error)
+      setEmailConnectionStatus(false)
     }
   }
 
@@ -6167,28 +6165,27 @@ function EmailManagement() {
       const { data, error } = await supabase
         .from('email_settings')
         .select('*')
-        .order('setting_key', { ascending: true })
 
       if (error) throw error
+
       setEmailSettings(data || [])
     } catch (error) {
       console.error('Error fetching email settings:', error)
-    } finally {
-      setIsLoading(false)
+      setEmailSettings([])
     }
   }
 
   const handleCreateTemplate = async (e) => {
     e.preventDefault()
     try {
-      const { error } = await supabase
-        .from('email_templates')
-        .insert([{
-          ...templateForm,
-          variables: JSON.stringify(templateForm.variables)
-        }])
-
-      if (error) throw error
+      const response = await fetch('/api/email/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(templateForm)
+      })
+      
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error)
 
       await fetchTemplates()
       setShowTemplateModal(false)
@@ -6202,7 +6199,7 @@ function EmailManagement() {
       console.error('Error creating template:', error)
       toast({
         title: "Fel",
-        description: "Kunde inte skapa e-postmall.",
+        description: error.message || "Kunde inte skapa e-postmall.",
         variant: "destructive",
       })
     }
@@ -6211,15 +6208,14 @@ function EmailManagement() {
   const handleUpdateTemplate = async (e) => {
     e.preventDefault()
     try {
-      const { error } = await supabase
-        .from('email_templates')
-        .update({
-          ...templateForm,
-          variables: JSON.stringify(templateForm.variables)
-        })
-        .eq('id', editingTemplate.id)
-
-      if (error) throw error
+      const response = await fetch('/api/email/templates', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editingTemplate.id, ...templateForm })
+      })
+      
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error)
 
       await fetchTemplates()
       setShowTemplateModal(false)
@@ -6234,7 +6230,7 @@ function EmailManagement() {
       console.error('Error updating template:', error)
       toast({
         title: "Fel",
-        description: "Kunde inte uppdatera e-postmall.",
+        description: error.message || "Kunde inte uppdatera e-postmall.",
         variant: "destructive",
       })
     }
@@ -6243,12 +6239,13 @@ function EmailManagement() {
   const handleEditTemplate = (template) => {
     setEditingTemplate(template)
     setTemplateForm({
+      type: template.type, // Use the correct column name
       name: template.name,
       subject: template.subject,
-      template_key: template.template_key,
       html_content: template.html_content,
       text_content: template.text_content || "",
       variables: Array.isArray(template.variables) ? template.variables : JSON.parse(template.variables || '[]'),
+      location: template.location,
       is_active: template.is_active
     })
     setShowTemplateModal(true)
@@ -6263,12 +6260,12 @@ function EmailManagement() {
     if (!templateToDelete) return
 
     try {
-      const { error } = await supabase
-        .from('email_templates')
-        .delete()
-        .eq('id', templateToDelete.id)
-
-      if (error) throw error
+      const response = await fetch(`/api/email/templates?id=${templateToDelete.id}`, {
+        method: 'DELETE'
+      })
+      
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error)
 
       await fetchTemplates()
       setShowDeleteModal(false)
@@ -6282,7 +6279,7 @@ function EmailManagement() {
       console.error('Error deleting template:', error)
       toast({
         title: "Fel",
-        description: "Kunde inte ta bort e-postmall.",
+        description: error.message || "Kunde inte ta bort e-postmall.",
         variant: "destructive",
       })
     }
@@ -6319,12 +6316,21 @@ function EmailManagement() {
   }
 
   const handleSendTestEmail = async () => {
-    if (!testEmail || !previewTemplate) return
+    if (!testEmail) return
 
+    setTestingEmail(true)
     try {
-      // Här skulle vi implementera faktisk e-postsändning
-      // För nu simulerar vi bara
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      const response = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'test',
+          email: testEmail
+        })
+      })
+      
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error)
 
       toast({
         title: "Test-e-post skickad",
@@ -6337,9 +6343,11 @@ function EmailManagement() {
       console.error('Error sending test email:', error)
       toast({
         title: "Fel",
-        description: "Kunde inte skicka test-e-post.",
+        description: error.message || "Kunde inte skicka test-e-post.",
         variant: "destructive",
       })
+    } finally {
+      setTestingEmail(false)
     }
   }
 
@@ -6353,13 +6361,10 @@ function EmailManagement() {
       if (error) throw error
 
       await fetchEmailSettings()
-      toast({
-        title: "Inställning uppdaterad",
-        description: "E-postinställningen har uppdaterats.",
-        variant: "default",
-      })
+      // Removed toast notifications for better UX
     } catch (error) {
       console.error('Error updating email setting:', error)
+      // Only show error toasts
       toast({
         title: "Fel",
         description: "Kunde inte uppdatera inställning.",
@@ -6370,15 +6375,18 @@ function EmailManagement() {
 
   const resetTemplateForm = () => {
     setTemplateForm({
+      type: "order_confirmation",
       name: "",
       subject: "",
-      template_key: "",
       html_content: "",
       text_content: "",
       variables: [],
+      location: null,
       is_active: true
     })
   }
+
+
 
   // Fördefinierade variabler som kan användas i mallar
   const predefinedVariables = [

@@ -5,8 +5,9 @@ import { useSimpleAuth } from "@/context/simple-auth-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { supabase } from "@/lib/supabase"
-import { Bell, Printer, Download, Check, Clock, Package, Truck, X, RefreshCw } from "lucide-react"
+import { Bell, Printer, Download, Check, Clock, Package, Truck, X, RefreshCw, AlertTriangle } from "lucide-react"
 import jsPDF from 'jspdf'
 
 export default function RestaurantTerminal() {
@@ -16,10 +17,17 @@ export default function RestaurantTerminal() {
   const [isLoading, setIsLoading] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [notificationPermission, setNotificationPermission] = useState('default')
+  const [notificationDialog, setNotificationDialog] = useState(null)
 
   // Real-time subscriptions
   useEffect(() => {
     if (!user || !profile?.location) return
+
+    console.log('🚀 Startar real-time prenumerationer för:', {
+      userId: user.id,
+      userLocation: profile.location,
+      userRole: profile.role
+    })
 
     // Subscribe to new orders
     const handleOrderInsert = (payload) => {
@@ -31,7 +39,7 @@ export default function RestaurantTerminal() {
       const notificationBody = `Order #${payload.new.order_number} från ${customerName} - ${payload.new.total_price || payload.new.amount} kr`
       
       console.log('🔔 Visar notifikation:', { title: notificationTitle, body: notificationBody })
-      showBrowserNotification(notificationTitle, notificationBody)
+      showBrowserNotification(notificationTitle, notificationBody, true) // true för ordernotifikation
       playNotificationSound()
     }
 
@@ -41,11 +49,16 @@ export default function RestaurantTerminal() {
       ))
     }
 
+    // Skapa unik kanal för denna användare för att undvika konflikter
+    const channelName = `restaurant-orders-${user.id}-${Date.now()}`
+    console.log('📡 Skapar unik kanal:', channelName)
+    
     let ordersSubscription
     if (profile.location === 'all') {
+      console.log('📡 Prenumererar på ALLA orders (location: all)')
       // För "all" location, lyssna på alla orders utan filter
       ordersSubscription = supabase
-        .channel('restaurant-orders')
+        .channel(channelName)
         .on('postgres_changes', {
           event: 'INSERT',
           schema: 'public',
@@ -56,11 +69,19 @@ export default function RestaurantTerminal() {
           schema: 'public',
           table: 'orders'
         }, handleOrderUpdate)
-        .subscribe()
+        .subscribe((status) => {
+          console.log('📡 Orders prenumeration status:', status)
+          if (status === 'SUBSCRIBED') {
+            console.log('✅ Prenumeration på orders aktiv!')
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('❌ Fel vid prenumeration på orders')
+          }
+        })
     } else {
+      console.log('📡 Prenumererar på orders för location:', profile.location)
       // För specifik location, filtrera på location
       ordersSubscription = supabase
-        .channel('restaurant-orders')
+        .channel(channelName)
         .on('postgres_changes', {
           event: 'INSERT',
           schema: 'public',
@@ -73,12 +94,21 @@ export default function RestaurantTerminal() {
           table: 'orders',
           filter: `location=eq.${profile.location}`
         }, handleOrderUpdate)
-        .subscribe()
+        .subscribe((status) => {
+          console.log('📡 Orders prenumeration status:', status)
+          if (status === 'SUBSCRIBED') {
+            console.log('✅ Prenumeration på orders aktiv!')
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('❌ Fel vid prenumeration på orders')
+          }
+        })
     }
 
     // Subscribe to notifications
+    const notificationChannelName = `restaurant-notifications-${user.id}-${Date.now()}`
+    console.log('📢 Prenumererar på notifikationer med kanal:', notificationChannelName)
     const notificationsSubscription = supabase
-      .channel('restaurant-notifications')
+      .channel(notificationChannelName)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -88,27 +118,38 @@ export default function RestaurantTerminal() {
         console.log('📍 Min location:', profile.location)
         console.log('📍 Notifikation location:', payload.new.metadata?.location)
         
-        // Visa notifikation om:
-        // 1. Det är en admin-notifikation OCH
-        // 2. Användaren har "all" location ELLER notifikationen matchar användarens location ELLER notifikationen är för "all"
-        if (payload.new.user_role === 'admin' && (
-            profile.location === 'all' ||
-            payload.new.metadata?.location === profile.location ||
-            payload.new.metadata?.location === 'all')) {
-          console.log('✅ Notifikation matchar - visar den')
-          setNotifications(prev => [payload.new, ...prev])
-          showBrowserNotification(payload.new.title, payload.new.message)
-          playNotificationSound()
-        } else {
-          console.log('❌ Notifikation matchar inte - hoppar över')
-          console.log('Debug info:', {
-            userRole: payload.new.user_role,
-            userLocation: profile.location,
-            notificationLocation: payload.new.metadata?.location
-          })
+        // Visa notifikation om det är en admin-notifikation
+        if (payload.new.user_role === 'admin') {
+          // Användare med "all" location ska se ALLA admin-notifikationer
+          // Användare med specifik location ska bara se notifikationer för sin location
+          const shouldShowNotification = profile.location === 'all' || 
+                                       payload.new.metadata?.location === profile.location ||
+                                       !payload.new.metadata?.location // Fallback för notifikationer utan location
+
+          if (shouldShowNotification) {
+            console.log('✅ Notifikation matchar - visar den')
+            setNotifications(prev => [payload.new, ...prev])
+            showBrowserNotification(payload.new.title, payload.new.message, true) // true för ordernotifikation
+            playNotificationSound()
+          } else {
+            console.log('❌ Notifikation matchar inte - hoppar över')
+            console.log('Debug info:', {
+              userRole: payload.new.user_role,
+              userLocation: profile.location,
+              notificationLocation: payload.new.metadata?.location,
+              shouldShow: shouldShowNotification
+            })
+          }
         }
       })
-      .subscribe()
+      .subscribe((status) => {
+        console.log('📢 Notifikationer prenumeration status:', status)
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Prenumeration på notifikationer aktiv!')
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Fel vid prenumeration på notifikationer')
+        }
+      })
 
     return () => {
       ordersSubscription.unsubscribe()
@@ -195,11 +236,15 @@ export default function RestaurantTerminal() {
           // Användare med "all" location ser alla admin-notifikationer
           return true
         } else {
-          // Användare med specifik location ser endast notifikationer för sin location eller "all"
+          // Användare med specifik location ser endast notifikationer för sin location
           return notification.metadata?.location === profile.location || 
-                 notification.metadata?.location === 'all'
+                 !notification.metadata?.location // Fallback för notifikationer utan location
         }
       }) || []
+      
+      console.log('📢 Hämtade notifikationer för location:', profile.location)
+      console.log('📢 Totalt antal notifikationer från DB:', data?.length || 0)
+      console.log('📢 Filtrerade notifikationer:', filteredNotifications.length)
       
       setNotifications(filteredNotifications)
     } catch (error) {
@@ -208,38 +253,99 @@ export default function RestaurantTerminal() {
   }
 
   const requestNotificationPermission = async () => {
-    if ('Notification' in window) {
-      console.log('Nuvarande notifikationsstatus:', Notification.permission)
-      setNotificationPermission(Notification.permission)
-      
-      if (Notification.permission === 'default') {
+    if (!('Notification' in window)) {
+      console.log('❌ Webbläsaren stöder inte notifikationer')
+      alert('Din webbläsare stöder inte notifikationer. Prova att uppdatera din webbläsare eller använd Chrome/Safari.')
+      setNotificationPermission('unsupported')
+      return
+    }
+
+    console.log('Nuvarande notifikationsstatus:', Notification.permission)
+    setNotificationPermission(Notification.permission)
+    
+    // Detektera enhet och webbläsare
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+    const isAndroid = /Android/.test(navigator.userAgent)
+    const isChrome = /Chrome/.test(navigator.userAgent)
+    
+    if (Notification.permission === 'default') {
+      try {
         const permission = await Notification.requestPermission()
         console.log('Notifikationspermission efter begäran:', permission)
         setNotificationPermission(permission)
         
         if (permission === 'granted') {
           console.log('✅ Notifikationer aktiverade!')
-          // Visa en test-notifikation
-          showBrowserNotification('Notifikationer aktiverade!', 'Du kommer nu få meddelanden om nya beställningar')
+          // Visa en test-notifikation med förbättrat stöd
+          const notification = new Notification('🔔 Notifikationer aktiverade!', {
+            body: 'Du kommer nu få meddelanden om nya beställningar',
+            icon: '/favicon.ico',
+            badge: '/favicon.ico',
+            tag: 'permission-granted',
+            requireInteraction: true,
+            vibrate: isAndroid ? [200, 100, 200] : undefined // Vibration bara på Android
+          })
+          
+          // Auto-close efter 5 sekunder
+          setTimeout(() => notification.close(), 5000)
+          
+        } else if (permission === 'denied') {
+          console.log('❌ Notifikationer nekade')
+          // Visa instruktioner baserat på enhet
+          if (isIOS && isSafari) {
+            alert('För iOS Safari:\n\n1. Gå till Inställningar > Safari > Webbplatser > Notifikationer\n2. Tillåt notifikationer för denna webbplats\n3. Ladda om sidan')
+          } else if (isAndroid && isChrome) {
+            alert('För Android Chrome:\n\n1. Tryck på lås-ikonen i adressfältet\n2. Välj "Tillåt" för notifikationer\n3. Ladda om sidan\n\nEller gå till Chrome-inställningar > Webbplatsinställningar > Notifikationer')
+          } else {
+            alert('Notifikationer är blockerade. För att aktivera:\n\n1. Klicka på lås-ikonen i adressfältet\n2. Välj "Tillåt" för notifikationer\n3. Ladda om sidan')
+          }
         } else {
-          console.log('❌ Notifikationer nekade eller blockerade')
+          console.log('⚠️ Notifikationspermission: default (inget beslut)')
+          alert('Notifikationer kunde inte aktiveras. Prova att ladda om sidan och försök igen.')
         }
-      } else if (Notification.permission === 'granted') {
-        console.log('✅ Notifikationer redan aktiverade')
-        setNotificationPermission('granted')
-      } else {
-        console.log('❌ Notifikationer blockerade av användaren')
-        setNotificationPermission('denied')
+      } catch (error) {
+        console.error('Fel vid begäran om notifikationspermission:', error)
+        alert('Fel vid aktivering av notifikationer. Kontrollera att din webbläsare stöder notifikationer.')
       }
+    } else if (Notification.permission === 'granted') {
+      console.log('✅ Notifikationer redan aktiverade')
+      setNotificationPermission('granted')
+      // Visa bekräftelse
+      showBrowserNotification('Notifikationer är aktiverade', 'Du får meddelanden om nya beställningar')
     } else {
-      console.log('❌ Webbläsaren stöder inte notifikationer')
-      setNotificationPermission('unsupported')
+      console.log('❌ Notifikationer blockerade av användaren')
+      setNotificationPermission('denied')
+      
+      // Visa instruktioner för att aktivera
+      if (isIOS && isSafari) {
+        alert('För iOS Safari:\n\n1. Gå till Inställningar > Safari > Webbplatser > Notifikationer\n2. Tillåt notifikationer för denna webbplats\n3. Ladda om sidan')
+      } else if (isAndroid && isChrome) {
+        alert('För Android Chrome:\n\n1. Tryck på lås-ikonen i adressfältet\n2. Välj "Tillåt" för notifikationer\n3. Ladda om sidan')
+      } else {
+        alert('Notifikationer är blockerade. Klicka på lås-ikonen i adressfältet och tillåt notifikationer.')
+      }
     }
   }
 
-  const showBrowserNotification = (title, body) => {
-    console.log('Försöker visa notifikation:', { title, body })
+  const showBrowserNotification = (title, body, isOrderNotification = false) => {
+    console.log('Försöker visa notifikation:', { title, body, isOrderNotification })
     
+    // Visa alltid dialog för ordernotifikationer
+    if (isOrderNotification) {
+      setNotificationDialog({
+        title,
+        body,
+        timestamp: new Date().toLocaleTimeString('sv-SE')
+      })
+      
+      // Stäng dialogen automatiskt efter 10 sekunder
+      setTimeout(() => {
+        setNotificationDialog(null)
+      }, 10000)
+    }
+
+    // Försök visa webbläsarnotifikation också
     if (!('Notification' in window)) {
       console.log('❌ Webbläsaren stöder inte notifikationer')
       return
@@ -253,15 +359,19 @@ export default function RestaurantTerminal() {
     try {
       const notification = new Notification(title, {
         body,
-        icon: '/favicon.ico', // Kommer att fallback till default om filen inte finns
+        icon: '/favicon.ico',
         requireInteraction: true,
-        tag: 'moi-order', // Förhindrar duplicerade notifikationer
+        tag: 'moi-order',
         renotify: true
       })
 
       notification.onclick = () => {
         window.focus()
         notification.close()
+        // Stäng också dialogen om den är öppen
+        if (isOrderNotification) {
+          setNotificationDialog(null)
+        }
       }
 
       notification.onerror = (error) => {
@@ -276,38 +386,44 @@ export default function RestaurantTerminal() {
 
   const playNotificationSound = () => {
     try {
-      // Försök spela ljudfil först
-      const audio = new Audio('/notification-sound.mp3')
-      audio.volume = 0.5
-      
-      audio.play().catch(() => {
-        console.log('Ljudfil inte tillgänglig, använder fallback-ljud')
-        // Fallback beep om ljudfil inte finns
-        playFallbackSound()
-      })
-    } catch (error) {
-      console.log('Fel med ljuduppspelning, använder fallback:', error)
+      // Använd direkt fallback-ljud istället för att leta efter fil
+      console.log('🔊 Spelar notifikationsljud...')
       playFallbackSound()
+    } catch (error) {
+      console.log('Fel med ljuduppspelning:', error)
     }
   }
 
   const playFallbackSound = () => {
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)()
-      const oscillator = audioContext.createOscillator()
-      const gainNode = audioContext.createGain()
       
-      oscillator.connect(gainNode)
-      gainNode.connect(audioContext.destination)
+      // Spela en serie toner för att låta mer som en notifikation
+      const playTone = (frequency, startTime, duration) => {
+        const oscillator = audioContext.createOscillator()
+        const gainNode = audioContext.createGain()
+        
+        oscillator.connect(gainNode)
+        gainNode.connect(audioContext.destination)
+        
+        oscillator.frequency.value = frequency
+        oscillator.type = 'sine'
+        
+        gainNode.gain.setValueAtTime(0, startTime)
+        gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.01)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
+        
+        oscillator.start(startTime)
+        oscillator.stop(startTime + duration)
+      }
       
-      oscillator.frequency.value = 800
-      oscillator.type = 'sine'
+      // Spela tre toner i sekvens (som iPhone notifikation)
+      const now = audioContext.currentTime
+      playTone(800, now, 0.15)        // Första ton
+      playTone(1000, now + 0.2, 0.15) // Andra ton (högre)
+      playTone(800, now + 0.4, 0.2)   // Tredje ton (tillbaka till första)
       
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1)
-      
-      oscillator.start(audioContext.currentTime)
-      oscillator.stop(audioContext.currentTime + 1)
+      console.log('🔊 Fallback-ljud spelat')
     } catch (error) {
       console.log('Kunde inte spela fallback-ljud:', error)
     }
@@ -682,6 +798,37 @@ export default function RestaurantTerminal() {
     }
   }
 
+  // Test notification function
+  const testNotification = async () => {
+    try {
+      console.log('🧪 Skapar testnotifikation...')
+      const { data, error } = await supabase
+        .from('notifications')
+        .insert({
+          type: 'order',
+          title: 'TEST NOTIFIKATION',
+          message: `Test från ${getLocationName(profile.location)} - ${new Date().toLocaleTimeString()}`,
+          user_role: 'admin',
+          metadata: {
+            location: profile.location === 'all' ? 'trelleborg' : profile.location,
+            test: true,
+            created_by: user.id
+          }
+        })
+        .select()
+
+      if (error) {
+        console.error('❌ Fel vid skapande av testnotifikation:', error)
+      } else {
+        console.log('✅ Testnotifikation skapad:', data)
+        showBrowserNotification('Test lyckades!', 'Om du ser detta meddelande fungerar notifikationerna')
+        playNotificationSound()
+      }
+    } catch (error) {
+      console.error('❌ Oväntat fel vid testnotifikation:', error)
+    }
+  }
+
   const unreadNotifications = notifications.filter(n => !n.read).length
 
   if (isLoading) {
@@ -701,11 +848,11 @@ export default function RestaurantTerminal() {
         {/* Header */}
         <Card className="border border-[#e4d699]/30 bg-gradient-to-r from-black/80 to-gray-900/80 backdrop-blur-md mb-6 shadow-2xl">
           <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className="relative">
-                  <div className="w-16 h-16 bg-gradient-to-br from-[#e4d699] to-yellow-600 rounded-full flex items-center justify-center shadow-lg">
-                    <Bell className="h-8 w-8 text-black" />
+                  <div className="w-12 h-12 lg:w-16 lg:h-16 bg-gradient-to-br from-[#e4d699] to-yellow-600 rounded-full flex items-center justify-center shadow-lg">
+                    <Bell className="h-6 w-6 lg:h-8 lg:w-8 text-black" />
                   </div>
                   {unreadNotifications > 0 && (
                     <Badge className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full animate-pulse">
@@ -714,13 +861,13 @@ export default function RestaurantTerminal() {
                   )}
                 </div>
                 <div>
-                  <CardTitle className="text-3xl font-bold bg-gradient-to-r from-[#e4d699] to-yellow-600 bg-clip-text text-transparent">
+                  <CardTitle className="text-xl lg:text-3xl font-bold bg-gradient-to-r from-[#e4d699] to-yellow-600 bg-clip-text text-transparent">
                     Restaurang Terminal
                   </CardTitle>
-                  <p className="text-white/70 text-lg">
+                  <p className="text-white/70 text-sm lg:text-lg">
                     📍 {getLocationName(profile?.location)} • 👤 {profile?.name}
                   </p>
-                  <p className="text-white/50 text-sm">
+                  <p className="text-white/50 text-xs lg:text-sm">
                     {new Date().toLocaleString('sv-SE', { 
                       weekday: 'long', 
                       year: 'numeric', 
@@ -732,33 +879,69 @@ export default function RestaurantTerminal() {
                   </p>
                 </div>
               </div>
-              <div className="flex gap-3">
-                <Button onClick={fetchOrders} variant="outline" className="border-[#e4d699]/40 hover:bg-[#e4d699]/10 hover:border-[#e4d699]">
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Uppdatera
-                </Button>
-                <Button 
-                  onClick={requestNotificationPermission} 
-                  variant="outline" 
-                  className={`border-blue-500/40 hover:bg-blue-500/10 hover:border-blue-500 ${
-                    notificationPermission === 'granted' 
-                      ? 'border-green-500/40 text-green-400' 
-                      : notificationPermission === 'denied'
-                      ? 'border-red-500/40 text-red-400'
-                      : 'border-yellow-500/40 text-yellow-400'
-                  }`}
-                >
-                  <Bell className="h-4 w-4 mr-2" />
-                  {notificationPermission === 'granted' 
-                    ? '🔔 Notiser På' 
-                    : notificationPermission === 'denied'
-                    ? '🔕 Notiser Blockerade'
-                    : '🔕 Aktivera Notiser'
-                  }
-                </Button>
-                <Badge variant="outline" className="border-green-500/50 text-green-400 px-4 py-2">
-                  🟢 Online
-                </Badge>
+              
+              {/* Mobile buttons - stacked */}
+              <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={fetchOrders} 
+                    variant="outline" 
+                    className="border-[#e4d699]/40 hover:bg-[#e4d699]/10 hover:border-[#e4d699] flex-1 sm:flex-none"
+                    size="sm"
+                  >
+                    <RefreshCw className="h-4 w-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">Uppdatera</span>
+                    <span className="sm:hidden">Update</span>
+                  </Button>
+                  
+                  <Button 
+                    onClick={requestNotificationPermission} 
+                    variant="outline" 
+                    className={`flex-1 sm:flex-none ${
+                      notificationPermission === 'granted' 
+                        ? 'border-green-500/40 text-green-400' 
+                        : notificationPermission === 'denied'
+                        ? 'border-red-500/40 text-red-400'
+                        : 'border-yellow-500/40 text-yellow-400'
+                    }`}
+                    size="sm"
+                  >
+                    <Bell className="h-4 w-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">
+                      {notificationPermission === 'granted' 
+                        ? 'Notiser På' 
+                        : notificationPermission === 'denied'
+                        ? 'Notiser Blockerade'
+                        : 'Aktivera Notiser'
+                      }
+                    </span>
+                    <span className="sm:hidden">
+                      {notificationPermission === 'granted' 
+                        ? '🔔' 
+                        : notificationPermission === 'denied'
+                        ? '🔕'
+                        : '🔕'
+                      }
+                    </span>
+                  </Button>
+                </div>
+                
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={testNotification} 
+                    variant="outline" 
+                    className="border-purple-500/40 hover:bg-purple-500/10 hover:border-purple-500 text-purple-400 flex-1 sm:flex-none"
+                    size="sm"
+                  >
+                    <span className="hidden sm:inline">🧪 Testa Notis</span>
+                    <span className="sm:hidden">🧪</span>
+                  </Button>
+                  
+                  <Badge variant="outline" className="border-green-500/50 text-green-400 px-2 py-1 flex items-center">
+                    <span className="hidden sm:inline">🟢 Online</span>
+                    <span className="sm:hidden">🟢</span>
+                  </Badge>
+                </div>
               </div>
             </div>
           </CardHeader>
@@ -849,40 +1032,43 @@ export default function RestaurantTerminal() {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2 mb-4">
+                    <div className="space-y-3 mb-4">
                       {/* Status Actions */}
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {order.status === 'pending' && (
-                          <Button 
-                            size="sm" 
-                            onClick={() => updateOrderStatus(order.id, 'ready')}
-                            className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium shadow-lg"
-                          >
-                            <Check className="h-4 w-4 mr-2" />
-                            ✅ Bekräfta order
-                          </Button>
-                        )}
-                        {order.status === 'ready' && (
-                          <Button 
-                            size="sm" 
-                            onClick={() => updateOrderStatus(order.id, 'delivered')}
-                            className="bg-gradient-to-r from-green-700 to-green-800 hover:from-green-800 hover:to-green-900 text-white font-medium shadow-lg"
-                          >
-                            <Truck className="h-4 w-4 mr-2" />
-                            🚚 Levererad
-                          </Button>
-                        )}
-                      </div>
+                      {(order.status === 'pending' || order.status === 'ready') && (
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          {order.status === 'pending' && (
+                            <Button 
+                              size="sm" 
+                              onClick={() => updateOrderStatus(order.id, 'ready')}
+                              className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium shadow-lg w-full sm:w-auto"
+                            >
+                              <Check className="h-4 w-4 mr-2" />
+                              ✅ Bekräfta order
+                            </Button>
+                          )}
+                          {order.status === 'ready' && (
+                            <Button 
+                              size="sm" 
+                              onClick={() => updateOrderStatus(order.id, 'delivered')}
+                              className="bg-gradient-to-r from-green-700 to-green-800 hover:from-green-800 hover:to-green-900 text-white font-medium shadow-lg w-full sm:w-auto"
+                            >
+                              <Truck className="h-4 w-4 mr-2" />
+                              🚚 Levererad
+                            </Button>
+                          )}
+                        </div>
+                      )}
                       
                       {/* Action Buttons */}
-                      <div className="flex flex-wrap gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <Button 
                           size="sm" 
                           onClick={() => printReceipt(order)}
                           className="bg-gradient-to-r from-[#e4d699] to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-black font-medium shadow-lg"
                         >
                           <Printer className="h-4 w-4 mr-2" />
-                          🖨️ Skriv ut
+                          <span className="hidden sm:inline">🖨️ Skriv ut</span>
+                          <span className="sm:hidden">🖨️</span>
                         </Button>
                         
                         <Button 
@@ -892,7 +1078,8 @@ export default function RestaurantTerminal() {
                           className="border-[#e4d699]/50 text-[#e4d699] hover:bg-[#e4d699]/10 hover:border-[#e4d699] shadow-lg"
                         >
                           <Download className="h-4 w-4 mr-2" />
-                          📄 Ladda ner
+                          <span className="hidden sm:inline">📄 Ladda ner</span>
+                          <span className="sm:hidden">📄</span>
                         </Button>
                         
                         <Button 
@@ -901,7 +1088,8 @@ export default function RestaurantTerminal() {
                           onClick={() => setSelectedOrder(order)}
                           className="border-blue-500/50 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500 shadow-lg"
                         >
-                          👁️ Detaljer
+                          <span className="hidden sm:inline">👁️ Detaljer</span>
+                          <span className="sm:hidden">👁️</span>
                         </Button>
                       </div>
                     </div>
@@ -939,6 +1127,32 @@ export default function RestaurantTerminal() {
             </div>
           </div>
         </div>
+
+        {/* Notification Dialog */}
+        <Dialog open={!!notificationDialog} onOpenChange={() => setNotificationDialog(null)}>
+          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-3 text-[#e4d699]">
+                <div className="w-10 h-10 bg-gradient-to-br from-[#e4d699] to-yellow-600 rounded-full flex items-center justify-center">
+                  <Bell className="h-5 w-5 text-black" />
+                </div>
+                {notificationDialog?.title}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-white text-lg">{notificationDialog?.body}</p>
+              <div className="flex items-center justify-between">
+                <p className="text-white/50 text-sm">🕒 {notificationDialog?.timestamp}</p>
+                <Button 
+                  onClick={() => setNotificationDialog(null)}
+                  className="bg-[#e4d699] text-black hover:bg-[#e4d699]/90"
+                >
+                  OK
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Order Details Modal */}
         {selectedOrder && (

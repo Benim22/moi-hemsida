@@ -1,0 +1,26 @@
+{
+  "name": "Moi Sushi & Poké Bowl",
+  "short_name": "Moi Sushi",
+  "description": "Din sushi & pokebowl restaurang i Trelleborg",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#e4d699",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "sv",
+  "categories": ["food", "restaurant"],
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "16x16 32x32 48x48",
+      "type": "image/x-icon"
+    }
+  ],
+  "permissions": [
+    "notifications"
+  ],
+  "features": [
+    "web-push"
+  ]
+} 

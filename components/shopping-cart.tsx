@@ -96,13 +96,15 @@ function OrderSuccessModal({
   orderNumber, 
   customerName, 
   items, 
-  totalPrice, 
+  totalPrice,
+  specialInstructions,
   onClose 
 }: {
   orderNumber: string
   customerName: string
   items: CartItemType[]
   totalPrice: number
+  specialInstructions?: string
   onClose: () => void
 }) {
   return (
@@ -144,6 +146,15 @@ function OrderSuccessModal({
           <span>Totalt:</span>
           <span className="text-[#e4d699] text-lg">{totalPrice} kr</span>
         </div>
+        
+        {specialInstructions && (
+          <div className="mt-4 pt-2 border-t border-[#e4d699]/20">
+            <h4 className="font-medium text-sm text-orange-400 mb-1">Speciella önskemål:</h4>
+            <p className="text-sm text-orange-300 bg-orange-500/10 p-2 rounded border border-orange-500/30">
+              {specialInstructions}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Instructions */}
@@ -426,7 +437,8 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
               : pickupTime === "1hour"
                 ? "Om 1 timme"
                 : "Om 2 timmar"
-        }${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}`,
+        }${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}${!user ? " | ANONYM BESTÄLLNING (Under 250kr)" : ""}`,
+        special_instructions: specialInstructions || null,
         payment_method: 'cash', // Betala i restaurangen
         order_number: orderNumber
       }
@@ -490,34 +502,44 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         // Don't fail the order if notification fails
       }
 
-      // Send order confirmation email
+      // Send order confirmation email using NodeMailer
       try {
-        const emailResponse = await fetch('/api/send-order-confirmation', {
+        const emailResponse = await fetch('/api/email/send', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            customerName,
-            customerEmail,
-            orderNumber,
-            items: items.map(item => ({
-              name: item.name,
-              quantity: item.quantity,
-              price: item.price
-            })),
-            totalPrice,
-            location: selectedLocation.name,
-            orderType: deliveryType,
-            phone: customerPhone,
-            deliveryAddress: deliveryType === "delivery" ? customerAddress : null,
-            pickupTime: pickupTime === "asap"
-              ? "Så snart som möjligt"
-              : pickupTime === "30min"
-                ? "Om 30 minuter"
-                : pickupTime === "1hour"
-                  ? "Om 1 timme"
-                  : "Om 2 timmar",
+            action: 'send_template',
+            templateType: 'order_confirmation',
+            to: customerEmail,
+            location: selectedLocation.id,
+            variables: {
+              customerName,
+              customerEmail,
+              orderNumber,
+              orderDate: new Date().toLocaleDateString('sv-SE'),
+              orderType: deliveryType === "delivery" ? "Leverans" : "Avhämtning",
+              location: selectedLocation.name,
+              deliveryAddress: deliveryType === "delivery" ? customerAddress : undefined,
+              pickupTime: pickupTime === "asap"
+                ? "Så snart som möjligt"
+                : pickupTime === "30min"
+                  ? "Om 30 minuter"
+                  : pickupTime === "1hour"
+                    ? "Om 1 timme"
+                    : "Om 2 timmar",
+              items: items.map(item => ({
+                name: item.name,
+                quantity: item.quantity,
+                price: `${item.price}`,
+                extras: item.extras?.join(', ') || undefined
+              })),
+              totalPrice: `${totalPrice}`,
+              specialInstructions: specialInstructions || undefined,
+              restaurantPhone: selectedLocation.phone,
+              restaurantAddress: selectedLocation.address
+            }
           }),
         })
 
@@ -551,6 +573,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
       customerName={customerName}
       items={items}
       totalPrice={totalPrice}
+      specialInstructions={specialInstructions}
       onClose={() => {
         clearCart()
         setShowSuccessModal(false)
