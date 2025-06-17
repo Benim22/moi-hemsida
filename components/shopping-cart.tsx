@@ -343,6 +343,9 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
   const [customerAddress, setCustomerAddress] = useState("")
   const [deliveryType, setDeliveryType] = useState("pickup") // pickup or delivery
   const [pickupTime, setPickupTime] = useState("")
+  const [pickupDate, setPickupDate] = useState("")
+  const [pickupTimeSlot, setPickupTimeSlot] = useState("")
+  const [isCustomPickupTime, setIsCustomPickupTime] = useState(false)
   const [specialInstructions, setSpecialInstructions] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showQRCode, setShowQRCode] = useState(false)
@@ -372,6 +375,84 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
     }
     generateNumber()
   }, [])
+
+  // Helper functions for pickup time
+  const getTodayDate = () => {
+    const today = new Date()
+    return today.toISOString().split('T')[0]
+  }
+
+  const getTomorrowDate = () => {
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    return tomorrow.toISOString().split('T')[0]
+  }
+
+  const generateTimeSlots = (selectedDate: string) => {
+    const slots = []
+    const now = new Date()
+    
+    // Öppettider: 11:00 - 21:00 (sista beställning 20:30)
+    for (let hour = 11; hour <= 20; hour++) {
+      // För sista timmen (20), bara visa :00 och :30
+      const maxMinute = hour === 20 ? 30 : 30
+      
+      for (let minute = 0; minute <= maxMinute; minute += 30) {
+        const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
+        
+        // Om det är idag, bara visa tider som är minst 30 minuter framåt
+        if (selectedDate === getTodayDate()) {
+          const timeSlot = new Date()
+          timeSlot.setHours(hour, minute, 0, 0)
+          const minTime = new Date(now.getTime() + 30 * 60000) // 30 min framåt
+          
+          if (timeSlot >= minTime) {
+            slots.push(timeString)
+          }
+        } else {
+          // För andra dagar, visa alla tider
+          slots.push(timeString)
+        }
+      }
+    }
+    
+    console.log(`Generated ${slots.length} time slots for date ${selectedDate}:`, slots)
+    return slots
+  }
+
+  const getPickupTimeText = () => {
+    if (!isCustomPickupTime) {
+      switch (pickupTime) {
+        case "asap": return "Så snart som möjligt"
+        case "30min": return "Om 30 minuter"
+        case "1hour": return "Om 1 timme"
+        case "2hours": return "Om 2 timmar"
+        default: return ""
+      }
+    } else {
+      if (pickupDate && pickupTimeSlot) {
+        const date = new Date(pickupDate)
+        const isToday = pickupDate === getTodayDate()
+        const isTomorrow = pickupDate === getTomorrowDate()
+        
+        let dateText = ""
+        if (isToday) {
+          dateText = "Idag"
+        } else if (isTomorrow) {
+          dateText = "Imorgon"
+        } else {
+          dateText = date.toLocaleDateString('sv-SE', { 
+            weekday: 'long', 
+            month: 'long', 
+            day: 'numeric' 
+          })
+        }
+        
+        return `${dateText} kl. ${pickupTimeSlot}`
+      }
+      return ""
+    }
+  }
 
   // Close location dropdown when clicking outside
   useEffect(() => {
@@ -450,15 +531,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         phone: customerPhone,
         delivery_address: deliveryType === "delivery" ? customerAddress : null,
         delivery_type: deliveryType,
-        notes: `${deliveryType === "pickup" ? "Hämtningstid" : "Leveranstid"}: ${
-          pickupTime === "asap"
-            ? "Så snart som möjligt"
-            : pickupTime === "30min"
-              ? "Om 30 minuter"
-              : pickupTime === "1hour"
-                ? "Om 1 timme"
-                : "Om 2 timmar"
-        }${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}${!user ? " | ANONYM BESTÄLLNING (Under 250kr)" : ""}`,
+        notes: `${deliveryType === "pickup" ? "Hämtningstid" : "Leveranstid"}: ${getPickupTimeText()}${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}${!user ? " | ANONYM BESTÄLLNING (Under 250kr)" : ""}`,
         special_instructions: specialInstructions || null,
         payment_method: 'cash', // Betala i restaurangen
         order_number: orderNumber
@@ -490,6 +563,8 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
       console.log("Database ID:", data.id)
       console.log("Ordernummer:", orderNumber)
       console.log("Kund:", customerName, "-", customerEmail, "-", customerPhone)
+      console.log("Avhämtningstid:", getPickupTimeText())
+      console.log("Notes fält:", orderData.notes)
       console.log("Varor:", items)
       console.log("Totalt:", totalPrice, "kr")
       console.log("========================")
@@ -543,13 +618,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
               orderType: deliveryType === "delivery" ? "Leverans" : "Avhämtning",
               location: selectedLocation.name,
               deliveryAddress: deliveryType === "delivery" ? customerAddress : undefined,
-              pickupTime: pickupTime === "asap"
-                ? "Så snart som möjligt"
-                : pickupTime === "30min"
-                  ? "Om 30 minuter"
-                  : pickupTime === "1hour"
-                    ? "Om 1 timme"
-                    : "Om 2 timmar",
+              pickupTime: getPickupTimeText(),
               items: items.map(item => ({
                 name: item.name,
                 quantity: item.quantity,
@@ -833,25 +902,181 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="pickupTime" className="text-sm font-medium">
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">
                   Önskad avhämtningstid
                 </Label>
-                <select
-                  id="pickupTime"
-                  value={pickupTime}
-                  onChange={(e) => setPickupTime(e.target.value)}
-                  required={deliveryType === "pickup"}
-                  className="w-full p-2 rounded-md bg-black/50 border border-[#e4d699]/30 text-white focus:border-[#e4d699] focus:outline-none"
-                >
-                  <option value="" disabled>
-                    Välj tid
-                  </option>
-                  <option value="asap">Så snart som möjligt</option>
-                  <option value="30min">Om 30 minuter</option>
-                  <option value="1hour">Om 1 timme</option>
-                  <option value="2hours">Om 2 timmar</option>
-                </select>
+                
+                {/* Quick time options */}
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomPickupTime(false)
+                        setPickupTime("asap")
+                        setPickupDate("")
+                        setPickupTimeSlot("")
+                      }}
+                      className={`p-3 rounded-lg border text-sm transition-colors ${
+                        !isCustomPickupTime && pickupTime === "asap"
+                          ? "border-[#e4d699] bg-[#e4d699]/10 text-[#e4d699]"
+                          : "border-white/20 bg-black/30 text-white/80 hover:border-white/40"
+                      }`}
+                    >
+                      Så snart som möjligt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomPickupTime(false)
+                        setPickupTime("30min")
+                        setPickupDate("")
+                        setPickupTimeSlot("")
+                      }}
+                      className={`p-3 rounded-lg border text-sm transition-colors ${
+                        !isCustomPickupTime && pickupTime === "30min"
+                          ? "border-[#e4d699] bg-[#e4d699]/10 text-[#e4d699]"
+                          : "border-white/20 bg-black/30 text-white/80 hover:border-white/40"
+                      }`}
+                    >
+                      Om 30 minuter
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomPickupTime(false)
+                        setPickupTime("1hour")
+                        setPickupDate("")
+                        setPickupTimeSlot("")
+                      }}
+                      className={`p-3 rounded-lg border text-sm transition-colors ${
+                        !isCustomPickupTime && pickupTime === "1hour"
+                          ? "border-[#e4d699] bg-[#e4d699]/10 text-[#e4d699]"
+                          : "border-white/20 bg-black/30 text-white/80 hover:border-white/40"
+                      }`}
+                    >
+                      Om 1 timme
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomPickupTime(false)
+                        setPickupTime("2hours")
+                        setPickupDate("")
+                        setPickupTimeSlot("")
+                      }}
+                      className={`p-3 rounded-lg border text-sm transition-colors ${
+                        !isCustomPickupTime && pickupTime === "2hours"
+                          ? "border-[#e4d699] bg-[#e4d699]/10 text-[#e4d699]"
+                          : "border-white/20 bg-black/30 text-white/80 hover:border-white/40"
+                      }`}
+                    >
+                      Om 2 timmar
+                    </button>
+                  </div>
+                </div>
+
+                {/* Custom time option */}
+                <div className="border-t border-white/10 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomPickupTime(true)
+                      setPickupTime("")
+                      setPickupDate(getTodayDate())
+                    }}
+                    className={`w-full p-3 rounded-lg border text-sm transition-colors ${
+                      isCustomPickupTime
+                        ? "border-[#e4d699] bg-[#e4d699]/10 text-[#e4d699]"
+                        : "border-white/20 bg-black/30 text-white/80 hover:border-white/40"
+                    }`}
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      Välj specifik tid och datum
+                    </div>
+                  </button>
+                </div>
+
+                {/* Custom date and time picker */}
+                {isCustomPickupTime && (
+                  <div className="space-y-3 p-4 bg-black/20 rounded-lg border border-[#e4d699]/20">
+                    <div className="space-y-2">
+                      <Label htmlFor="pickupDate" className="text-sm font-medium">
+                        Datum
+                      </Label>
+                      <select
+                        id="pickupDate"
+                        value={pickupDate}
+                        onChange={(e) => {
+                          setPickupDate(e.target.value)
+                          setPickupTimeSlot("") // Reset time slot when date changes
+                        }}
+                        required={isCustomPickupTime}
+                        className="w-full p-2 rounded-md bg-black/50 border border-[#e4d699]/30 text-white focus:border-[#e4d699] focus:outline-none"
+                      >
+                        <option value="">Välj datum</option>
+                        <option value={getTodayDate()}>
+                          Idag ({new Date().toLocaleDateString('sv-SE', { weekday: 'long', month: 'long', day: 'numeric' })})
+                        </option>
+                        <option value={getTomorrowDate()}>
+                          Imorgon ({new Date(Date.now() + 24*60*60*1000).toLocaleDateString('sv-SE', { weekday: 'long', month: 'long', day: 'numeric' })})
+                        </option>
+                        {/* Add next 5 days */}
+                        {Array.from({ length: 5 }, (_, i) => {
+                          const date = new Date()
+                          date.setDate(date.getDate() + i + 2)
+                          const dateStr = date.toISOString().split('T')[0]
+                          return (
+                            <option key={dateStr} value={dateStr}>
+                              {date.toLocaleDateString('sv-SE', { weekday: 'long', month: 'long', day: 'numeric' })}
+                            </option>
+                          )
+                        })}
+                      </select>
+                    </div>
+
+                                         {pickupDate && (
+                       <div className="space-y-2">
+                         <Label htmlFor="pickupTimeSlot" className="text-sm font-medium">
+                           Tid
+                         </Label>
+                         <select
+                           id="pickupTimeSlot"
+                           value={pickupTimeSlot}
+                           onChange={(e) => {
+                             console.log('Vald tid:', e.target.value)
+                             setPickupTimeSlot(e.target.value)
+                           }}
+                           required={isCustomPickupTime && pickupDate}
+                           className="w-full p-2 rounded-md bg-black/50 border border-[#e4d699]/30 text-white focus:border-[#e4d699] focus:outline-none"
+                         >
+                           <option value="">Välj tid</option>
+                           {generateTimeSlots(pickupDate).map((time) => (
+                             <option key={time} value={time}>
+                               {time}
+                             </option>
+                           ))}
+                         </select>
+                         <p className="text-xs text-white/60">
+                           Öppettider: 11:00 - 20:30 (sista beställning)
+                         </p>
+                       </div>
+                     )}
+                  </div>
+                )}
+
+                {/* Show selected time */}
+                {((!isCustomPickupTime && pickupTime) || (isCustomPickupTime && pickupDate && pickupTimeSlot)) && (
+                  <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+                    <p className="text-sm text-green-400">
+                      ✓ Vald avhämtningstid: <strong>{getPickupTimeText()}</strong>
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -986,7 +1211,15 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         <Button 
           type="submit" 
           className="w-full bg-[#e4d699] text-black hover:bg-[#e4d699]/90" 
-          disabled={isSubmitting || (deliveryType === "delivery" && totalPrice < 150)}
+          disabled={
+            isSubmitting || 
+            (deliveryType === "delivery" && totalPrice < 150) ||
+            (deliveryType === "pickup" && !customerName) ||
+            (deliveryType === "pickup" && !customerPhone) ||
+            (deliveryType === "pickup" && !customerEmail) ||
+            (deliveryType === "pickup" && !isCustomPickupTime && !pickupTime) ||
+            (deliveryType === "pickup" && isCustomPickupTime && (!pickupDate || !pickupTimeSlot))
+          }
         >
           {isSubmitting 
             ? "Bearbetar..." 
@@ -994,7 +1227,9 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
               ? totalPrice < 150 
                 ? `Lägg till ${150 - totalPrice} kr för hemleverans`
                 : "Fortsätt till Foodora"
-              : "Fortsätt till betalning"
+              : (!isCustomPickupTime && !pickupTime) || (isCustomPickupTime && (!pickupDate || !pickupTimeSlot))
+                ? "Välj avhämtningstid"
+                : "Fortsätt till betalning"
           }
         </Button>
       </form>

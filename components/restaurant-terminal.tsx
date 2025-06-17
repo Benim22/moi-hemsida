@@ -44,9 +44,11 @@ export default function RestaurantTerminal() {
     }
 
     const handleOrderUpdate = (payload) => {
+      console.log('🔄 ORDER UPPDATERAD (ingen notis):', payload.new)
       setOrders(prev => prev.map(order => 
         order.id === payload.new.id ? payload.new : order
       ))
+      // INGEN notifikation för uppdateringar - bara uppdatera listan
     }
 
     // Skapa unik kanal för denna användare för att undvika konflikter
@@ -511,28 +513,15 @@ export default function RestaurantTerminal() {
         order.id === orderId ? { ...order, status: newStatus } : order
       ))
 
-      // Create notification for status update
-      const order = orders.find(o => o.id === orderId)
-      if (order) {
-        await supabase
-          .from('notifications')
-          .insert({
-            type: 'order',
-            title: 'Orderstatus uppdaterad',
-            message: `Order #${order.order_number} är nu ${getStatusText(newStatus)}`,
-            user_role: 'admin',
-            metadata: {
-              location: profile.location,
-              order_id: orderId,
-              status: newStatus
-            }
-          })
-      }
+      // INGEN admin-notifikation för statusuppdateringar - bara för nya beställningar
+      console.log('✅ Status uppdaterad utan notifikation (som önskat)')
 
-      // Visa bekräftelse
+      // Visa lokal bekräftelse (utan ljud)
+      const order = orders.find(o => o.id === orderId)
       showBrowserNotification(
         'Status uppdaterad!', 
-        `Order #${order?.order_number} är nu ${getStatusText(newStatus)}`
+        `Order #${order?.order_number} är nu ${getStatusText(newStatus)}`,
+        false // false = ingen ordernotifikation (inget ljud)
       )
 
     } catch (error) {
@@ -792,9 +781,10 @@ export default function RestaurantTerminal() {
     doc.setTextColor(...darkGrayColor)
     doc.text('Vi hoppas du njuter av din måltid!', 105, yPos + 25, { align: 'center' })
     
-    // Utvecklarinfo - lite större och tydligare
-    doc.setFontSize(9)
-    doc.setTextColor(150, 150, 150)
+    // Utvecklarinfo - större och mer synlig
+    doc.setFontSize(12)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(100, 100, 100) // Mörkare grå för bättre synlighet
     doc.text('Utvecklad av Skaply.se', 105, 285, { align: 'center' })
     
     return doc
