@@ -912,9 +912,9 @@ export default function RestaurantTerminal() {
                   <div className="w-12 h-12 lg:w-16 lg:h-16 bg-gradient-to-br from-[#e4d699] to-yellow-600 rounded-full flex items-center justify-center shadow-lg">
                     <Bell className="h-6 w-6 lg:h-8 lg:w-8 text-black" />
                   </div>
-                  {unreadNotifications > 0 && (
+                  {orders.filter(o => o.status === 'pending').length > 0 && (
                     <Badge className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full animate-pulse">
-                      {unreadNotifications}
+                      {orders.filter(o => o.status === 'pending').length}
                     </Badge>
                   )}
                 </div>
@@ -1196,26 +1196,27 @@ export default function RestaurantTerminal() {
           </div>
         </div>
 
-        {/* Notification Dialog */}
+        {/* Notification Dialog - Optimerad för mobil */}
         <Dialog open={!!notificationDialog} onOpenChange={() => setNotificationDialog(null)}>
-          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-md">
+          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-md mx-4 w-[calc(100vw-2rem)] sm:w-full">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-3 text-[#e4d699]">
-                <div className="w-10 h-10 bg-gradient-to-br from-[#e4d699] to-yellow-600 rounded-full flex items-center justify-center">
-                  <Bell className="h-5 w-5 text-black" />
+              <DialogTitle className="flex items-center gap-3 text-[#e4d699] text-lg sm:text-xl">
+                <div className="w-12 h-12 bg-gradient-to-br from-[#e4d699] to-yellow-600 rounded-full flex items-center justify-center animate-pulse">
+                  <Bell className="h-6 w-6 text-black" />
                 </div>
-                {notificationDialog?.title}
+                <span className="text-base sm:text-lg">{notificationDialog?.title}</span>
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <p className="text-white text-lg">{notificationDialog?.body}</p>
-              <div className="flex items-center justify-between">
+              <p className="text-white text-lg sm:text-xl font-medium">{notificationDialog?.body}</p>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
                 <p className="text-white/50 text-sm">🕒 {notificationDialog?.timestamp}</p>
                 <Button 
                   onClick={() => setNotificationDialog(null)}
-                  className="bg-[#e4d699] text-black hover:bg-[#e4d699]/90"
+                  className="bg-[#e4d699] text-black hover:bg-[#e4d699]/90 w-full sm:w-auto text-lg py-3 px-6"
+                  size="lg"
                 >
-                  OK
+                  OK - Stäng
                 </Button>
               </div>
             </div>

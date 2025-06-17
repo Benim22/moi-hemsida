@@ -181,4 +181,69 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const updateData = await request.json()
+    
+    // Validate required fields
+    if (!updateData.id) {
+      return NextResponse.json(
+        { success: false, error: 'Missing booking ID' },
+        { status: 400 }
+      )
+    }
+
+    if (!supabase) {
+      console.log('=== BOOKING UPDATE LOGGED (NO DATABASE) ===')
+      console.log('Booking ID:', updateData.id)
+      console.log('New Status:', updateData.status)
+      console.log('==========================================')
+
+      return NextResponse.json({ 
+        success: true, 
+        message: 'Booking update logged successfully (database connection not available)'
+      })
+    }
+
+    console.log('=== UPDATING BOOKING STATUS ===')
+    console.log('Booking ID:', updateData.id)
+    console.log('New Status:', updateData.status)
+
+    // Update the booking in the database
+    const { data: booking, error: dbError } = await supabase
+      .from('bookings')
+      .update({
+        status: updateData.status,
+        updated_at: updateData.updated_at || new Date().toISOString()
+      })
+      .eq('id', updateData.id)
+      .select()
+      .single()
+
+    if (dbError) {
+      console.error('Database error:', dbError)
+      return NextResponse.json(
+        { success: false, error: 'Failed to update booking: ' + dbError.message },
+        { status: 500 }
+      )
+    }
+
+    console.log('Booking updated successfully')
+    console.log('===============================')
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Booking updated successfully',
+      booking: booking
+    })
+
+  } catch (error) {
+    console.error('Error in bookings PUT API:', error)
+    return NextResponse.json(
+      { success: false, error: 'Internal server error: ' + error.message },
+      { status: 500 }
+    )
+  }
 } 

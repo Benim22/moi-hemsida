@@ -10,9 +10,35 @@ import { Button } from "@/components/ui/button"
 import { useCart, type CartItem as CartItemType } from "@/context/cart-context"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
-// Simple order number generation
-const generateOrderNumber = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString()
+// Sequential order number generation
+const generateOrderNumber = async () => {
+  try {
+    // Hämta det högsta ordernumret från databasen
+    const { data, error } = await supabase
+      .from('orders')
+      .select('order_number')
+      .order('order_number', { ascending: false })
+      .limit(1)
+
+    if (error) {
+      console.error('Error fetching last order number:', error)
+      // Fallback till dagens datum + random nummer om det blir fel
+      return `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}001`
+    }
+
+    let nextNumber = 1
+    if (data && data.length > 0 && data[0].order_number) {
+      // Konvertera till nummer och lägg till 1
+      const lastNumber = parseInt(data[0].order_number)
+      nextNumber = isNaN(lastNumber) ? 1 : lastNumber + 1
+    }
+
+    return nextNumber.toString()
+  } catch (error) {
+    console.error('Error in generateOrderNumber:', error)
+    // Fallback
+    return Math.floor(100000 + Math.random() * 900000).toString()
+  }
 }
 import { useRouter } from "next/navigation"
 // import { useSimpleAuth } from "@/context/simple-auth-context"
@@ -348,8 +374,11 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
 
   // Generate order number when component mounts
   useEffect(() => {
-    const number = generateOrderNumber()
-    setOrderNumber(number)
+    const generateNumber = async () => {
+      const number = await generateOrderNumber()
+      setOrderNumber(number)
+    }
+    generateNumber()
   }, [])
 
   // Close location dropdown when clicking outside

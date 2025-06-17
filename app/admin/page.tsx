@@ -8153,29 +8153,47 @@ function BookingManagement() {
 
   const updateBookingStatus = async (bookingId, newStatus) => {
     try {
-      const { error } = await supabase
-        .from('bookings')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', bookingId)
+      // Använd API endpoint istället för direkt Supabase-anrop
+      const response = await fetch('/api/bookings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: bookingId,
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+      })
 
-      if (error) throw error
+      const result = await response.json()
 
+      if (!result.success) {
+        throw new Error(result.error || 'Kunde inte uppdatera bokningsstatus')
+      }
+
+      // Uppdatera lokala staten
       setBookings(prev => prev.map(booking => 
         booking.id === bookingId 
           ? { ...booking, status: newStatus, updated_at: new Date().toISOString() }
           : booking
       ))
 
+      // Stäng modal om den är öppen
+      if (selectedBooking && selectedBooking.id === bookingId) {
+        setSelectedBooking(prev => prev ? { ...prev, status: newStatus } : null)
+      }
+
       toast({
         title: "Status uppdaterad",
         description: `Bokning ${newStatus === 'confirmed' ? 'bekräftad' : newStatus === 'cancelled' ? 'avbokad' : 'uppdaterad'}`,
-        variant: "success",
+        variant: "default",
       })
     } catch (error) {
       console.error('Error updating booking status:', error)
       toast({
         title: "Fel",
-        description: "Kunde inte uppdatera bokningsstatus",
+        description: error.message || "Kunde inte uppdatera bokningsstatus",
         variant: "destructive",
       })
     }
