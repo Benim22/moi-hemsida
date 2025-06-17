@@ -314,6 +314,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
   const [customerAddress, setCustomerAddress] = useState("")
   const [deliveryType, setDeliveryType] = useState("pickup") // pickup or delivery
   const [pickupTime, setPickupTime] = useState("")
+  const [specialInstructions, setSpecialInstructions] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showQRCode, setShowQRCode] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
@@ -879,6 +880,30 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
               </p>
             </div>
           )}
+
+          {/* Special Instructions - show for both pickup and delivery */}
+          <div className="space-y-2">
+            <Label htmlFor="specialInstructions" className="text-sm font-medium">
+              Speciella önskemål (valfritt)
+            </Label>
+            <textarea
+              id="specialInstructions"
+              value={specialInstructions}
+              onChange={(e) => setSpecialInstructions(e.target.value)}
+              className="w-full p-3 rounded-md bg-black/50 border border-[#e4d699]/30 text-white focus:border-[#e4d699] focus:outline-none resize-none"
+              placeholder="T.ex. allergier, extra instruktioner, önskemål om tillagning..."
+              rows={3}
+              maxLength={500}
+            />
+            <p className="text-xs text-white/60">
+              Berätta om allergier, speciella önskemål eller andra instruktioner (max 500 tecken)
+            </p>
+            {specialInstructions && (
+              <p className="text-xs text-white/40">
+                {specialInstructions.length}/500 tecken
+              </p>
+            )}
+          </div>
 
           {/* Foodora info - only show for delivery */}
           {deliveryType === "delivery" && (
