@@ -14,7 +14,8 @@
     {
       "src": "/favicon.ico",
       "sizes": "16x16 32x32 48x48",
-      "type": "image/x-icon"
+      "type": "image/x-icon",
+      "purpose": "any maskable"
     }
   ],
   "permissions": [
@@ -22,5 +23,7 @@
   ],
   "features": [
     "web-push"
-  ]
+  ],
+  "prefer_related_applications": false,
+  "gcm_sender_id": "103953800507"
 } 

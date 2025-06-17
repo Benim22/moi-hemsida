@@ -168,8 +168,25 @@ export default function RestaurantTerminal() {
 
   // Check notification permission on mount
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setNotificationPermission(Notification.permission)
+    if (typeof window !== 'undefined') {
+      // Kontrollera HTTPS-krav
+      const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost'
+      
+      if (!isSecure) {
+        console.log('❌ Notifikationer kräver HTTPS')
+        setNotificationPermission('unsupported')
+        return
+      }
+      
+      if ('Notification' in window) {
+        setNotificationPermission(Notification.permission)
+        console.log('🔔 Notifikationsstatus:', Notification.permission)
+        console.log('🌐 Protokoll:', window.location.protocol)
+        console.log('🏠 Hostname:', window.location.hostname)
+      } else {
+        console.log('❌ Notification API inte tillgängligt')
+        setNotificationPermission('unsupported')
+      }
     }
   }, [])
 
@@ -253,6 +270,16 @@ export default function RestaurantTerminal() {
   }
 
   const requestNotificationPermission = async () => {
+    // Kontrollera om vi är på HTTPS (krävs för notifikationer i produktion)
+    const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost'
+    
+    if (!isSecure) {
+      console.log('❌ Notifikationer kräver HTTPS')
+      alert('Notifikationer kräver en säker anslutning (HTTPS). Denna webbplats använder inte HTTPS, så notifikationer är inte tillgängliga.')
+      setNotificationPermission('unsupported')
+      return
+    }
+
     if (!('Notification' in window)) {
       console.log('❌ Webbläsaren stöder inte notifikationer')
       alert('Din webbläsare stöder inte notifikationer. Prova att uppdatera din webbläsare eller använd Chrome/Safari.')
@@ -829,6 +856,37 @@ export default function RestaurantTerminal() {
     }
   }
 
+  // Debug browser notifications
+  const debugNotifications = () => {
+    console.log('🔍 NOTIFIKATIONS DEBUG INFO:')
+    console.log('🌐 Protokoll:', window.location.protocol)
+    console.log('🏠 Hostname:', window.location.hostname)
+    console.log('🔒 Säker anslutning:', window.location.protocol === 'https:' || window.location.hostname === 'localhost')
+    console.log('🔔 Notification API:', 'Notification' in window)
+    console.log('📱 Service Worker:', 'serviceWorker' in navigator)
+    console.log('🎯 Permission:', 'Notification' in window ? Notification.permission : 'N/A')
+    console.log('🌍 User Agent:', navigator.userAgent)
+    
+    const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost'
+    
+    if (!isSecure) {
+      alert('❌ PROBLEM: Notifikationer kräver HTTPS!\n\nDin webbplats använder HTTP, vilket blockerar notifikationer.\n\nLösning: Konfigurera HTTPS för din webbplats.')
+      return
+    }
+    
+    if (!('Notification' in window)) {
+      alert('❌ PROBLEM: Webbläsaren stöder inte notifikationer!\n\nProva en nyare version av Chrome eller Safari.')
+      return
+    }
+    
+    if (Notification.permission === 'denied') {
+      alert('❌ PROBLEM: Notifikationer är blockerade!\n\nGå till webbläsarinställningar och aktivera notifikationer för denna webbplats.')
+      return
+    }
+    
+    alert('✅ ALLT OK: Notifikationer borde fungera!\n\nTryck på "Aktivera Notiser" för att testa.')
+  }
+
   const unreadNotifications = notifications.filter(n => !n.read).length
 
   if (isLoading) {
@@ -935,6 +993,16 @@ export default function RestaurantTerminal() {
                   >
                     <span className="hidden sm:inline">🧪 Testa Notis</span>
                     <span className="sm:hidden">🧪</span>
+                  </Button>
+                  
+                  <Button 
+                    onClick={debugNotifications} 
+                    variant="outline" 
+                    className="border-orange-500/40 hover:bg-orange-500/10 hover:border-orange-500 text-orange-400 flex-1 sm:flex-none"
+                    size="sm"
+                  >
+                    <span className="hidden sm:inline">🔍 Debug</span>
+                    <span className="sm:hidden">🔍</span>
                   </Button>
                   
                   <Badge variant="outline" className="border-green-500/50 text-green-400 px-2 py-1 flex items-center">

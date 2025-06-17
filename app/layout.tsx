@@ -40,6 +40,26 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="sv" className="dark">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              // Registrera Service Worker för notifikationer
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                  navigator.serviceWorker.register('/sw.js')
+                    .then((registration) => {
+                      console.log('SW registered: ', registration);
+                    })
+                    .catch((registrationError) => {
+                      console.log('SW registration failed: ', registrationError);
+                    });
+                });
+              }
+            `,
+          }}
+        />
+      </head>
       <body className={`${inter.className} bg-black text-white`} suppressHydrationWarning={true}>
         <SimpleAuthProvider>
           <CartProvider>
