@@ -109,7 +109,7 @@ export function MoiSushiChat() {
         {
           id: Date.now(),
           content:
-            "Jag kunde tyvärr inte besvara din fråga just nu. Vänligen försök igen senare eller kontakta oss direkt på 0410-28110.",
+            "Jag kunde tyvärr inte besvara din fråga just nu. Vänligen försök igen senare eller kontakta oss direkt på 0410-281 10.",
           sender: "ai",
         },
       ])

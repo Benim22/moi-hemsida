@@ -70,7 +70,7 @@ export default function LocationsPage() {
   // Show loading state while fetching locations
   if (isLoading) {
     return (
-      <div className="pt-20 md:pt-24 pb-24 min-h-screen flex items-center justify-center">
+      <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="h-12 w-12 animate-spin text-[#e4d699] mx-auto mb-4" />
           <p className="text-white/60">Laddar restauranger...</p>
@@ -82,7 +82,7 @@ export default function LocationsPage() {
   // Show message if no locations found
   if (!locations.length) {
     return (
-      <div className="pt-20 md:pt-24 pb-24 min-h-screen flex items-center justify-center">
+      <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900 flex items-center justify-center">
         <div className="text-center">
           <MapPin className="h-12 w-12 text-[#e4d699] mx-auto mb-4" />
           <p className="text-white/60">Inga restauranger hittades.</p>
@@ -94,7 +94,7 @@ export default function LocationsPage() {
   // Show message if selectedLocation is null
   if (!selectedLocation) {
     return (
-      <div className="pt-20 md:pt-24 pb-24 min-h-screen flex items-center justify-center">
+      <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900 flex items-center justify-center">
         <div className="text-center">
           <MapPin className="h-12 w-12 text-[#e4d699] mx-auto mb-4" />
           <p className="text-white/60">Ingen restaurang vald.</p>
@@ -104,7 +104,7 @@ export default function LocationsPage() {
   }
 
   return (
-    <div className="pt-20 md:pt-24 pb-24">
+    <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900">
       {/* Load Google Maps API */}
       <GoogleMapsLoader />
       
@@ -457,6 +457,7 @@ export default function LocationsPage() {
                       name={modalLocation.displayName}
                       height="256px"
                       zoom={16}
+                      coordinates={modalLocation.coordinates}
                     />
                   </div>
                 </div>

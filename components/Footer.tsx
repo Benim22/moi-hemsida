@@ -55,7 +55,7 @@ export function Footer() {
                 <h5 className="font-medium text-white">Ystad (Food Truck)</h5>
                 <div className="flex items-start space-x-2 text-sm text-white/70">
                   <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                  <span>Stortorget, 271 30 Ystad</span>
+                  <span>Österportstorg, 271 41 Ystad</span>
                 </div>
               </div>
             </div>

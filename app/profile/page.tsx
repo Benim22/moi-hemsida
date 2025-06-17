@@ -52,7 +52,7 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="pt-20 md:pt-24 pb-24 min-h-screen flex items-center justify-center">
+      <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#e4d699]"></div>
       </div>
     )
@@ -60,7 +60,7 @@ export default function ProfilePage() {
 
   if (!user || !profile) {
     return (
-      <div className="pt-20 md:pt-24 pb-24 min-h-screen flex items-center justify-center">
+      <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900 flex items-center justify-center">
         <div className="text-center">
           <p className="mb-4">Omdirigerar till inloggning...</p>
         </div>
@@ -110,7 +110,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="pt-20 md:pt-24 pb-24">
+    <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900">
       <div className="container mx-auto px-4">
         <div className="max-w-4xl mx-auto">
           <div className="flex flex-col md:flex-row gap-8">

@@ -95,7 +95,7 @@ const getOrderConfirmationTemplate = (orderData: {
         </div>
         
         <div style="text-align: center; margin-top: 30px; color: #888;">
-          <p>Har du frågor? Kontakta oss på info@moisushi.se eller ring ${orderData.location === 'Trelleborg' ? '0410-28110' : orderData.location === 'Malmö' ? '040-123456' : '0411-55120'}</p>
+          <p>Har du frågor? Kontakta oss på info@moisushi.se eller ring ${orderData.location === 'Trelleborg' ? '0410-281 10' : orderData.location === 'Malmö' ? '040-842 52' : '076-059 84 09'}</p>
           <p style="font-size: 12px;">Moi Sushi - Färsk sushi och poké bowls i Skåne</p>
         </div>
       </div>
@@ -178,7 +178,7 @@ const getBookingConfirmationTemplate = (bookingData: {
         </div>
         
         <div style="text-align: center; margin-top: 30px; color: #888;">
-          <p>Har du frågor? Kontakta oss på info@moisushi.se eller ring ${bookingData.location === 'Trelleborg' ? '0410-28110' : '040-123456'}</p>
+          <p>Har du frågor? Kontakta oss på info@moisushi.se eller ring ${bookingData.location === 'Trelleborg' ? '0410-281 10' : bookingData.location === 'Malmö' ? '040-842 52' : '076-059 84 09'}</p>
           <p style="font-size: 12px;">Moi Sushi - Färsk sushi och poké bowls i Skåne</p>
         </div>
       </div>

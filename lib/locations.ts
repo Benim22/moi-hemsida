@@ -27,8 +27,8 @@ export const locations: Location[] = [
     id: "trelleborg",
     name: "Trelleborg",
     displayName: "Moi Sushi Trelleborg",
-    address: "Corfitz-Beck-Friisgatan 5B, 231 43, Trelleborg",
-    phone: "0410-28110",
+    address: "Corfitz-Beck-Friisgatan 5B, 231 43 Trelleborg",
+    phone: "0410-281 10",
     email: "trelleborg@moisushi.se",
     hours: {
       weekdays: "11.00 – 21.00",
@@ -47,8 +47,8 @@ export const locations: Location[] = [
     id: "ystad",
     name: "Ystad",
     displayName: "Moi Sushi Food Truck Ystad",
-    address: "Hamntorget, 271 39, Ystad",
-    phone: "0411-55120",
+    address: "Österportstorg, 271 41 Ystad",
+    phone: "076-059 84 09",
     email: "ystad@moisushi.se",
     hours: {
       weekdays: "11.00 – 19.00",
@@ -60,15 +60,15 @@ export const locations: Location[] = [
     deliveryServices: ["Foodora"],
     description: "Vår mobila food truck som serverar färska och näringsrika poké bowls vid Ystads vackra hamn. Perfekt för en snabb och hälsosam måltid med havsutsikt.",
     image: "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=800&h=600&fit=crop",
-    coordinates: { lat: 55.4295, lng: 13.8201 },
+    coordinates: { lat: 55.4297, lng: 13.8204 },
     features: ["Poké Bowls", "Food Truck", "Leverans", "Avhämtning", "Havsutsikt"]
   },
   {
     id: "malmo",
     name: "Malmö",
     displayName: "Moi Sushi Malmö",
-    address: "Södra Förstadsgatan 36, 211 43, Malmö",
-    phone: "040-123456",
+    address: "Södra Förstadsgatan 40, 211 43 Malmö",
+    phone: "040-842 52",
     email: "malmo@moisushi.se",
     hours: {
       weekdays: "11.00 – 21.00",
@@ -80,7 +80,7 @@ export const locations: Location[] = [
     deliveryServices: ["Foodora"],
     description: "Vår nyaste restaurang i Malmös pulserende centrum. Modern design möter traditionell japansk matkultur med vårt kompletta utbud av sushi och poké bowls.",
     image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&h=600&fit=crop",
-    coordinates: { lat: 55.6050, lng: 13.0038 },
+    coordinates: { lat: 55.6051, lng: 13.0040 },
     features: ["Fullständig meny", "Modern design", "Leverans", "Avhämtning", "Dine-in"]
   }
 ] 

@@ -32,14 +32,15 @@ export default function ContactPage() {
     id: "trelleborg",
     name: "Trelleborg",
     displayName: "Moi Sushi Trelleborg", 
-    address: "Corfitz-Beck-Friisgatan 5B, 231 43, Trelleborg",
-    phone: "0410-28110",
+    address: "Corfitz-Beck-Friisgatan 5B, 231 43 Trelleborg",
+    phone: "0410-281 10",
     email: "trelleborg@moisushi.se",
     hours: {
       weekdays: "11.00 – 21.00",
       saturday: "12.00 – 21.00",
       sunday: "15.00 – 21.00"
-    }
+    },
+    coordinates: { lat: 55.3758, lng: 13.1568 }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -129,7 +130,7 @@ export default function ContactPage() {
   }
 
   return (
-    <div className="pt-20 md:pt-24 pb-24">
+    <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900">
       {/* Load Google Maps API */}
       <GoogleMapsLoader />
 
@@ -365,6 +366,7 @@ export default function ContactPage() {
                         address={currentLocation.address}
                         name={currentLocation.displayName}
                         height="300px"
+                        coordinates={currentLocation.coordinates}
                       />
                     </div>
                   </CardContent>

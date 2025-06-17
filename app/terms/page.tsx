@@ -30,7 +30,7 @@ export default function TermsPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-gradient-to-b from-black via-black to-gray-900 text-white">
       {/* Hero Section */}
       <section className="relative py-20 px-4 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-[#e4d699]/10 via-transparent to-transparent" />

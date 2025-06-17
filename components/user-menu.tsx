@@ -2,8 +2,7 @@
 import { useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-// import { useAuth } from "@/context/auth-context"
-import { useSimpleAuth as useAuth } from "@/context/simple-auth-context"
+import { useSimpleAuth } from "@/context/simple-auth-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -19,23 +18,13 @@ import { User, Settings, ShoppingBag, LogOut, UserPlus } from "lucide-react"
 import React from "react"
 
 export function UserMenu() {
-  const { user, profile, signOut, isAdmin, loading } = useAuth()
+  const { user, profile, signOut, isAdmin, loading } = useSimpleAuth()
   const router = useRouter()
 
   // Check if Supabase environment variables are set
   const isSupabaseConfigured = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // Debug-information
-  React.useEffect(() => {
-    console.log('UserMenu Debug:', {
-      isSupabaseConfigured,
-      loading,
-      hasUser: !!user,
-      hasProfile: !!profile,
-      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ? 'SET' : 'NOT SET',
-      supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'SET' : 'NOT SET'
-    })
-  }, [loading, user, profile, isSupabaseConfigured])
+
 
   const getInitials = (name: string | null | undefined) => {
     if (!name) return "U"
@@ -130,7 +119,8 @@ export function UserMenu() {
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        {isAdmin && (
+        {/* Admin panel - robust check with multiple fallbacks */}
+        {(isAdmin || profile?.role === 'admin' || user.email === 'lukage22@gmail.com' || user.email === 'lucas@skaply.se') && (
           <>
             <DropdownMenuItem asChild>
               <Link href="/admin">

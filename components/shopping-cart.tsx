@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label"
 import type React from "react"
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { ShoppingBag, X, Plus, Minus, Trash2, ArrowRight, MapPin } from "lucide-react"
+import { ShoppingBag, X, Plus, Minus, Trash2, ArrowRight, MapPin, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCart, type CartItem as CartItemType } from "@/context/cart-context"
 import { useToast } from "@/hooks/use-toast"
@@ -179,7 +179,7 @@ function OrderSuccessModal({
 }
 
 export function ShoppingCart() {
-  const { items, totalPrice, isCartOpen, setIsCartOpen, clearCart, totalItems } = useCart()
+  const { items, totalPrice, isCartOpen, setIsCartOpen, clearCart, totalItems, timeUntilClear } = useCart()
   const { toast } = useToast()
   const { selectedLocation } = useLocation()
   const [isCheckingOut, setIsCheckingOut] = useState(false)
@@ -236,6 +236,18 @@ export function ShoppingCart() {
                 <X className="h-5 w-5" />
               </Button>
             </div>
+            
+            {/* Auto-clear timer - endast visa om cart inte är tom och inte i checkout */}
+            {!isCheckingOut && items.length > 0 && timeUntilClear > 0 && (
+              <div className="mx-4 mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                <div className="flex items-center text-sm text-amber-400">
+                  <Clock className="h-4 w-4 mr-2" />
+                  <span>
+                    Rensas automatiskt om {Math.floor(timeUntilClear / 60)}:{(timeUntilClear % 60).toString().padStart(2, '0')}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {!isCheckingOut ? (
               <>

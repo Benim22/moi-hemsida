@@ -47,153 +47,163 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [isProfilesTableMissing, setIsProfilesTableMissing] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [mounted, setMounted] = useState(false)
+
+  // Lista över admin emails - DIREKT admin-rättigheter
+  const ADMIN_EMAILS = ['lucas@skaply.se', 'lukage22@gmail.com']
+
+  // Forced admin check - om email är admin, sätt isAdmin = true omedelbart
+  const checkAdminStatus = (email: string, profileRole?: string) => {
+    const isAdminEmail = ADMIN_EMAILS.includes(email)
+    const isAdminFromProfile = profileRole === 'admin'
+    
+    console.log(`🔍 Admin Check for ${email}:`)
+    console.log(`  - Is Admin Email: ${isAdminEmail}`)
+    console.log(`  - Profile Role: ${profileRole}`)
+    console.log(`  - Is Admin From Profile: ${isAdminFromProfile}`)
+    
+    const finalAdminStatus = isAdminEmail || isAdminFromProfile
+    console.log(`  - FINAL ADMIN STATUS: ${finalAdminStatus}`)
+    
+    setIsAdmin(finalAdminStatus)
+    return finalAdminStatus
+  }
 
   useEffect(() => {
-    setMounted(true)
+    let mounted = true
+
+    // Kraftig timeout - 3 sekunder max
+    const timeout = setTimeout(() => {
+      console.warn('⚠️  Loading timeout - setting loading to false')
+      if (mounted) {
+        setLoading(false)
+      }
+    }, 3000)
+
     getInitialSession()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return
+
+      console.log("🔄 Auth state changed:", event)
+      
+      if (event === "SIGNED_OUT") {
+        setUser(null)
+        setProfile(null)
+        setIsAdmin(false)
+        setLoading(false)
+        return
+      }
+
       if (session?.user) {
+        console.log("✅ User session found:", session.user.email)
         setUser(session.user)
-        await loadProfile(session.user.id)
+        
+        // OMEDELBAR admin-check för kända emails
+        checkAdminStatus(session.user.email || '')
+        
+        // Ladda profil i bakgrunden (men blocka inte admin-status)
+        loadProfile(session.user.id, session.user.email || '')
       } else {
         setUser(null)
         setProfile(null)
         setIsAdmin(false)
-      }
-      setLoading(false)
-    })
-
-    // Sätt mycket kortare timeout för att förhindra oändlig loading
-    const loadingTimeout = setTimeout(() => {
-      if (loading) {
-        console.warn('SimpleAuthProvider: Loading timeout (5s), setting loading to false')
         setLoading(false)
       }
-    }, 5000) // Bara 5 sekunder timeout!
+    })
 
     return () => {
+      mounted = false
+      clearTimeout(timeout)
       subscription.unsubscribe()
-      clearTimeout(loadingTimeout)
     }
   }, [])
 
   const getInitialSession = async () => {
     try {
-      // Kontrollera omedelbart om Supabase är konfigurerat
-      if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-        console.warn('SimpleAuthProvider: Supabase not configured')
-        setLoading(false)
-        return
-      }
-
-      // Använd Promise.race för snabbare timeout
-      const sessionPromise = supabase.auth.getSession()
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Session timeout')), 3000)
-      )
-
-      const { data: { session }, error } = await Promise.race([sessionPromise, timeoutPromise]) as any
+      console.log("🚀 Getting initial session...")
       
-      if (error) {
-        console.error("SimpleAuthProvider: Session error:", error)
-        setLoading(false)
-        return
-      }
+      // Snabb session-check
+      const { data: { session } } = await Promise.race([
+        supabase.auth.getSession(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+      ]) as any
       
       if (session?.user) {
+        console.log("✅ Initial session found:", session.user.email)
         setUser(session.user)
-        await loadProfile(session.user.id)
+        
+        // OMEDELBAR admin-check
+        checkAdminStatus(session.user.email || '')
+        
+        // Ladda profil
+        loadProfile(session.user.id, session.user.email || '')
       } else {
+        console.log("❌ No initial session")
         setLoading(false)
       }
     } catch (error) {
-      console.error("SimpleAuthProvider: Error getting initial session:", error)
+      console.error("❌ Session error:", error)
       setLoading(false)
     }
   }
 
-  const loadProfile = async (userId: string) => {
+  const loadProfile = async (userId: string, userEmail: string) => {
     try {
-      console.log("SimpleAuthProvider: Loading profile for user:", userId)
+      console.log("📝 Loading profile for:", userEmail)
       
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .single()
+      const { data, error } = await Promise.race([
+        supabase.from("profiles").select("*").eq("id", userId).single(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Profile timeout')), 3000))
+      ]) as any
 
       if (error) {
-        console.error("SimpleAuthProvider: Profile error:", error)
+        console.error("❌ Profile error:", error)
         
-        // If profile doesn't exist, try to create one
-        if (error.code === 'PGRST116') {
-          console.log("SimpleAuthProvider: Profile not found, creating new profile")
-          
-          // Get user info from auth
-          const { data: { user } } = await supabase.auth.getUser()
-          if (user) {
-            // Check if this should be an admin user
-            const adminEmails = ['lucas@skaply.se', 'lukage22@gmail.com']
-            const isAdminEmail = adminEmails.includes(user.email || '')
-            
-            const { data: newProfile, error: createError } = await supabase
-              .from("profiles")
-              .insert({
-                id: user.id,
-                email: user.email,
-                role: isAdminEmail ? "admin" : "customer",
-                name: user.user_metadata?.name || null,
-                phone: user.user_metadata?.phone || null
-              })
-              .select("*")
-              .single()
-
-            if (createError) {
-              console.error("SimpleAuthProvider: Error creating profile:", createError)
-              // Set default values if profile creation fails
-              setProfile(null)
-              setIsAdmin(false)
-              return
-            }
-
-            console.log("SimpleAuthProvider: Created new profile:", newProfile)
-            setProfile(newProfile)
-            setIsAdmin(newProfile.role === "admin")
-            return
-          }
+        // För admin emails - behåll admin-status även om profil saknas
+        if (ADMIN_EMAILS.includes(userEmail)) {
+          console.log("🔥 ADMIN EMAIL - Keeping admin status despite profile error")
+          setIsAdmin(true)
         }
-        
-        // For other errors, set default values
-        setProfile(null)
-        setIsAdmin(false)
-        return
-      }
-
-      if (data) {
-        console.log("SimpleAuthProvider: Profile loaded:", data)
+      } else if (data) {
+        console.log("✅ Profile loaded:", data)
         setProfile(data)
-        setIsAdmin(data.role === "admin")
-        console.log("SimpleAuthProvider: isAdmin set to:", data.role === "admin")
+        
+        // Dubbelkolla admin-status med profil-data
+        checkAdminStatus(userEmail, data.role)
       }
     } catch (error) {
-      console.error("SimpleAuthProvider: Error loading profile:", error)
-      setProfile(null)
-      setIsAdmin(false)
+      console.error("❌ Profile load exception:", error)
+      
+      // För admin emails - behåll admin-status
+      if (ADMIN_EMAILS.includes(userEmail)) {
+        console.log("🔥 ADMIN EMAIL - Setting admin=true despite error")
+        setIsAdmin(true)
+      }
+    } finally {
+      setLoading(false)
     }
   }
 
   const signIn = async (email: string, password: string) => {
     try {
+      setLoading(true)
+      console.log("🔐 Signing in:", email)
+      
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
+      
+      if (!error) {
+        // Omedelbar admin-check vid inloggning
+        checkAdminStatus(email)
+      }
+      
       return { error }
     } catch (error) {
-      console.error("SimpleAuthProvider: Sign in error:", error)
+      console.error("❌ Sign in error:", error)
       return { error }
     }
   }
@@ -207,25 +217,28 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
 
       if (signUpError) return { error: signUpError }
 
-      // Create profile after signup
       if (data.user) {
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .insert([{
+        const isAdminEmail = ADMIN_EMAILS.includes(email)
+        
+        try {
+          await supabase.from("profiles").insert([{
             id: data.user.id,
             email: data.user.email,
             name: name,
-            role: "customer"
+            role: isAdminEmail ? "admin" : "customer"
           }])
-
-        if (profileError) {
-          console.error("SimpleAuthProvider: Error creating profile:", profileError)
+        } catch (profileError) {
+          console.error("Profile creation error:", profileError)
+        }
+        
+        if (isAdminEmail) {
+          setIsAdmin(true)
         }
       }
 
       return { error: null }
     } catch (error) {
-      console.error("SimpleAuthProvider: Sign up error:", error)
+      console.error("Sign up error:", error)
       return { error }
     }
   }
@@ -237,7 +250,7 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
       setProfile(null)
       setIsAdmin(false)
     } catch (error) {
-      console.error("SimpleAuthProvider: Error signing out:", error)
+      console.error("Sign out error:", error)
     }
   }
 
@@ -257,7 +270,6 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error
 
-      // Update local state
       if (profile) {
         setProfile({
           ...profile,
@@ -269,7 +281,7 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
 
       return { error: null }
     } catch (error) {
-      console.error("SimpleAuthProvider: Error updating profile:", error)
+      console.error("Update profile error:", error)
       return { error }
     }
   }
@@ -288,7 +300,6 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error
 
-      // Update local state
       if (profile) {
         setProfile({
           ...profile,
@@ -298,7 +309,7 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
 
       return { error: null }
     } catch (error) {
-      console.error("SimpleAuthProvider: Error updating preferences:", error)
+      console.error("Update preferences error:", error)
       return { error }
     }
   }
@@ -313,7 +324,7 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
       })
       return { error }
     } catch (error) {
-      console.error("SimpleAuthProvider: Google sign in error:", error)
+      console.error("Google sign in error:", error)
       return { error }
     }
   }
@@ -323,46 +334,43 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
   }
 
   const refreshSession = async () => {
-    if (!mounted) return
-    
     try {
-      // Kontrollera om Supabase är konfigurerat
-      if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-        console.warn('SimpleAuthProvider: Supabase not configured for session refresh')
-        return
-      }
-
+      console.log("🔄 Refreshing session...")
       const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user && session.user.id !== user?.id) {
+      
+      if (session?.user) {
         setUser(session.user)
-        await loadProfile(session.user.id)
+        checkAdminStatus(session.user.email || '')
+        loadProfile(session.user.id, session.user.email || '')
+      } else {
+        setUser(null)
+        setProfile(null)
+        setIsAdmin(false)
+        setLoading(false)
       }
     } catch (error) {
-      console.error("SimpleAuthProvider: Error refreshing session:", error)
+      console.error("Refresh session error:", error)
+      setLoading(false)
     }
   }
 
-  return (
-    <SimpleAuthContext.Provider
-      value={{
-        user,
-        profile,
-        isAdmin,
-        signIn,
-        signUp,
-        signOut,
-        updateProfile,
-        updatePreferences,
-        signInWithGoogle,
-        createProfilesTable,
-        isProfilesTableMissing: false,
-        refreshSession,
-        loading,
-      }}
-    >
-      {children}
-    </SimpleAuthContext.Provider>
-  )
+  const value = {
+    user,
+    profile,
+    isAdmin,
+    signIn,
+    signUp,
+    signOut,
+    updateProfile,
+    updatePreferences,
+    signInWithGoogle,
+    createProfilesTable,
+    isProfilesTableMissing,
+    refreshSession,
+    loading
+  }
+
+  return <SimpleAuthContext.Provider value={value}>{children}</SimpleAuthContext.Provider>
 }
 
 export function useSimpleAuth() {

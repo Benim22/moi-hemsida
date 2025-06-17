@@ -11,7 +11,7 @@ const MOI_SUSHI_CONTEXT = `
 Moi Sushi & Poké Bowl är en sushirestaurang i Trelleborg. Här är information om restaurangen:
 
 Adress: Corfitz-Beck-Friisgatan 5B, 231 43, Trelleborg
-Telefon: 0410-28110
+Telefon: 0410-281 10
 E-post: moisushi@outlook.com
 
 Öppettider:
@@ -99,7 +99,7 @@ export async function generateGeminiResponse(userMessage: string) {
     return response
   } catch (error) {
     console.error("Error generating Gemini response:", error)
-    return "Jag kunde tyvärr inte besvara din fråga just nu. Vänligen försök igen senare eller kontakta oss direkt på 0410-28110."
+    return "Jag kunde tyvärr inte besvara din fråga just nu. Vänligen försök igen senare eller kontakta oss direkt på 0410-281 10."
   }
 }
 

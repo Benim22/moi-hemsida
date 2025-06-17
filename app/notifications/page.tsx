@@ -144,7 +144,7 @@ export default function NotificationsPage() {
 
   if (!user || !isAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-black via-black to-gray-900">
         <Card className="border border-[#e4d699]/20 bg-black/50">
           <CardContent className="p-8 text-center">
             <Bell className="h-16 w-16 mx-auto mb-4 text-[#e4d699]/50" />
@@ -157,7 +157,7 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black p-4">
+    <div className="min-h-screen bg-gradient-to-b from-black via-black to-gray-900 p-4">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <Card className="border border-[#e4d699]/20 bg-black/50 mb-6">

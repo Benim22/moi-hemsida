@@ -5,11 +5,28 @@ import { motion } from "framer-motion"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { AnimatedSection, AnimatedText } from "@/components/ui-components"
+import { useLocation } from "@/contexts/LocationContext"
 
 import { ArrowRight, CalendarCheck, ShoppingBag } from "lucide-react"
 
 export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const { selectedLocation } = useLocation()
+
+  // Funktion för att få rätt text baserat på location
+  const getLocationText = () => {
+    if (!selectedLocation) return 'TRELLEBORG'
+    
+    switch (selectedLocation.id) {
+      case 'malmo':
+        return 'MALMÖ'
+      case 'ystad':
+        return 'YSTAD'
+      case 'trelleborg':
+      default:
+        return 'TRELLEBORG'
+    }
+  }
 
   // Temporär debug-information
   const supabaseDebug = {
@@ -43,7 +60,7 @@ export default function Home() {
   }, [])
 
   return (
-    <div className="flex flex-col min-h-screen overflow-x-hidden">
+    <div className="flex flex-col min-h-screen overflow-x-hidden bg-gradient-to-b from-black via-black to-gray-900">
       {/* Hero Section */}
       <section className="relative h-[80vh] md:h-[70vh] w-full overflow-hidden">
         <div className="absolute inset-0 z-0">
@@ -74,9 +91,15 @@ export default function Home() {
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight">
               Välkommen till <br /> Moi Sushi & Poké Bowl
             </h1>
-            <p className="text-xl md:text-2xl max-w-2xl mx-auto">
-              FÄRSKA INGREDIENSER, UNIKA SMAKER <br /> DITT FÖRSTA VAL I TRELLEBORG
-            </p>
+            <motion.p 
+              className="text-xl md:text-2xl max-w-2xl mx-auto"
+              key={selectedLocation?.id || 'default'} // Key för att trigga animation vid location-ändring
+              initial={{ opacity: 0.7 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5 }}
+            >
+              FÄRSKA INGREDIENSER, UNIKA SMAKER <br /> DITT FÖRSTA VAL I {getLocationText()}
+            </motion.p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8">
               <Button asChild size="lg" className="bg-[#e4d699] text-black hover:bg-[#e4d699]/90 group">

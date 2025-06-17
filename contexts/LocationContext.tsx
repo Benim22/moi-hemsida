@@ -53,8 +53,8 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       id: "trelleborg",
       name: "Trelleborg", 
       displayName: "Moi Sushi Trelleborg",
-      address: "Corfitz-Beck-Friisgatan 5B, 231 43, Trelleborg",
-      phone: "0410-28110",
+      address: "Corfitz-Beck-Friisgatan 5B, 231 43 Trelleborg",
+      phone: "0410-281 10",
       email: "trelleborg@moisushi.se",
       hours: {
         weekdays: "11.00 – 21.00",
@@ -64,32 +64,53 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       services: ["delivery", "pickup", "dine-in"],
       menu: "full",
       deliveryServices: ["Foodora"],
-      description: "Vår första och flaggskeppsrestaurang i hjärtat av Trelleborg.",
-      image: "https://images.unsplash.com/photo-1579952363873-27d3bfad9c0d?w=800&h=600&fit=crop",
-      coordinates: { lat: 55.3755, lng: 13.1567 },
-      features: ["Fullständig meny", "Dine-in", "Leverans", "Avhämtning", "Catering"],
-      placeId: "ChIJXXXXXXXXXXXXXXXXXXXX" // Lägg till rätt place_id här
+      description: "Vår första restaurang i hjärtat av Trelleborg. Här serverar vi traditionell sushi och moderna poké bowls i en mysig atmosfär.",
+      image: "https://cdn.discordapp.com/attachments/1371100250957418597/1383884621204160533/IMG_8796.png?ex=68506a7d&is=684f18fd&hm=9665cc66aa97aa41794d62d7ff6caf4eca0cc71abfd24d616c6b7f2ade60932e&",
+      coordinates: { lat: 55.3758, lng: 13.1568 },
+      features: ["Traditionell sushi", "Poké bowls", "Vegetariska alternativ", "Glutenfria alternativ"],
+      placeId: "ChIJXXXXXXXXXXXXXXXXXXXX"
     },
     {
       id: "malmo",
       name: "Malmö",
       displayName: "Moi Sushi Malmö",
-      address: "Stora Nygatan 33, 211 37, Malmö",
-      phone: "040-123456",
+      address: "Södra Förstadsgatan 40, 211 43 Malmö",
+      phone: "040-842 52",
       email: "malmo@moisushi.se",
       hours: {
-        weekdays: "11.00 – 21.00",
-        saturday: "12.00 – 21.00",
+        weekdays: "11.00 – 23.00",
+        saturday: "12.00 – 23.00",
         sunday: "15.00 – 21.00",
       },
       services: ["delivery", "pickup", "dine-in"],
       menu: "full",
       deliveryServices: ["Foodora"],
-      description: "Vår andra restaurang i centrala Malmö.",
-      image: "https://images.unsplash.com/photo-1579952363873-27d3bfad9c0d?w=800&h=600&fit=crop",
-      coordinates: { lat: 55.6050, lng: 13.0038 },
-      features: ["Fullständig meny", "Dine-in", "Leverans", "Avhämtning"],
-      placeId: "ChIJYYYYYYYYYYYYYYYYYYYY" // Lägg till rätt place_id här
+      description: "Vår nyöppnade restaurang i centrala Malmö. Modern design möter traditionell sushi-konst i en urban miljö.",
+      image: "https://ufplxaspddedhbqsuuvv.supabase.co/storage/v1/object/public/images//image0.jpeg",
+      coordinates: { lat: 55.6051, lng: 13.0040 },
+      features: ["Modern design", "Sushi bar", "Poké bowls", "Cocktails", "Vegetariska alternativ"],
+      placeId: "ChIJYYYYYYYYYYYYYYYYYYYY"
+    },
+    {
+      id: "ystad",
+      name: "Ystad",
+      displayName: "Moi Sushi Food Truck Ystad",
+      address: "Österportstorg, 271 41 Ystad",
+      phone: "076-059 84 09",
+      email: "ystad@moisushi.se",
+      hours: {
+        weekdays: "11.00 – 15.00",
+        saturday: "11.00 – 15.00",
+        sunday: "Stängt",
+      },
+      services: ["pickup"],
+      menu: "pokebowl",
+      deliveryServices: [],
+      description: "Vår mobila food truck som serverar färska poké bowls på Ystads vackra Stortorg. Perfekt för en snabb och hälsosam lunch.",
+      image: "https://cdn.discordapp.com/attachments/1371100250957418597/1383884621204160533/IMG_8796.png?ex=68506a7d&is=684f18fd&hm=9665cc66aa97aa41794d62d7ff6caf4eca0cc71abfd24d616c6b7f2ade60932e&",
+      coordinates: { lat: 55.4297, lng: 13.8204 },
+      features: ["Poké bowls", "Färska ingredienser", "Snabb service", "Miljövänliga förpackningar"],
+      placeId: "ChIJZZZZZZZZZZZZZZZZZZZZ"
     }
   ]
 
@@ -104,16 +125,16 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    // Sätt mycket kortare timeout för att förhindra oändlig loading
+    // Sätt timeout för att förhindra oändlig loading
     const timeout = setTimeout(() => {
-      console.warn('LocationContext: Database fetch timeout (3s), using fallback data')
+      console.warn('LocationContext: Database fetch timeout (8s), using fallback data')
       setLocations(fallbackLocations)
       setSelectedLocationState(fallbackLocations[0])
       setIsLoading(false)
-    }, 3000) // Bara 3 sekunder timeout!
+    }, 8000) // 8 sekunder timeout
 
     try {
-      // Försök ansluta med Promise.race för att säkerställa snabb timeout
+      // Försök ansluta med Promise.race för att säkerställa timeout
       const fetchPromise = supabase
         .from('locations')
         .select('*')
@@ -121,7 +142,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
         .order('name')
 
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout')), 2500)
+        setTimeout(() => reject(new Error('Request timeout')), 6000)
       )
 
       const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any

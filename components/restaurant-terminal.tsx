@@ -15,6 +15,7 @@ export default function RestaurantTerminal() {
   const [notifications, setNotifications] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState(null)
+  const [notificationPermission, setNotificationPermission] = useState('default')
 
   // Real-time subscriptions
   useEffect(() => {
@@ -29,8 +30,15 @@ export default function RestaurantTerminal() {
         table: 'orders',
         filter: `location=eq.${profile.location}`
       }, (payload) => {
+        console.log('🔔 NY BESTÄLLNING MOTTAGEN:', payload.new)
         setOrders(prev => [payload.new, ...prev])
-        showBrowserNotification('Ny beställning!', `Order #${payload.new.order_number}`)
+        
+        const customerName = payload.new.profiles?.name || payload.new.customer_name || 'Gäst'
+        const notificationTitle = 'Ny beställning!'
+        const notificationBody = `Order #${payload.new.order_number} från ${customerName} - ${payload.new.total_price || payload.new.amount} kr`
+        
+        console.log('🔔 Visar notifikation:', { title: notificationTitle, body: notificationBody })
+        showBrowserNotification(notificationTitle, notificationBody)
         playNotificationSound()
       })
       .on('postgres_changes', {
@@ -53,12 +61,19 @@ export default function RestaurantTerminal() {
         schema: 'public',
         table: 'notifications'
       }, (payload) => {
+        console.log('📢 NY NOTIFIKATION MOTTAGEN:', payload.new)
+        console.log('📍 Min location:', profile.location)
+        console.log('📍 Notifikation location:', payload.new.metadata?.location)
+        
         if (payload.new.user_role === 'admin' || 
             payload.new.metadata?.location === profile.location ||
             payload.new.metadata?.location === 'all') {
+          console.log('✅ Notifikation matchar - visar den')
           setNotifications(prev => [payload.new, ...prev])
           showBrowserNotification(payload.new.title, payload.new.message)
           playNotificationSound()
+        } else {
+          console.log('❌ Notifikation matchar inte - hoppar över')
         }
       })
       .subscribe()
@@ -78,6 +93,13 @@ export default function RestaurantTerminal() {
     }
   }, [user, profile?.location])
 
+  // Check notification permission on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotificationPermission(Notification.permission)
+    }
+  }, [])
+
   const fetchOrders = async () => {
     try {
       const { data, error } = await supabase
@@ -95,6 +117,17 @@ export default function RestaurantTerminal() {
         .order('created_at', { ascending: false })
 
       if (error) throw error
+      
+      // Lägg till debug-information för att se vad som kommer från databasen
+      console.log('📦 Hämtade beställningar:', data?.map(order => ({
+        id: order.id,
+        order_number: order.order_number,
+        user_id: order.user_id,
+        customer_name: order.customer_name,
+        profile_name: order.profiles?.name,
+        final_name: order.profiles?.name || order.customer_name || 'Gäst'
+      })))
+      
       setOrders(data || [])
     } catch (error) {
       console.error('Error fetching orders:', error)
@@ -121,30 +154,91 @@ export default function RestaurantTerminal() {
   }
 
   const requestNotificationPermission = async () => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      await Notification.requestPermission()
+    if ('Notification' in window) {
+      console.log('Nuvarande notifikationsstatus:', Notification.permission)
+      setNotificationPermission(Notification.permission)
+      
+      if (Notification.permission === 'default') {
+        const permission = await Notification.requestPermission()
+        console.log('Notifikationspermission efter begäran:', permission)
+        setNotificationPermission(permission)
+        
+        if (permission === 'granted') {
+          console.log('✅ Notifikationer aktiverade!')
+          // Visa en test-notifikation
+          showBrowserNotification('Notifikationer aktiverade!', 'Du kommer nu få meddelanden om nya beställningar')
+        } else {
+          console.log('❌ Notifikationer nekade eller blockerade')
+        }
+      } else if (Notification.permission === 'granted') {
+        console.log('✅ Notifikationer redan aktiverade')
+        setNotificationPermission('granted')
+      } else {
+        console.log('❌ Notifikationer blockerade av användaren')
+        setNotificationPermission('denied')
+      }
+    } else {
+      console.log('❌ Webbläsaren stöder inte notifikationer')
+      setNotificationPermission('unsupported')
     }
   }
 
   const showBrowserNotification = (title, body) => {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, {
+    console.log('Försöker visa notifikation:', { title, body })
+    
+    if (!('Notification' in window)) {
+      console.log('❌ Webbläsaren stöder inte notifikationer')
+      return
+    }
+
+    if (Notification.permission !== 'granted') {
+      console.log('❌ Notifikationspermission inte beviljad:', Notification.permission)
+      return
+    }
+
+    try {
+      const notification = new Notification(title, {
         body,
-        icon: '/favicon.ico',
-        badge: '/favicon.ico',
+        icon: '/favicon.ico', // Kommer att fallback till default om filen inte finns
         requireInteraction: true,
-        actions: [
-          { action: 'view', title: 'Visa' },
-          { action: 'dismiss', title: 'Stäng' }
-        ]
+        tag: 'moi-order', // Förhindrar duplicerade notifikationer
+        renotify: true
       })
+
+      notification.onclick = () => {
+        window.focus()
+        notification.close()
+      }
+
+      notification.onerror = (error) => {
+        console.error('Notifikationsfel:', error)
+      }
+
+      console.log('✅ Notifikation visad:', title)
+    } catch (error) {
+      console.error('Fel vid visning av notifikation:', error)
     }
   }
 
   const playNotificationSound = () => {
-    const audio = new Audio('/notification-sound.mp3')
-    audio.catch(() => {
-      // Fallback beep if sound file doesn't exist
+    try {
+      // Försök spela ljudfil först
+      const audio = new Audio('/notification-sound.mp3')
+      audio.volume = 0.5
+      
+      audio.play().catch(() => {
+        console.log('Ljudfil inte tillgänglig, använder fallback-ljud')
+        // Fallback beep om ljudfil inte finns
+        playFallbackSound()
+      })
+    } catch (error) {
+      console.log('Fel med ljuduppspelning, använder fallback:', error)
+      playFallbackSound()
+    }
+  }
+
+  const playFallbackSound = () => {
+    try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)()
       const oscillator = audioContext.createOscillator()
       const gainNode = audioContext.createGain()
@@ -160,97 +254,334 @@ export default function RestaurantTerminal() {
       
       oscillator.start(audioContext.currentTime)
       oscillator.stop(audioContext.currentTime + 1)
-    })
+    } catch (error) {
+      console.log('Kunde inte spela fallback-ljud:', error)
+    }
   }
 
   const updateOrderStatus = async (orderId, newStatus) => {
     try {
-      const { error } = await supabase
+      console.log('🔄 Uppdaterar orderstatus:', { 
+        orderId, 
+        newStatus, 
+        currentUser: user?.id,
+        userRole: profile?.role,
+        userLocation: profile?.location 
+      })
+      
+      const { data, error } = await supabase
         .from('orders')
-        .update({ status: newStatus })
+        .update({ 
+          status: newStatus,
+          updated_by: user?.id,
+          [`${newStatus}_at`]: new Date().toISOString()
+        })
         .eq('id', orderId)
+        .select()
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Databasfel vid statusuppdatering:', error)
+        console.error('❌ Feldetaljer:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        })
+        throw error
+      }
+
+      console.log('✅ Orderstatus uppdaterad:', data)
+
+      // Uppdatera lokala state direkt för snabbare UI-respons
+      setOrders(prev => prev.map(order => 
+        order.id === orderId ? { ...order, status: newStatus } : order
+      ))
 
       // Create notification for status update
-      await supabase
-        .from('notifications')
-        .insert({
-          type: 'order',
-          title: 'Orderstatus uppdaterad',
-          message: `Order #${orders.find(o => o.id === orderId)?.order_number} är nu ${getStatusText(newStatus)}`,
-          user_role: 'admin',
-          metadata: {
-            location: profile.location,
-            order_id: orderId,
-            status: newStatus
-          }
-        })
+      const order = orders.find(o => o.id === orderId)
+      if (order) {
+        await supabase
+          .from('notifications')
+          .insert({
+            type: 'order',
+            title: 'Orderstatus uppdaterad',
+            message: `Order #${order.order_number} är nu ${getStatusText(newStatus)}`,
+            user_role: 'admin',
+            metadata: {
+              location: profile.location,
+              order_id: orderId,
+              status: newStatus
+            }
+          })
+      }
+
+      // Visa bekräftelse
+      showBrowserNotification(
+        'Status uppdaterad!', 
+        `Order #${order?.order_number} är nu ${getStatusText(newStatus)}`
+      )
 
     } catch (error) {
-      console.error('Error updating order status:', error)
+      console.error('❌ Fel vid uppdatering av orderstatus:', error)
+      
+      // Visa felmeddelande
+      showBrowserNotification(
+        'Fel vid statusuppdatering', 
+        'Kunde inte uppdatera orderstatus. Försök igen.'
+      )
+      
+      // Hämta orders igen för att säkerställa korrekt state
+      fetchOrders()
     }
   }
 
   const generateReceipt = (order) => {
     const doc = new jsPDF()
     
-    // Header
-    doc.setFontSize(20)
-    doc.text('MOI SUSHI', 105, 20, { align: 'center' })
-    doc.setFontSize(12)
-    doc.text('Kvitto', 105, 30, { align: 'center' })
+    // Färger - guldig palett med svart
+    const goldColor = [228, 214, 153] // #e4d699 - huvudguldfärg
+    const darkGoldColor = [184, 168, 104] // mörkare guld
+    const blackColor = [0, 0, 0] // ren svart
+    const darkGrayColor = [33, 33, 33] // mörk grå
+    const lightGrayColor = [128, 128, 128] // ljus grå
+    const creamColor = [252, 248, 227] // krämvit bakgrund
     
-    // Order info
-    doc.text(`Order #: ${order.order_number}`, 20, 50)
-    doc.text(`Datum: ${new Date(order.created_at).toLocaleString('sv-SE')}`, 20, 60)
-    doc.text(`Kund: ${order.profiles?.name || 'Gäst'}`, 20, 70)
-    doc.text(`Telefon: ${order.profiles?.phone || order.phone || 'Ej angivet'}`, 20, 80)
-    
-    // Delivery info
-    if (order.delivery_type === 'delivery') {
-      doc.text('LEVERANS', 20, 100)
-      doc.text(`Adress: ${order.delivery_address}`, 20, 110)
-      doc.text(`Tid: ${order.delivery_time || 'ASAP'}`, 20, 120)
-    } else {
-      doc.text('AVHÄMTNING', 20, 100)
-      doc.text(`Plats: ${getLocationName(order.location)}`, 20, 110)
+    // Hjälpfunktion för att rensa text från problematiska tecken (behåller ÅÄÖ)
+    const cleanText = (text) => {
+      if (!text) return ''
+      return text.toString()
+        .replace(/[^\x00-\x7F\u00C0-\u017F]/g, '') // Ta bort icke-ASCII tecken (emojis etc) men behåll ÅÄÖ
+        .trim()
     }
     
-    // Items
-    let yPos = 140
-    doc.text('BESTÄLLNING:', 20, yPos)
-    yPos += 10
+    // Header med gradient-effekt (simulerad med flera rektanglar)
+    for (let i = 0; i < 10; i++) {
+      const alpha = 1 - (i * 0.1)
+      const color = goldColor.map(c => Math.floor(c * alpha + 255 * (1 - alpha)))
+      doc.setFillColor(...color)
+      doc.rect(0, i * 5, 210, 5, 'F')
+    }
     
-    if (order.cart_items) {
-      const items = typeof order.cart_items === 'string' ? 
-        JSON.parse(order.cart_items) : order.cart_items
+    // Mörk guldram runt header
+    doc.setDrawColor(...darkGoldColor)
+    doc.setLineWidth(2)
+    doc.rect(0, 0, 210, 50)
+    
+    // Logo/Titel - elegant design
+    doc.setTextColor(...blackColor)
+    doc.setFontSize(28)
+    doc.setFont('helvetica', 'bold')
+    doc.text('MOI SUSHI', 105, 20, { align: 'center' })
+    
+    doc.setFontSize(12)
+    doc.setFont('helvetica', 'normal')
+    doc.text('Autentisk japansk sushi', 105, 30, { align: 'center' })
+    
+    // Dekorativ linje
+    doc.setDrawColor(...darkGoldColor)
+    doc.setLineWidth(1)
+    doc.line(70, 35, 140, 35)
+    
+    doc.setFontSize(16)
+    doc.setTextColor(...blackColor)
+    doc.setFont('helvetica', 'bold')
+    doc.text('KVITTO', 105, 45, { align: 'center' })
+    
+    // Order information - elegant box
+    let yPos = 65
+    doc.setFillColor(...creamColor)
+    doc.rect(15, yPos, 180, 43, 'F')
+    doc.setDrawColor(...goldColor)
+    doc.setLineWidth(1)
+    doc.rect(15, yPos, 180, 43)
+    
+    yPos += 12
+    doc.setFontSize(20)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...blackColor)
+    doc.text(`Order #${order.order_number}`, 105, yPos, { align: 'center' })
+    
+    yPos += 10
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    doc.setTextColor(...darkGrayColor)
+    const orderDate = new Date(order.created_at).toLocaleString('sv-SE')
+    doc.text(`Datum: ${cleanText(orderDate)}`, 105, yPos, { align: 'center' })
+    
+    yPos += 8
+    const customerName = cleanText(order.profiles?.name || order.customer_name || 'Gäst')
+    doc.text(`Kund: ${customerName}`, 105, yPos, { align: 'center' })
+    
+    yPos += 8
+    const phone = cleanText(order.profiles?.phone || order.phone || 'Ej angivet')
+    doc.text(`Telefon: ${phone}`, 105, yPos, { align: 'center' })
+    
+    // Leverans/Hämtning info - stilren box
+    yPos += 25
+    doc.setFillColor(245, 245, 245)
+    doc.rect(15, yPos, 180, 35, 'F')
+    doc.setDrawColor(...lightGrayColor)
+    doc.setLineWidth(0.5)
+    doc.rect(15, yPos, 180, 35)
+    
+    yPos += 12
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...blackColor)
+    
+    if (order.delivery_type === 'delivery') {
+      doc.text('LEVERANS', 105, yPos, { align: 'center' })
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(10)
+      doc.setTextColor(...darkGrayColor)
+      yPos += 8
+      const address = cleanText(order.delivery_address || 'Ej angiven')
+      doc.text(`Adress: ${address}`, 105, yPos, { align: 'center' })
+      yPos += 8
+      const location = cleanText(getLocationName(order.location))
+      doc.text(`Plats: ${location}`, 105, yPos, { align: 'center' })
+    } else {
+      doc.text('AVHÄMTNING', 105, yPos, { align: 'center' })
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(10)
+      doc.setTextColor(...darkGrayColor)
+      yPos += 8
+      const location = cleanText(getLocationName(order.location))
+      doc.text(`Plats: ${location}`, 105, yPos, { align: 'center' })
+      yPos += 8
+      doc.text('Hämta på restaurangen', 105, yPos, { align: 'center' })
+    }
+    
+    // Beställning header - elegant guldig design
+    yPos += 30
+    doc.setFillColor(...goldColor)
+    doc.rect(15, yPos, 180, 18, 'F')
+    doc.setDrawColor(...darkGoldColor)
+    doc.setLineWidth(1)
+    doc.rect(15, yPos, 180, 18)
+    
+    doc.setTextColor(...blackColor)
+    doc.setFontSize(12)
+    doc.setFont('helvetica', 'bold')
+    doc.text('BESTÄLLNING', 20, yPos + 12)
+    doc.text('PRIS', 175, yPos + 12, { align: 'right' })
+    
+    // Items sektion
+    yPos += 25
+    doc.setTextColor(...darkGrayColor)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(11)
+    
+    let totalAmount = 0
+    
+    if (order.cart_items || order.items) {
+      const items = order.cart_items ? 
+        (typeof order.cart_items === 'string' ? JSON.parse(order.cart_items) : order.cart_items) :
+        (typeof order.items === 'string' ? JSON.parse(order.items) : order.items)
       
-      items.forEach(item => {
-        doc.text(`${item.quantity}x ${item.name}`, 25, yPos)
-        doc.text(`${item.price} kr`, 150, yPos, { align: 'right' })
-        yPos += 10
+      items.forEach((item, index) => {
+        const itemTotal = (item.price || 0) * (item.quantity || 1)
+        totalAmount += itemTotal
         
+        // Alternating background för bättre läsbarhet
+        if (index % 2 === 0) {
+          doc.setFillColor(250, 250, 250)
+          doc.rect(15, yPos - 3, 180, 12, 'F')
+        }
+        
+        // Item namn och antal
+        const itemName = cleanText(item.name)
+        doc.setTextColor(...blackColor)
+        doc.setFont('helvetica', 'normal')
+        doc.text(`${item.quantity || 1}x ${itemName}`, 20, yPos + 5)
+        doc.setFont('helvetica', 'bold')
+        doc.text(`${itemTotal} kr`, 175, yPos + 5, { align: 'right' })
+        yPos += 12
+        
+        // Extras/tillägg
         if (item.extras?.length) {
           item.extras.forEach(extra => {
-            doc.text(`  + ${extra.name}`, 30, yPos)
-            doc.text(`+${extra.price} kr`, 150, yPos, { align: 'right' })
-            yPos += 8
+            const extraTotal = (extra.price || 0) * (item.quantity || 1)
+            totalAmount += extraTotal
+            doc.setTextColor(...lightGrayColor)
+            doc.setFont('helvetica', 'normal')
+            doc.setFontSize(9)
+            const extraName = cleanText(extra.name)
+            doc.text(`   + ${extraName}`, 25, yPos + 3)
+            doc.text(`+${extraTotal} kr`, 175, yPos + 3, { align: 'right' })
+            yPos += 10
+            doc.setTextColor(...darkGrayColor)
+            doc.setFontSize(11)
           })
         }
+        
+        yPos += 3 // Mellanrum mellan items
       })
     }
     
-    // Total
-    yPos += 10
-    doc.setFontSize(14)
-    doc.text(`TOTALT: ${order.total_price || order.amount} kr`, 105, yPos, { align: 'center' })
+    // Total sektion - elegant guldig design
+    yPos += 15
     
-    // Footer
-    yPos += 30
+    // Dekorativ linje före total
+    doc.setDrawColor(...goldColor)
+    doc.setLineWidth(2)
+    doc.line(15, yPos, 195, yPos)
+    
+    yPos += 15
+    
+    // Guldig total-box med skugga-effekt
+    doc.setFillColor(240, 240, 240) // skugga
+    doc.rect(17, yPos - 10, 180, 28, 'F')
+    doc.setFillColor(...goldColor)
+    doc.rect(15, yPos - 12, 180, 28, 'F')
+    doc.setDrawColor(...darkGoldColor)
+    doc.setLineWidth(2)
+    doc.rect(15, yPos - 12, 180, 28)
+    
+    doc.setTextColor(...blackColor)
+    doc.setFontSize(22)
+    doc.setFont('helvetica', 'bold')
+    const finalTotal = order.total_price || order.amount || totalAmount
+    doc.text(`TOTALT: ${finalTotal} kr`, 105, yPos + 5, { align: 'center' })
+    
+    // Betalningsinfo
+    yPos += 35
+    doc.setTextColor(...darkGrayColor)
     doc.setFontSize(10)
-    doc.text('Tack för ditt köp!', 105, yPos, { align: 'center' })
-    doc.text('Utvecklad av Skaply.se', 105, yPos + 10, { align: 'center' })
+    doc.setFont('helvetica', 'normal')
+    doc.text('Betalningsmetod: Kontant vid leverans/hämtning', 105, yPos, { align: 'center' })
+    
+    // Footer - elegant design
+    yPos += 25
+    
+    // Guldig footer med dekorativ kant
+    doc.setFillColor(...creamColor)
+    doc.rect(0, yPos, 210, 35, 'F')
+    doc.setDrawColor(...goldColor)
+    doc.setLineWidth(1)
+    doc.line(0, yPos, 210, yPos)
+    doc.line(0, yPos + 35, 210, yPos + 35)
+    
+    // Dekorativa linjer
+    doc.setDrawColor(...darkGoldColor)
+    doc.setLineWidth(0.5)
+    doc.line(50, yPos + 5, 160, yPos + 5)
+    doc.line(50, yPos + 30, 160, yPos + 30)
+    
+    doc.setTextColor(...blackColor)
+    doc.setFontSize(16)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Tack för ditt köp!', 105, yPos + 15, { align: 'center' })
+    
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...darkGrayColor)
+    doc.text('Vi hoppas du njuter av din måltid!', 105, yPos + 25, { align: 'center' })
+    
+    // Diskret utvecklarinfo
+    doc.setFontSize(6)
+    doc.setTextColor(200, 200, 200)
+    doc.text('Utvecklad av Skaply.se', 105, 285, { align: 'center' })
     
     return doc
   }
@@ -301,7 +632,7 @@ export default function RestaurantTerminal() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-black via-black to-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-[#e4d699] mx-auto mb-4"></div>
           <p className="text-white/60">Laddar restaurangterminal...</p>
@@ -351,6 +682,25 @@ export default function RestaurantTerminal() {
                 <Button onClick={fetchOrders} variant="outline" className="border-[#e4d699]/40 hover:bg-[#e4d699]/10 hover:border-[#e4d699]">
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Uppdatera
+                </Button>
+                <Button 
+                  onClick={requestNotificationPermission} 
+                  variant="outline" 
+                  className={`border-blue-500/40 hover:bg-blue-500/10 hover:border-blue-500 ${
+                    notificationPermission === 'granted' 
+                      ? 'border-green-500/40 text-green-400' 
+                      : notificationPermission === 'denied'
+                      ? 'border-red-500/40 text-red-400'
+                      : 'border-yellow-500/40 text-yellow-400'
+                  }`}
+                >
+                  <Bell className="h-4 w-4 mr-2" />
+                  {notificationPermission === 'granted' 
+                    ? '🔔 Notiser På' 
+                    : notificationPermission === 'denied'
+                    ? '🔕 Notiser Blockerade'
+                    : '🔕 Aktivera Notiser'
+                  }
                 </Button>
                 <Badge variant="outline" className="border-green-500/50 text-green-400 px-4 py-2">
                   🟢 Online
@@ -422,11 +772,11 @@ export default function RestaurantTerminal() {
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
                           <span className="text-white/50">👤</span>
-                          <span className="text-white"><strong>Kund:</strong> {order.profiles?.name || 'Gäst'}</span>
+                          <span className="text-white"><strong>Kund:</strong> {order.profiles?.name || order.customer_name || 'Gäst'}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-white/50">📞</span>
-                          <span className="text-white"><strong>Telefon:</strong> {order.profiles?.phone || order.phone}</span>
+                          <span className="text-white"><strong>Telefon:</strong> {order.profiles?.phone || order.phone || 'Ej angivet'}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-white/50">{order.delivery_type === 'delivery' ? '🚚' : '🏪'}</span>
@@ -451,31 +801,11 @@ export default function RestaurantTerminal() {
                         {order.status === 'pending' && (
                           <Button 
                             size="sm" 
-                            onClick={() => updateOrderStatus(order.id, 'confirmed')}
-                            className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium shadow-lg"
+                            onClick={() => updateOrderStatus(order.id, 'ready')}
+                            className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium shadow-lg"
                           >
                             <Check className="h-4 w-4 mr-2" />
-                            ✅ Bekräfta
-                          </Button>
-                        )}
-                        {order.status === 'confirmed' && (
-                          <Button 
-                            size="sm" 
-                            onClick={() => updateOrderStatus(order.id, 'preparing')}
-                            className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white font-medium shadow-lg"
-                          >
-                            <Package className="h-4 w-4 mr-2" />
-                            🔥 Börja laga
-                          </Button>
-                        )}
-                        {order.status === 'preparing' && (
-                          <Button 
-                            size="sm" 
-                            onClick={() => updateOrderStatus(order.id, 'ready')}
-                            className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium shadow-lg animate-pulse"
-                          >
-                            <Bell className="h-4 w-4 mr-2" />
-                            🎉 Klar!
+                            ✅ Bekräfta order
                           </Button>
                         )}
                         {order.status === 'ready' && (
@@ -576,7 +906,7 @@ export default function RestaurantTerminal() {
                 <div className="space-y-4">
                   <div>
                     <h4 className="font-medium mb-2">Kundinfo:</h4>
-                    <p>Namn: {selectedOrder.profiles?.name || 'Gäst'}</p>
+                                            <p>Namn: {selectedOrder.profiles?.name || selectedOrder.customer_name || 'Gäst'}</p>
                     <p>Email: {selectedOrder.profiles?.email || selectedOrder.email}</p>
                     <p>Telefon: {selectedOrder.profiles?.phone || selectedOrder.phone}</p>
                   </div>

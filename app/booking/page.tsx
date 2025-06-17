@@ -118,7 +118,7 @@ export default function BookingPage() {
   // Show loading state while fetching locations or if no location selected
   if (isLoading || !selectedLocation) {
     return (
-      <div className="pt-20 md:pt-24 pb-24">
+      <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900">
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto">
             <div className="text-center mb-12">
@@ -137,7 +137,7 @@ export default function BookingPage() {
   }
 
   return (
-    <div className="pt-20 md:pt-24 pb-24">
+    <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900">
       <div className="container mx-auto px-4">
         <div className="max-w-3xl mx-auto">
           <div className="text-center mb-12">

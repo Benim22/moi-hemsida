@@ -21,7 +21,7 @@ export default function OrderConfirmationPage() {
   const formattedTime = currentTime.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })
 
   return (
-    <div className="pt-20 md:pt-24 pb-24 min-h-screen flex items-center justify-center">
+    <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900 flex items-center justify-center">
       <div className="container max-w-2xl mx-auto px-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}

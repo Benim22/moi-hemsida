@@ -9,9 +9,10 @@ import { FloatingDock } from "@/components/floating-dock"
 import { motion, AnimatePresence } from "framer-motion"
 import { AddToCartButton } from "@/components/add-to-cart-button"
 import { FoodItemModal, type FoodItemDetails } from "@/components/food-item-modal"
-import { Info, MapPin } from "lucide-react"
+import { Info, MapPin, Loader2 } from "lucide-react"
 import { useLocation } from "@/contexts/LocationContext"
 import { trackMenuInteraction, trackEvent } from "@/lib/analytics"
+import { supabase } from "@/lib/supabase"
 
 // Complete menu data with added nutritional and allergen information
 const menuData = {
@@ -916,32 +917,112 @@ const categoryNames = {
 
 export default function MenuPage() {
   const { selectedLocation } = useLocation()
-  const [activeTab, setActiveTab] = useState("rolls")
+  const [activeTab, setActiveTab] = useState("Mois Rolls")
   const [isFloatingDockVisible, setIsFloatingDockVisible] = useState(true)
-  const [previousTab, setPreviousTab] = useState("rolls")
+  const [previousTab, setPreviousTab] = useState("Mois Rolls")
   const [scrollY, setScrollY] = useState(0)
   const [selectedItem, setSelectedItem] = useState<FoodItemDetails | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [menuItems, setMenuItems] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [categories, setCategories] = useState([])
 
   // Define which categories are available for Ystad (food truck)
-  const ystadAvailableCategories = ["pokebowls", "drinks", "sauces"]
+  const ystadAvailableCategories = ["Pokébowls", "Drycker", "Såser"]
+
+  // Fetch menu items from database
+  useEffect(() => {
+    async function fetchMenuItems() {
+      try {
+        setIsLoading(true)
+        const { data, error } = await supabase
+          .from("menu_items")
+          .select("*")
+          .eq("available", true)
+          .order("category", { ascending: true })
+          .order("name", { ascending: true })
+
+        if (error) {
+          console.error("Error fetching menu items:", error)
+          return
+        }
+
+        setMenuItems(data || [])
+        
+        // Extract unique categories and sort them in preferred order
+        const uniqueCategories = [...new Set(data?.map(item => item.category) || [])]
+        
+        // Define preferred category order
+        const preferredOrder = [
+          "Mois Rolls",
+          "Pokébowls", 
+          "Helfriterade Maki",
+          "Nigiri",
+          "Nigiri Combo",
+          "Smått och Gott",
+          "Exotiska Delikatesser",
+          "Barnmeny",
+          "Drycker",
+          "Såser"
+        ]
+        
+        // Sort categories according to preferred order
+        const sortedCategories = uniqueCategories.sort((a, b) => {
+          const indexA = preferredOrder.indexOf(a)
+          const indexB = preferredOrder.indexOf(b)
+          
+          // If both categories are in preferred order, sort by their position
+          if (indexA !== -1 && indexB !== -1) {
+            return indexA - indexB
+          }
+          
+          // If only one is in preferred order, prioritize it
+          if (indexA !== -1) return -1
+          if (indexB !== -1) return 1
+          
+          // If neither is in preferred order, sort alphabetically
+          return a.localeCompare(b, 'sv')
+        })
+        
+        setCategories(sortedCategories)
+        
+        // Set first category as active if current activeTab doesn't exist
+        if (uniqueCategories.length > 0 && !uniqueCategories.includes(activeTab)) {
+          setActiveTab(uniqueCategories[0])
+        }
+
+      } catch (error) {
+        console.error("Error fetching menu items:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchMenuItems()
+  }, [])
   
-  // Filter categories based on location
+  // Filter categories based on location while maintaining order
   const getAvailableCategories = () => {
     if (selectedLocation?.id === "ystad") {
-      return Object.entries(categoryNames).filter(([id]) => 
-        ystadAvailableCategories.includes(id)
+      // Filter while maintaining the sorted order
+      return categories.filter(category => 
+        ystadAvailableCategories.includes(category)
       )
     }
-    return Object.entries(categoryNames)
+    return categories
   }
 
   // Create dock items from available category names
-  const dockItems = Object.entries(categoryNames).map(([id, label]) => ({
-    id,
-    label,
-    disabled: selectedLocation?.id === "ystad" && !ystadAvailableCategories.includes(id)
+  const dockItems = categories.map((category) => ({
+    id: category,
+    label: category,
+    disabled: selectedLocation?.id === "ystad" && !ystadAvailableCategories.includes(category)
   }))
+
+  // Get menu items for a specific category
+  const getItemsForCategory = (category: string) => {
+    return menuItems.filter(item => item.category === category)
+  }
 
   // Handle scroll to control dock visibility
   useEffect(() => {
@@ -976,9 +1057,12 @@ export default function MenuPage() {
   // Auto-switch to available category when location changes to Ystad
   useEffect(() => {
     if (selectedLocation?.id === "ystad" && !ystadAvailableCategories.includes(activeTab)) {
-      setActiveTab("pokebowls") // Default to pokebowls for Ystad
+      const availableForYstad = categories.filter(cat => ystadAvailableCategories.includes(cat))
+      if (availableForYstad.length > 0) {
+        setActiveTab(availableForYstad[0]) // Default to first available category for Ystad
+      }
     }
-  }, [selectedLocation, activeTab])
+  }, [selectedLocation, activeTab, categories])
 
   // Handle opening the modal with item details
   const handleOpenItemDetails = (item: FoodItemDetails) => {
@@ -996,7 +1080,7 @@ export default function MenuPage() {
   }
 
   return (
-    <div className="pt-20 md:pt-24 pb-24">
+    <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900">
       <div className="container mx-auto px-4">
         <div className="text-center mb-12">
           <AnimatedText text="Vår Meny" element="h1" className="text-4xl md:text-5xl font-bold mb-4" />
@@ -1044,73 +1128,96 @@ export default function MenuPage() {
 
         {/* Menu Content */}
         <div className="mt-8">
-          {Object.entries(menuData)
-            .filter(([category]) => {
-              // Filter categories based on location
-              if (selectedLocation?.id === "ystad") {
-                return ystadAvailableCategories.includes(category)
-              }
-              return true
-            })
-            .map(([category, items]) => (
-            <AnimatePresence key={category} mode="wait">
-              {activeTab === category && (
-                <motion.div
-                  key={category}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.4 }}
-                >
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {items.map((item, index) => (
-                      <AnimatedCard key={item.id} delay={index * 0.1} className="h-full">
-                        <Card className="overflow-hidden h-full flex flex-col border border-[#e4d699]/20">
-                          <div className="relative h-48 overflow-hidden">
-                            <img
-                              src={item.image || "/placeholder.svg?height=300&width=400"}
-                              alt={item.name}
-                              className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
-                            />
-                            {item.popular && (
-                              <Badge className="absolute top-2 right-2 bg-[#e4d699] text-black">Populär</Badge>
-                            )}
+          {isLoading ? (
+            <div className="flex justify-center items-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-[#e4d699]" />
+              <span className="ml-2 text-white/60">Laddar meny...</span>
+            </div>
+          ) : (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.4 }}
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {getItemsForCategory(activeTab).map((item, index) => (
+                    <AnimatedCard key={item.id} delay={index * 0.1} className="h-full">
+                      <Card className="overflow-hidden h-full flex flex-col border border-[#e4d699]/20">
+                        <div className="relative h-48 overflow-hidden">
+                          <img
+                            src={item.image_url || "/placeholder.svg?height=300&width=400"}
+                            loading="lazy"
+                            decoding="async"
+                            alt={item.name}
+                            className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
+                          />
+                          {item.popular && (
+                            <Badge className="absolute top-2 right-2 bg-[#e4d699] text-black">Populär</Badge>
+                          )}
+                          {item.spicy_level > 0 && (
+                            <Badge className="absolute top-2 left-2 bg-red-500 text-white">
+                              {"🌶️".repeat(item.spicy_level)}
+                            </Badge>
+                          )}
+                        </div>
+                        <CardContent className="p-5 flex flex-col flex-grow">
+                          <div className="flex justify-between items-start mb-2">
+                            <h3 className="text-xl font-semibold">{item.name}</h3>
+                            <div className="text-lg font-medium text-[#e4d699]">{item.price} kr</div>
                           </div>
-                          <CardContent className="p-5 flex flex-col flex-grow">
-                            <div className="flex justify-between items-start mb-2">
-                              <h3 className="text-xl font-semibold">{item.name}</h3>
-                              <div className="text-lg font-medium text-[#e4d699]">{item.price} kr</div>
-                            </div>
-                            <p className="text-white/70 text-sm mb-4 flex-grow">{item.description}</p>
-                            <div className="mt-auto flex justify-between items-center">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
-                                onClick={() => handleOpenItemDetails(item)}
-                              >
-                                <Info className="mr-2 h-4 w-4" />
-                                Mer info
-                              </Button>
-                              <AddToCartButton
-                                product={{
-                                  id: item.id,
-                                  name: item.name,
-                                  price: item.price,
-                                  image: item.image,
-                                  category: category,
-                                }}
-                              />
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </AnimatedCard>
-                    ))}
+                          <p className="text-white/70 text-sm mb-4 flex-grow">{item.description}</p>
+                          <div className="mt-auto flex justify-between items-center">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                              onClick={() => handleOpenItemDetails({
+                                id: item.id,
+                                name: item.name,
+                                description: item.description,
+                                price: item.price,
+                                image: item.image_url,
+                                category: item.category,
+                                popular: item.popular,
+                                spicyLevel: item.spicy_level,
+                                allergens: item.allergens || [],
+                                nutritionalInfo: item.nutritional_info || {},
+                                ingredients: [], // Not stored in DB currently
+                                preparationTime: "15-20 min" // Default value
+                              })}
+                            >
+                              <Info className="mr-2 h-4 w-4" />
+                              Mer info
+                            </Button>
+                            <AddToCartButton
+                              product={{
+                                id: item.id,
+                                name: item.name,
+                                price: item.price,
+                                image: item.image_url,
+                                category: item.category,
+                              }}
+                            />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </AnimatedCard>
+                  ))}
+                </div>
+                
+                {/* Empty state */}
+                {getItemsForCategory(activeTab).length === 0 && (
+                  <div className="text-center py-12">
+                    <p className="text-white/60 text-lg">Inga rätter tillgängliga i denna kategori än.</p>
+                    <p className="text-white/40 text-sm mt-2">Kom tillbaka snart för fler läckra alternativ!</p>
                   </div>
-                </motion.div>
-              )}
+                )}
+              </motion.div>
             </AnimatePresence>
-          ))}
+          )}
         </div>
       </div>
 

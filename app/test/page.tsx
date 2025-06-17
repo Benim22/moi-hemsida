@@ -7,7 +7,7 @@ export default function TestPage() {
   const { user, profile, isAdmin, refreshSession } = useSimpleAuth()
 
   return (
-    <div className="pt-20 md:pt-24 pb-24 min-h-screen">
+    <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900">
       <div className="container mx-auto px-4">
         <h1 className="text-3xl font-bold mb-8">Test Sida</h1>
         

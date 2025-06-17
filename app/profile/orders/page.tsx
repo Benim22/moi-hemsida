@@ -8,7 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { ArrowLeft, ShoppingBag, Clock, CheckCircle, XCircle, Package } from "lucide-react"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useToast } from "@/hooks/use-toast"
+import { ArrowLeft, ShoppingBag, Clock, CheckCircle, XCircle, Package, Trash2 } from "lucide-react"
 
 interface OrderItem {
   id: string
@@ -36,7 +38,10 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isPageLoading, setIsPageLoading] = useState(true)
+  const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const router = useRouter()
+  const { toast } = useToast()
 
   useEffect(() => {
     setIsPageLoading(false)
@@ -70,6 +75,47 @@ export default function OrdersPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleDeleteOrder = async () => {
+    if (!deleteOrderId) return
+
+    setIsDeleting(true)
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .delete()
+        .eq("id", deleteOrderId)
+        .eq("user_id", user?.id) // Extra säkerhet - endast egna beställningar
+
+      if (error) {
+        throw error
+      }
+
+      // Ta bort från lokal state
+      setOrders(prev => prev.filter(order => order.id !== deleteOrderId))
+      
+      toast({
+        title: "Beställning borttagen",
+        description: "Din beställning har tagits bort.",
+        variant: "default",
+      })
+    } catch (error) {
+      console.error("Error deleting order:", error)
+      toast({
+        title: "Fel vid borttagning",
+        description: "Kunde inte ta bort beställningen. Försök igen senare.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeleting(false)
+      setDeleteOrderId(null)
+    }
+  }
+
+  const canDeleteOrder = (order: Order) => {
+    // Endast beställningar som är "pending" eller "cancelled" kan tas bort
+    return order.status === "pending" || order.status === "cancelled"
   }
 
   const formatDate = (dateString: string) => {
@@ -132,7 +178,7 @@ export default function OrdersPage() {
 
   if (isPageLoading) {
     return (
-      <div className="pt-20 md:pt-24 pb-24 min-h-screen flex items-center justify-center">
+      <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#e4d699]"></div>
       </div>
     )
@@ -141,7 +187,7 @@ export default function OrdersPage() {
   if (!user || !profile) {
     router.push("/auth/login?redirect=/profile/orders")
     return (
-      <div className="pt-20 md:pt-24 pb-24 min-h-screen flex items-center justify-center">
+      <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900 flex items-center justify-center">
         <div className="text-center">
           <p className="mb-4">Du måste vara inloggad för att se denna sida.</p>
           <Button onClick={() => router.push("/auth/login?redirect=/profile/orders")}>
@@ -153,7 +199,7 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="pt-20 md:pt-24 pb-24">
+    <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900">
       <div className="container mx-auto px-4">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center gap-4 mb-8">
@@ -271,12 +317,66 @@ export default function OrdersPage() {
                         <p className="text-lg font-semibold">Totalt:</p>
                         <p className="text-lg font-bold text-[#e4d699]">{order.total} kr</p>
                       </div>
+
+                      {/* Actions */}
+                      {canDeleteOrder(order) && (
+                        <div className="pt-4 border-t border-[#e4d699]/20">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDeleteOrderId(order.id)}
+                            className="border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-500"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Ta bort beställning
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
               ))}
             </div>
           )}
+
+          {/* Delete Confirmation Dialog */}
+          <Dialog open={deleteOrderId !== null} onOpenChange={() => setDeleteOrderId(null)}>
+            <DialogContent className="bg-black/90 border border-[#e4d699]/30">
+              <DialogHeader>
+                <DialogTitle className="text-[#e4d699]">Bekräfta borttagning</DialogTitle>
+                <DialogDescription className="text-white/80">
+                  Är du säker på att du vill ta bort denna beställning? Detta kan inte ångras.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setDeleteOrderId(null)}
+                  disabled={isDeleting}
+                  className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                >
+                  Avbryt
+                </Button>
+                <Button
+                  onClick={handleDeleteOrder}
+                  disabled={isDeleting}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {isDeleting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                      Tar bort...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Ta bort
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </div>

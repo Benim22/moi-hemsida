@@ -59,6 +59,8 @@ export function FoodItemModal({ open, onOpenChange, item }: FoodItemModalProps) 
             alt={item.name} 
             className="w-full h-full object-cover object-center" 
             style={{ objectPosition: 'center 30%' }}
+            loading="lazy"
+            decoding="async"
           />
                      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent flex items-end">
             <div className="p-6 w-full">
