@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { supabase } from "@/lib/supabase"
-import { Bell, Printer, Download, Check, Clock, Package, Truck, X, RefreshCw, AlertTriangle } from "lucide-react"
+import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle } from "lucide-react"
 import jsPDF from 'jspdf'
 
 export default function RestaurantTerminal() {
@@ -163,6 +163,23 @@ export default function RestaurantTerminal() {
       fetchOrders()
       fetchNotifications()
       requestNotificationPermission()
+    }
+  }, [user, profile?.location])
+
+  // Auto-refresh orders every 30 seconds
+  useEffect(() => {
+    if (!user || !profile?.location) return
+
+    console.log('⏰ Startar automatisk uppdatering var 30:e sekund')
+    const interval = setInterval(() => {
+      console.log('🔄 Automatisk uppdatering av orders...')
+      fetchOrders()
+      fetchNotifications()
+    }, 30000) // 30 sekunder
+
+    return () => {
+      console.log('⏰ Stoppar automatisk uppdatering')
+      clearInterval(interval)
     }
   }, [user, profile?.location])
 
@@ -775,9 +792,9 @@ export default function RestaurantTerminal() {
     doc.setTextColor(...darkGrayColor)
     doc.text('Vi hoppas du njuter av din måltid!', 105, yPos + 25, { align: 'center' })
     
-    // Diskret utvecklarinfo
-    doc.setFontSize(6)
-    doc.setTextColor(200, 200, 200)
+    // Utvecklarinfo - lite större och tydligare
+    doc.setFontSize(9)
+    doc.setTextColor(150, 150, 150)
     doc.text('Utvecklad av Skaply.se', 105, 285, { align: 'center' })
     
     return doc
@@ -825,67 +842,7 @@ export default function RestaurantTerminal() {
     }
   }
 
-  // Test notification function
-  const testNotification = async () => {
-    try {
-      console.log('🧪 Skapar testnotifikation...')
-      const { data, error } = await supabase
-        .from('notifications')
-        .insert({
-          type: 'order',
-          title: 'TEST NOTIFIKATION',
-          message: `Test från ${getLocationName(profile.location)} - ${new Date().toLocaleTimeString()}`,
-          user_role: 'admin',
-          metadata: {
-            location: profile.location === 'all' ? 'trelleborg' : profile.location,
-            test: true,
-            created_by: user.id
-          }
-        })
-        .select()
 
-      if (error) {
-        console.error('❌ Fel vid skapande av testnotifikation:', error)
-      } else {
-        console.log('✅ Testnotifikation skapad:', data)
-        showBrowserNotification('Test lyckades!', 'Om du ser detta meddelande fungerar notifikationerna')
-        playNotificationSound()
-      }
-    } catch (error) {
-      console.error('❌ Oväntat fel vid testnotifikation:', error)
-    }
-  }
-
-  // Debug browser notifications
-  const debugNotifications = () => {
-    console.log('🔍 NOTIFIKATIONS DEBUG INFO:')
-    console.log('🌐 Protokoll:', window.location.protocol)
-    console.log('🏠 Hostname:', window.location.hostname)
-    console.log('🔒 Säker anslutning:', window.location.protocol === 'https:' || window.location.hostname === 'localhost')
-    console.log('🔔 Notification API:', 'Notification' in window)
-    console.log('📱 Service Worker:', 'serviceWorker' in navigator)
-    console.log('🎯 Permission:', 'Notification' in window ? Notification.permission : 'N/A')
-    console.log('🌍 User Agent:', navigator.userAgent)
-    
-    const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost'
-    
-    if (!isSecure) {
-      alert('❌ PROBLEM: Notifikationer kräver HTTPS!\n\nDin webbplats använder HTTP, vilket blockerar notifikationer.\n\nLösning: Konfigurera HTTPS för din webbplats.')
-      return
-    }
-    
-    if (!('Notification' in window)) {
-      alert('❌ PROBLEM: Webbläsaren stöder inte notifikationer!\n\nProva en nyare version av Chrome eller Safari.')
-      return
-    }
-    
-    if (Notification.permission === 'denied') {
-      alert('❌ PROBLEM: Notifikationer är blockerade!\n\nGå till webbläsarinställningar och aktivera notifikationer för denna webbplats.')
-      return
-    }
-    
-    alert('✅ ALLT OK: Notifikationer borde fungera!\n\nTryck på "Aktivera Notiser" för att testa.')
-  }
 
   const unreadNotifications = notifications.filter(n => !n.read).length
 
@@ -942,17 +899,6 @@ export default function RestaurantTerminal() {
               <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
                 <div className="flex gap-2">
                   <Button 
-                    onClick={fetchOrders} 
-                    variant="outline" 
-                    className="border-[#e4d699]/40 hover:bg-[#e4d699]/10 hover:border-[#e4d699] flex-1 sm:flex-none"
-                    size="sm"
-                  >
-                    <RefreshCw className="h-4 w-4 mr-1 sm:mr-2" />
-                    <span className="hidden sm:inline">Uppdatera</span>
-                    <span className="sm:hidden">Update</span>
-                  </Button>
-                  
-                  <Button 
                     onClick={requestNotificationPermission} 
                     variant="outline" 
                     className={`flex-1 sm:flex-none ${
@@ -982,32 +928,10 @@ export default function RestaurantTerminal() {
                       }
                     </span>
                   </Button>
-                </div>
-                
-                <div className="flex gap-2">
-                  <Button 
-                    onClick={testNotification} 
-                    variant="outline" 
-                    className="border-purple-500/40 hover:bg-purple-500/10 hover:border-purple-500 text-purple-400 flex-1 sm:flex-none"
-                    size="sm"
-                  >
-                    <span className="hidden sm:inline">🧪 Testa Notis</span>
-                    <span className="sm:hidden">🧪</span>
-                  </Button>
-                  
-                  <Button 
-                    onClick={debugNotifications} 
-                    variant="outline" 
-                    className="border-orange-500/40 hover:bg-orange-500/10 hover:border-orange-500 text-orange-400 flex-1 sm:flex-none"
-                    size="sm"
-                  >
-                    <span className="hidden sm:inline">🔍 Debug</span>
-                    <span className="sm:hidden">🔍</span>
-                  </Button>
                   
                   <Badge variant="outline" className="border-green-500/50 text-green-400 px-2 py-1 flex items-center">
-                    <span className="hidden sm:inline">🟢 Online</span>
-                    <span className="sm:hidden">🟢</span>
+                    <span className="hidden sm:inline">🟢 Auto-uppdatering</span>
+                    <span className="sm:hidden">🟢 Auto</span>
                   </Badge>
                 </div>
               </div>
@@ -1198,7 +1122,7 @@ export default function RestaurantTerminal() {
 
         {/* Notification Dialog - Optimerad för mobil */}
         <Dialog open={!!notificationDialog} onOpenChange={() => setNotificationDialog(null)}>
-          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-md mx-4 w-[calc(100vw-2rem)] sm:w-full">
+          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-md mx-4 w-[calc(100vw-2rem)] sm:w-full fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%]">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-3 text-[#e4d699] text-lg sm:text-xl">
                 <div className="w-12 h-12 bg-gradient-to-br from-[#e4d699] to-yellow-600 rounded-full flex items-center justify-center animate-pulse">

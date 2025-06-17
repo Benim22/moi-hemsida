@@ -1608,7 +1608,13 @@ function ContentEditor() {
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                                 loading="lazy"
                                 onError={(e) => {
-                                  e.target.style.display = 'none'
+                                  console.log('Bild kunde inte laddas:', fullPath)
+                                  // Visa placeholder istället för att dölja
+                                  e.target.src = '/placeholder.svg'
+                                  e.target.classList.add('opacity-50')
+                                }}
+                                onLoad={(e) => {
+                                  e.target.classList.remove('opacity-50')
                                 }}
                               />
                             </div>
@@ -2706,11 +2712,17 @@ function UserManagement() {
                 className="w-full bg-black/50 border border-[#e4d699]/30 rounded px-3 py-2 text-sm"
               >
                 <option value="">Välj plats</option>
+                <option value="all">🌍 Alla platser (Super Admin)</option>
                 <option value="malmö">Malmö</option>
                 <option value="trelleborg">Trelleborg</option>
                 <option value="ystad">Ystad</option>
               </select>
-              <p className="text-xs text-white/40">Används för platsspecifika notiser</p>
+              <p className="text-xs text-white/40">
+                {editForm.location === 'all' 
+                  ? 'Användaren kan se och hantera alla platser' 
+                  : 'Används för platsspecifika notiser'
+                }
+              </p>
             </div>
 
             <DialogFooter className="gap-2 flex-col sm:flex-row pt-4">
@@ -5258,6 +5270,14 @@ function AnalyticsManagement() {
         menuInteractions: menuInteractions || []
       })
 
+      // Logga för debugging
+      console.log('Analytics data fetched:', {
+        dailyStatsCount: dailyStats?.length || 0,
+        pageViewsCount: pageViews?.length || 0,
+        sessionsCount: recentSessions?.length || 0,
+        menuInteractionsCount: menuInteractions?.length || 0
+      })
+
     } catch (error) {
       console.error('Error fetching analytics:', error)
       toast({
@@ -5365,6 +5385,28 @@ function AnalyticsManagement() {
           </div>
         </CardHeader>
       </Card>
+
+      {/* No data message */}
+      {analyticsData.dailyStats.length === 0 && (
+        <Card className="border border-yellow-500/30 bg-yellow-500/10">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-yellow-500/20 rounded-full flex items-center justify-center">
+                <BarChart3 className="h-5 w-5 text-yellow-500" />
+              </div>
+              <div>
+                <h3 className="text-yellow-500 font-medium">Ingen Analytics-data ännu</h3>
+                <p className="text-white/60 text-sm">
+                  Analytics tracking är nu aktiverat och kommer att samla data när användare besöker sidan.
+                  {analyticsData.realtimeStats?.activeSessions > 0 && 
+                    ` (${analyticsData.realtimeStats.activeSessions} aktiva sessioner just nu)`
+                  }
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Real-time stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -6106,6 +6148,7 @@ function EmailManagement() {
   const [testingEmail, setTestingEmail] = useState(false)
   const [emailLogs, setEmailLogs] = useState([])
   const [emailSettings, setEmailSettings] = useState([])
+  const [localEmailSettings, setLocalEmailSettings] = useState({})
   const { toast } = useToast()
 
   const [templateForm, setTemplateForm] = useState({
@@ -6169,9 +6212,17 @@ function EmailManagement() {
       if (error) throw error
 
       setEmailSettings(data || [])
+      
+      // Skapa lokala inställningar från databasen
+      const localSettings = {}
+      data?.forEach(setting => {
+        localSettings[setting.setting_key] = setting.setting_value
+      })
+      setLocalEmailSettings(localSettings)
     } catch (error) {
       console.error('Error fetching email settings:', error)
       setEmailSettings([])
+      setLocalEmailSettings({})
     }
   }
 
@@ -6352,6 +6403,12 @@ function EmailManagement() {
   }
 
   const updateEmailSetting = async (settingKey, newValue) => {
+    // Uppdatera lokala inställningar direkt för bättre UX
+    setLocalEmailSettings(prev => ({
+      ...prev,
+      [settingKey]: newValue
+    }))
+
     try {
       const { error } = await supabase
         .from('email_settings')
@@ -6360,11 +6417,26 @@ function EmailManagement() {
 
       if (error) throw error
 
-      await fetchEmailSettings()
-      // Removed toast notifications for better UX
+      // Uppdatera emailSettings utan att hämta om hela listan
+      setEmailSettings(prev => 
+        prev.map(setting => 
+          setting.setting_key === settingKey 
+            ? { ...setting, setting_value: newValue }
+            : setting
+        )
+      )
     } catch (error) {
       console.error('Error updating email setting:', error)
-      // Only show error toasts
+      // Återställ lokala inställningar vid fel
+      setLocalEmailSettings(prev => {
+        const restored = { ...prev }
+        const originalSetting = emailSettings.find(s => s.setting_key === settingKey)
+        if (originalSetting) {
+          restored[settingKey] = originalSetting.setting_value
+        }
+        return restored
+      })
+      
       toast({
         title: "Fel",
         description: "Kunde inte uppdatera inställning.",
@@ -6757,7 +6829,7 @@ function EmailManagement() {
                     <Input
                       id={setting.setting_key}
                       type="password"
-                      value={setting.setting_value}
+                      value={localEmailSettings[setting.setting_key] || setting.setting_value}
                       onChange={(e) => updateEmailSetting(setting.setting_key, e.target.value)}
                       className="border-[#e4d699]/30 bg-black/50"
                       placeholder="••••••••"
@@ -6765,7 +6837,7 @@ function EmailManagement() {
                   ) : setting.setting_key === 'enable_emails' || setting.setting_key === 'test_mode' ? (
                     <select
                       id={setting.setting_key}
-                      value={setting.setting_value}
+                      value={localEmailSettings[setting.setting_key] || setting.setting_value}
                       onChange={(e) => updateEmailSetting(setting.setting_key, e.target.value)}
                       className="w-full p-2 rounded-md border border-[#e4d699]/30 bg-black/50 text-white"
                     >
@@ -6775,7 +6847,7 @@ function EmailManagement() {
                   ) : (
                     <Input
                       id={setting.setting_key}
-                      value={setting.setting_value}
+                      value={localEmailSettings[setting.setting_key] || setting.setting_value}
                       onChange={(e) => updateEmailSetting(setting.setting_key, e.target.value)}
                       className="border-[#e4d699]/30 bg-black/50"
                     />

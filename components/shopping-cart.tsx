@@ -13,26 +13,18 @@ import Link from "next/link"
 // Sequential order number generation
 const generateOrderNumber = async () => {
   try {
-    // Hämta det högsta ordernumret från databasen
-    const { data, error } = await supabase
+    // Räkna totalt antal orders och lägg till 1
+    const { count, error } = await supabase
       .from('orders')
-      .select('order_number')
-      .order('order_number', { ascending: false })
-      .limit(1)
+      .select('*', { count: 'exact', head: true })
 
     if (error) {
-      console.error('Error fetching last order number:', error)
+      console.error('Error counting orders:', error)
       // Fallback till dagens datum + random nummer om det blir fel
       return `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}001`
     }
 
-    let nextNumber = 1
-    if (data && data.length > 0 && data[0].order_number) {
-      // Konvertera till nummer och lägg till 1
-      const lastNumber = parseInt(data[0].order_number)
-      nextNumber = isNaN(lastNumber) ? 1 : lastNumber + 1
-    }
-
+    const nextNumber = (count || 0) + 1
     return nextNumber.toString()
   } catch (error) {
     console.error('Error in generateOrderNumber:', error)
