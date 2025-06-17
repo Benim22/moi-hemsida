@@ -7320,6 +7320,9 @@ function OrderManagement() {
   const [selectedLocation, setSelectedLocation] = useState('all')
   const [sortBy, setSortBy] = useState('date_desc') // Ny sortering
   const [dateFilter, setDateFilter] = useState('all') // Ny datumfilter
+  const [deleteOrderId, setDeleteOrderId] = useState(null)
+  const [deleteOrderNumber, setDeleteOrderNumber] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -7459,22 +7462,25 @@ function OrderManagement() {
   }
 
   const deleteOrder = async (orderId, orderNumber) => {
-    if (!confirm(`Är du säker på att du vill ta bort beställning #${orderNumber}? Detta kan inte ångras.`)) {
-      return
-    }
+    setDeleteOrderId(orderId)
+    setDeleteOrderNumber(orderNumber)
+  }
 
-    setIsUpdating(true)
+  const handleDeleteConfirm = async () => {
+    if (!deleteOrderId) return
+
+    setIsDeleting(true)
     try {
       const { error } = await supabase
         .from('orders')
         .delete()
-        .eq('id', orderId)
+        .eq('id', deleteOrderId)
 
       if (error) throw error
 
       toast({
         title: "Raderad",
-        description: `Beställning #${orderNumber} har tagits bort`,
+        description: `Beställning #${deleteOrderNumber} har tagits bort`,
       })
 
       // Refresh data
@@ -7488,7 +7494,9 @@ function OrderManagement() {
         variant: "destructive",
       })
     } finally {
-      setIsUpdating(false)
+      setIsDeleting(false)
+      setDeleteOrderId(null)
+      setDeleteOrderNumber('')
     }
   }
 
@@ -7895,6 +7903,13 @@ function OrderManagement() {
                         <span className="font-medium">Anteckningar:</span> {order.notes}
                       </div>
                     )}
+
+                    {order.special_instructions && (
+                      <div className="text-sm mt-2 p-2 bg-orange-500/10 border border-orange-500/30 rounded">
+                        <span className="font-medium text-orange-400">Speciella önskemål:</span> 
+                        <div className="mt-1 text-orange-300">{order.special_instructions}</div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Action Buttons */}
@@ -8045,6 +8060,45 @@ function OrderManagement() {
           </CardContent>
         </Card>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteOrderId} onOpenChange={() => setDeleteOrderId(null)}>
+        <DialogContent className="bg-black/90 border border-[#e4d699]/30">
+          <DialogHeader>
+            <DialogTitle className="text-[#e4d699]">Bekräfta borttagning</DialogTitle>
+            <DialogDescription className="text-white/80">
+              Är du säker på att du vill ta bort beställning #{deleteOrderNumber}? Detta kan inte ångras.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteOrderId(null)}
+              disabled={isDeleting}
+              className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+            >
+              Avbryt
+            </Button>
+            <Button
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {isDeleting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                  Tar bort...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Ta bort
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -19,6 +19,7 @@ import { useRouter } from "next/navigation"
 import { useSimpleAuth as useAuth } from "@/context/simple-auth-context"
 import { supabase } from "@/lib/supabase"
 import { useLocation } from "@/contexts/LocationContext"
+import { trackOrderStart, trackOrderComplete } from "@/lib/analytics"
 
 export function CartIcon() {
   const { totalItems, setIsCartOpen } = useCart()
@@ -97,12 +98,14 @@ function OrderSuccessModal({
   customerName, 
   items, 
   totalPrice, 
+  specialInstructions,
   onClose 
 }: {
   orderNumber: string
   customerName: string
   items: CartItemType[]
   totalPrice: number
+  specialInstructions?: string
   onClose: () => void
 }) {
   return (
@@ -144,6 +147,15 @@ function OrderSuccessModal({
           <span>Totalt:</span>
           <span className="text-[#e4d699] text-lg">{totalPrice} kr</span>
         </div>
+        
+        {specialInstructions && (
+          <div className="mt-4 pt-2 border-t border-[#e4d699]/20">
+            <h4 className="font-medium text-sm text-orange-400 mb-1">Speciella önskemål:</h4>
+            <p className="text-sm text-orange-300 bg-orange-500/10 p-2 rounded border border-orange-500/30">
+              {specialInstructions}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Instructions */}
@@ -178,8 +190,9 @@ function OrderSuccessModal({
 }
 
 export function ShoppingCart() {
-  const { items, totalPrice, isCartOpen, setIsCartOpen, clearCart, totalItems } = useCart()
+  const { items, totalPrice, isCartOpen, setIsCartOpen, clearCart, totalItems, timeUntilClear } = useCart()
   const { toast } = useToast()
+  const { selectedLocation } = useLocation()
   const [isCheckingOut, setIsCheckingOut] = useState(false)
 
   const handleClose = () => {
@@ -198,103 +211,106 @@ export function ShoppingCart() {
 
   const handleCheckout = () => {
     setIsCheckingOut(true)
+    
+    // Spåra start av checkout
+    trackOrderStart(selectedLocation?.name || 'unknown')
   }
 
   return (
     <AnimatePresence>
       {isCartOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50"
+            className="fixed inset-0 bg-black/50 z-50"
             onClick={handleClose}
           />
-
-          {/* Cart panel */}
           <motion.div
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="fixed top-0 right-0 h-full w-full sm:w-[450px] bg-black border-l border-[#e4d699]/20 z-50 overflow-hidden flex flex-col"
-            onClick={(e) => e.stopPropagation()}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            className="fixed right-0 top-0 h-full w-full max-w-md bg-black border-l border-[#e4d699]/20 z-50 flex flex-col"
           >
-            {/* Header */}
-            <div className="p-4 border-b border-[#e4d699]/20 flex justify-between items-center">
-              <h2 className="text-xl font-bold flex items-center">
-                <ShoppingBag className="mr-2 h-5 w-5 text-[#e4d699]" />
-                {isCheckingOut ? "Kassa" : "Din Kundvagn"}
-                {!isCheckingOut && totalItems > 0 && (
-                  <span className="ml-2 text-sm text-white/60">({totalItems} varor)</span>
-                )}
+            <div className="flex items-center justify-between p-4 border-b border-[#e4d699]/20">
+              <h2 className="text-lg font-semibold">
+                {isCheckingOut ? "Kassa" : "Kundvagn"}
               </h2>
-              <Button variant="ghost" size="icon" className="text-white/60 hover:text-white" onClick={handleClose}>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleClose}
+                className="text-white/60 hover:text-white"
+              >
                 <X className="h-5 w-5" />
               </Button>
             </div>
+            
+            {/* Auto-clear timer - endast visa om cart inte är tom och inte i checkout */}
+            {!isCheckingOut && items.length > 0 && timeUntilClear > 0 && (
+              <div className="mx-4 mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                <div className="flex items-center text-sm text-amber-400">
+                  <Clock className="h-4 w-4 mr-2" />
+                  <span>
+                    Rensas automatiskt om {Math.floor(timeUntilClear / 60)}:{(timeUntilClear % 60).toString().padStart(2, '0')}
+                  </span>
+                </div>
+              </div>
+            )}
 
-            {isCheckingOut ? (
-              <CheckoutView onBack={() => setIsCheckingOut(false)} />
-            ) : (
+            {!isCheckingOut ? (
               <>
-                {/* Cart items */}
                 <div className="flex-grow overflow-y-auto p-4">
                   {items.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center p-4">
-                      <div className="w-16 h-16 rounded-full bg-[#e4d699]/10 flex items-center justify-center mb-4">
-                        <ShoppingBag className="h-8 w-8 text-[#e4d699]/60" />
-                      </div>
+                    <div className="flex flex-col items-center justify-center h-full text-center">
+                      <ShoppingBag className="h-16 w-16 text-white/30 mb-4" />
                       <h3 className="text-lg font-medium mb-2">Din kundvagn är tom</h3>
-                      <p className="text-white/60 mb-6">
-                        Lägg till några läckra rätter från vår meny för att komma igång.
-                      </p>
-                      <Button
-                        variant="outline"
-                        className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
-                        onClick={handleClose}
-                        asChild
-                      >
-                        <Link href="/menu">Utforska Menyn</Link>
-                      </Button>
+                      <p className="text-white/60 mb-6">Lägg till några läckra rätter från vår meny!</p>
+                      <Link href="/menu">
+                        <Button className="bg-[#e4d699] text-black hover:bg-[#e4d699]/90">
+                          Utforska menyn
+                        </Button>
+                      </Link>
                     </div>
                   ) : (
-                    <>
+                    <div className="space-y-4">
                       {items.map((item) => (
                         <CartItem key={item.id} item={item} />
                       ))}
-
-                      <div className="mt-4">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-white/60 hover:text-white"
-                          onClick={handleClearCart}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Rensa kundvagn
-                        </Button>
-                      </div>
-                    </>
+                    </div>
                   )}
                 </div>
 
-                {/* Footer with total and checkout button */}
                 {items.length > 0 && (
-                  <div className="p-4 border-t border-[#e4d699]/20">
-                    <div className="flex justify-between items-center mb-4">
-                      <span className="text-lg font-medium">Totalt:</span>
-                      <span className="text-xl font-bold text-[#e4d699]">{totalPrice} kr</span>
+                  <div className="border-t border-[#e4d699]/20 p-4 space-y-4">
+                    <div className="flex justify-between items-center text-lg font-bold">
+                      <span>Totalt</span>
+                      <span className="text-[#e4d699]">{totalPrice} kr</span>
                     </div>
-                    <Button className="w-full bg-[#e4d699] text-black hover:bg-[#e4d699]/90" onClick={handleCheckout}>
-                      Gå till kassan
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
+
+                    <div className="space-y-2">
+                      <Button
+                        className="w-full bg-[#e4d699] text-black hover:bg-[#e4d699]/90"
+                        onClick={handleCheckout}
+                      >
+                        <ArrowRight className="mr-2 h-4 w-4" />
+                        Gå till kassan
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                        onClick={handleClearCart}
+                      >
+                        Rensa kundvagn
+                      </Button>
+                    </div>
                   </div>
                 )}
               </>
+            ) : (
+              <CheckoutView onBack={() => setIsCheckingOut(false)} />
             )}
           </motion.div>
         </>
@@ -313,7 +329,9 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
   const [customerEmail, setCustomerEmail] = useState("")
   const [customerAddress, setCustomerAddress] = useState("")
   const [deliveryType, setDeliveryType] = useState("pickup") // pickup or delivery
+  const [deliveryLocation, setDeliveryLocation] = useState("trelleborg") // for delivery only
   const [pickupTime, setPickupTime] = useState("")
+  const [specialInstructions, setSpecialInstructions] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showQRCode, setShowQRCode] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
@@ -355,6 +373,19 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showLocationDropdown])
 
+  // Foodora URLs mapping
+  const foodoraMappings = {
+    trelleborg: "https://www.foodora.se/en/restaurant/z1xp/moi-sushi-and-pokebowl",
+    ystad: "https://www.foodora.se/en/restaurant/fids/moi-poke-bowl", 
+    malmo: "https://www.foodora.se/en/restaurant/k5m5/moi-sushi-and-pokebowl-k5m5"
+  }
+
+  const locationNames = {
+    trelleborg: "Trelleborg",
+    ystad: "Ystad", 
+    malmo: "Malmö"
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
@@ -368,14 +399,13 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         // Show info about Foodora redirect
         toast({
           title: "Omdirigerar till Foodora",
-          description: "Du kommer nu att omdirigeras till Foodora för att slutföra din hemleveransbeställning.",
+          description: `Du kommer nu att omdirigeras till Foodora för ${locationNames[deliveryLocation]}.`,
           variant: "default",
         })
         
-        // In a real implementation, you would redirect to Foodora's API or website
-        // For now, we'll show a message
+        // Redirect to the correct Foodora restaurant
         setTimeout(() => {
-          alert("Här skulle du omdirigeras till Foodora för att slutföra beställningen.\n\nI en riktig implementation skulle detta vara en integration med Foodoras API.")
+          window.open(foodoraMappings[deliveryLocation], '_blank')
         }, 1500)
         
       }, 1000)
@@ -389,6 +419,12 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
   }
 
   const handlePaymentComplete = async () => {
+    console.log("=== STARTING ORDER CREATION ===")
+    console.log("User:", user?.email || "Anonymous")
+    console.log("Total price:", totalPrice)
+    console.log("Items:", items)
+    console.log("Customer info:", { customerName, customerPhone, customerEmail })
+    
     try {
       // Show loading toast
       toast({
@@ -397,18 +433,40 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         variant: "default",
       })
 
-      if (!user) {
+      // Allow anonymous orders under 250kr to prevent fake orders
+      if (!user && totalPrice >= 250) {
+        console.log("=== BLOCKING: Anonymous order over 250kr ===")
         toast({
-          title: "Fel",
-          description: "Du måste vara inloggad för att lägga en beställning.",
+          title: "Inloggning krävs",
+          description: "För beställningar över 250kr krävs inloggning för att motverka falska beställningar.",
           variant: "destructive",
         })
         return
       }
 
+      // Validate required fields
+      if (!customerName || !customerPhone || !customerEmail || !pickupTime) {
+        console.log("=== BLOCKING: Missing required fields ===")
+        console.log("Missing:", {
+          customerName: !customerName,
+          customerPhone: !customerPhone, 
+          customerEmail: !customerEmail,
+          pickupTime: !pickupTime
+        })
+        toast({
+          title: "Saknade uppgifter",
+          description: "Alla fält måste fyllas i för att lägga en beställning.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // For anonymous orders, use a special UUID since RLS requires user_id match
+      const ANONYMOUS_USER_ID = '00000000-0000-0000-0000-000000000000'
+      
       // Prepare order data for database
       const orderData = {
-        user_id: user.id,
+        user_id: user?.id || ANONYMOUS_USER_ID, // Use special UUID for anonymous orders
         items: items,
         total_price: totalPrice,
         amount: totalPrice, // För kompatibilitet
@@ -417,6 +475,8 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         phone: customerPhone,
         delivery_address: deliveryType === "delivery" ? customerAddress : null,
         delivery_type: deliveryType,
+        customer_name: customerName, // Store customer name for anonymous orders
+        customer_email: customerEmail, // Store customer email for anonymous orders
         notes: `${deliveryType === "pickup" ? "Hämtningstid" : "Leveranstid"}: ${
           pickupTime === "asap"
             ? "Så snart som möjligt"
@@ -425,28 +485,48 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
               : pickupTime === "1hour"
                 ? "Om 1 timme"
                 : "Om 2 timmar"
-        }${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}`,
+        }${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}${!user ? " | ANONYM BESTÄLLNING (Under 250kr)" : ""}`,
+        special_instructions: specialInstructions || null,
         payment_method: 'cash', // Betala i restaurangen
         order_number: orderNumber
       }
 
+      console.log("=== ORDER DATA PREPARED ===")
+      console.log(orderData)
+
       // Save to database
+      console.log("=== SAVING TO DATABASE ===")
       const { data, error } = await supabase
         .from('orders')
         .insert([orderData])
         .select()
         .single()
 
+      console.log("=== DATABASE RESPONSE ===")
+      console.log("Data:", data)
+      console.log("Error:", error)
+
       if (error) {
         console.error('Database error details:', {
           message: error.message,
           details: error.details,
           hint: error.hint,
-          code: error.code
+          code: error.code,
+          orderData: orderData
         })
         toast({
           title: "Fel vid sparande",
           description: `Kunde inte spara beställningen: ${error.message}`,
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (!data) {
+        console.error('=== NO DATA RETURNED ===')
+        toast({
+          title: "Fel vid sparande",
+          description: "Ingen data returnerades från databasen",
           variant: "destructive",
         })
         return
@@ -461,6 +541,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
       console.log("========================")
 
       // Send location-based notification to admins
+      console.log("=== SENDING NOTIFICATION ===")
       try {
         const { error: notificationError } = await supabase
           .from('notifications')
@@ -490,6 +571,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
       }
 
       // Send order confirmation email
+      console.log("=== SENDING EMAIL ===")
       try {
         const emailResponse = await fetch('/api/send-order-confirmation', {
           method: 'POST',
@@ -517,10 +599,14 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
                 : pickupTime === "1hour"
                   ? "Om 1 timme"
                   : "Om 2 timmar",
+            specialInstructions: specialInstructions || undefined,
           }),
         })
 
+        console.log("Email response status:", emailResponse.status)
         const emailResult = await emailResponse.json()
+        console.log("Email result:", emailResult)
+        
         if (emailResult.success) {
           console.log("Order confirmation email sent successfully")
         } else {
@@ -531,14 +617,21 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         // Don't fail the order if email fails
       }
 
+      // Spåra slutförd beställning
+      console.log("=== TRACKING ORDER ===")
+      trackOrderComplete(orderNumber, totalPrice, selectedLocation.name)
+
       // Show success message and navigate
+      console.log("=== SHOWING SUCCESS MODAL ===")
       setShowSuccessModal(true)
 
+      console.log("=== ORDER CREATION COMPLETED SUCCESSFULLY ===")
+
     } catch (error) {
-      console.error('Error creating order:', error)
+      console.error('=== ERROR CREATING ORDER ===', error)
       toast({
         title: "Fel",
-        description: "Ett oväntat fel inträffade. Försök igen.",
+        description: `Ett oväntat fel inträffade: ${error instanceof Error ? error.message : 'Okänt fel'}. Försök igen.`,
         variant: "destructive",
       })
     }
@@ -550,6 +643,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
       customerName={customerName}
       items={items}
       totalPrice={totalPrice}
+      specialInstructions={specialInstructions}
       onClose={() => {
         clearCart()
         setShowSuccessModal(false)
@@ -680,6 +774,25 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
             <span className="text-[#e4d699]">{totalPrice} kr</span>
           </div>
         </div>
+
+        {/* Information about anonymous orders */}
+        {!user && totalPrice < 250 && (
+          <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+            <p className="text-sm text-blue-400">
+              ℹ️ <strong>Anonym beställning tillåten</strong><br />
+              För beställningar under 250kr krävs ingen inloggning för att motverka falska beställningar.
+            </p>
+          </div>
+        )}
+        
+        {!user && totalPrice >= 250 && (
+          <div className="mt-3 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg">
+            <p className="text-sm text-orange-400">
+              ⚠️ <strong>Inloggning krävs för stora beställningar</strong><br />
+              För beställningar över 250kr krävs inloggning för att motverka falska beställningar.
+            </p>
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -701,7 +814,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
           )}
 
           {/* Auto-filled notice for logged in users */}
-          {user && profile && (
+          {user && profile && deliveryType === "pickup" && (
             <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
               <p className="text-sm text-green-400">
                 ✓ Dina uppgifter har fyllts i automatiskt från din profil
@@ -735,7 +848,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
                 }`}
               >
                 <div className="font-medium">Hemleverans</div>
-                <div className="text-xs opacity-80">Leverans till din adress</div>
+                <div className="text-xs opacity-80">Leverans via Foodora</div>
               </button>
             </div>
           </div>
@@ -870,7 +983,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
                           Inga platser tillgängliga
                         </div>
                       )}
-                    </motion.div>
+                    </div>
                   )}
                 </AnimatePresence>
               </div>
@@ -879,6 +992,57 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
               </p>
             </div>
           )}
+
+          {/* Delivery location selection - only show for delivery */}
+          {deliveryType === "delivery" && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Välj leveransplats</Label>
+              <div className="grid grid-cols-1 gap-3">
+                {Object.entries(locationNames).map(([key, name]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setDeliveryLocation(key)}
+                    className={`p-3 rounded-lg border text-left transition-colors flex items-center gap-3 ${
+                      deliveryLocation === key
+                        ? "border-[#e4d699] bg-[#e4d699]/10 text-[#e4d699]"
+                        : "border-white/20 bg-black/30 text-white/80 hover:border-white/40"
+                    }`}
+                  >
+                    <MapPin className="h-4 w-4" />
+                    <div>
+                      <div className="font-medium">{name}</div>
+                      <div className="text-xs opacity-80">Leverans via Foodora</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Special Instructions - show for both pickup and delivery */}
+          <div className="space-y-2">
+            <Label htmlFor="specialInstructions" className="text-sm font-medium">
+              Speciella önskemål (valfritt)
+            </Label>
+            <textarea
+              id="specialInstructions"
+              value={specialInstructions}
+              onChange={(e) => setSpecialInstructions(e.target.value)}
+              className="w-full p-3 rounded-md bg-black/50 border border-[#e4d699]/30 text-white focus:border-[#e4d699] focus:outline-none resize-none"
+              placeholder="T.ex. allergier, extra instruktioner, önskemål om tillagning..."
+              rows={3}
+              maxLength={500}
+            />
+            <p className="text-xs text-white/60">
+              Berätta om allergier, speciella önskemål eller andra instruktioner (max 500 tecken)
+            </p>
+            {specialInstructions && (
+              <p className="text-xs text-white/40">
+                {specialInstructions.length}/500 tecken
+              </p>
+            )}
+          </div>
 
           {/* Foodora info - only show for delivery */}
           {deliveryType === "delivery" && (
@@ -894,18 +1058,18 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
                     />
                   </div>
                   <div className="flex-grow">
-                    <div className="font-medium text-white">Foodora</div>
+                    <div className="font-medium text-white">Foodora - {locationNames[deliveryLocation]}</div>
                     <div className="text-sm text-white/70">Hemleverans genom Foodora</div>
                   </div>
                 </div>
                 <p className="text-xs text-white/60 mt-3">
                   Du kommer att omdirigeras till Foodora för att slutföra beställningen
                 </p>
-                {totalPrice < 150 && (
+                {totalPrice < 120 && (
                   <div className="mt-3 p-2 bg-orange-500/10 border border-orange-500/30 rounded-lg">
                     <p className="text-xs text-orange-400">
-                      ⚠️ Minsta beställning för hemleverans är 150 kr. 
-                      Du behöver lägga till {150 - totalPrice} kr till.
+                      ⚠️ Minsta beställning för hemleverans är 120 kr. 
+                      Du behöver lägga till {120 - totalPrice} kr till.
                     </p>
                   </div>
                 )}
@@ -917,14 +1081,14 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         <Button 
           type="submit" 
           className="w-full bg-[#e4d699] text-black hover:bg-[#e4d699]/90" 
-          disabled={isSubmitting || (deliveryType === "delivery" && totalPrice < 150)}
+          disabled={isSubmitting || (deliveryType === "delivery" && totalPrice < 120)}
         >
           {isSubmitting 
             ? "Bearbetar..." 
             : deliveryType === "delivery" 
-              ? totalPrice < 150 
-                ? `Lägg till ${150 - totalPrice} kr för hemleverans`
-                : "Fortsätt till Foodora"
+              ? totalPrice < 120 
+                ? `Lägg till ${120 - totalPrice} kr för hemleverans`
+                : `Fortsätt till Foodora - ${locationNames[deliveryLocation]}`
               : "Fortsätt till betalning"
           }
         </Button>

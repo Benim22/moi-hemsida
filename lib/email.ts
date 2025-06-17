@@ -23,6 +23,7 @@ const getOrderConfirmationTemplate = (orderData: {
   pickupTime?: string
   phone: string
   notes?: string
+  specialInstructions?: string
 }) => {
   const itemsList = orderData.items
     .map(item => `${item.quantity}x ${item.name} - ${item.price * item.quantity} kr`)
@@ -85,6 +86,15 @@ const getOrderConfirmationTemplate = (orderData: {
             </div>` : ''
           }
           
+          ${orderData.specialInstructions ? 
+            `<div style="margin-bottom: 20px;">
+              <strong style="color: #e4d699;">Speciella önskemål:</strong><br>
+              <div style="background-color: #2a2a2a; padding: 10px; border-radius: 4px; border-left: 3px solid #e4d699;">
+                ${orderData.specialInstructions}
+              </div>
+            </div>` : ''
+          }
+          
           <div style="background-color: #e4d699; color: #000; padding: 15px; border-radius: 4px; text-align: center;">
             <strong>Vi förbereder din beställning nu!</strong><br>
             ${orderData.orderType === 'delivery' ? 
@@ -120,6 +130,7 @@ ${itemsList}
 Totalt: ${orderData.totalPrice} kr
 
 ${orderData.notes ? `Anteckningar: ${orderData.notes}\n` : ''}
+${orderData.specialInstructions ? `Speciella önskemål: ${orderData.specialInstructions}\n` : ''}
 
 Vi förbereder din beställning nu!
 ${orderData.orderType === 'delivery' ? 
@@ -270,6 +281,7 @@ export const sendOrderConfirmation = async (orderData: {
   pickupTime?: string
   phone: string
   notes?: string
+  specialInstructions?: string
 }) => {
   try {
     const template = getOrderConfirmationTemplate(orderData)
@@ -305,7 +317,8 @@ ${orderData.items.map(item => `${item.quantity}x ${item.name} - ${item.price * i
 
 Totalt: ${orderData.totalPrice} kr
 
-${orderData.notes ? `Anteckningar: ${orderData.notes}` : ''}
+${orderData.notes ? `Anteckningar: ${orderData.notes}\n` : ''}
+${orderData.specialInstructions ? `Speciella önskemål: ${orderData.specialInstructions}` : ''}
       `,
     })
 

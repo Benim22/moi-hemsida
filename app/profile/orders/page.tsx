@@ -308,6 +308,12 @@ export default function OrdersPage() {
                             <p className="text-sm text-white/60">{order.notes}</p>
                           </div>
                         )}
+                        {order.special_instructions && (
+                          <div>
+                            <p className="text-sm font-medium text-orange-400">Speciella önskemål:</p>
+                            <p className="text-sm text-orange-300 bg-orange-500/10 p-2 rounded border border-orange-500/30">{order.special_instructions}</p>
+                          </div>
+                        )}
                       </div>
 
                       <Separator className="bg-[#e4d699]/20" />

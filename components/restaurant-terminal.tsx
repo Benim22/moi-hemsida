@@ -22,36 +22,59 @@ export default function RestaurantTerminal() {
     if (!user || !profile?.location) return
 
     // Subscribe to new orders
-    const ordersSubscription = supabase
-      .channel('restaurant-orders')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'orders',
-        filter: `location=eq.${profile.location}`
-      }, (payload) => {
-        console.log('🔔 NY BESTÄLLNING MOTTAGEN:', payload.new)
-        setOrders(prev => [payload.new, ...prev])
-        
-        const customerName = payload.new.profiles?.name || payload.new.customer_name || 'Gäst'
-        const notificationTitle = 'Ny beställning!'
-        const notificationBody = `Order #${payload.new.order_number} från ${customerName} - ${payload.new.total_price || payload.new.amount} kr`
-        
-        console.log('🔔 Visar notifikation:', { title: notificationTitle, body: notificationBody })
-        showBrowserNotification(notificationTitle, notificationBody)
-        playNotificationSound()
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'orders',
-        filter: `location=eq.${profile.location}`
-      }, (payload) => {
-        setOrders(prev => prev.map(order => 
-          order.id === payload.new.id ? payload.new : order
-        ))
-      })
-      .subscribe()
+    const handleOrderInsert = (payload) => {
+      console.log('🔔 NY BESTÄLLNING MOTTAGEN:', payload.new)
+      setOrders(prev => [payload.new, ...prev])
+      
+      const customerName = payload.new.profiles?.name || payload.new.customer_name || 'Gäst'
+      const notificationTitle = 'Ny beställning!'
+      const notificationBody = `Order #${payload.new.order_number} från ${customerName} - ${payload.new.total_price || payload.new.amount} kr`
+      
+      console.log('🔔 Visar notifikation:', { title: notificationTitle, body: notificationBody })
+      showBrowserNotification(notificationTitle, notificationBody)
+      playNotificationSound()
+    }
+
+    const handleOrderUpdate = (payload) => {
+      setOrders(prev => prev.map(order => 
+        order.id === payload.new.id ? payload.new : order
+      ))
+    }
+
+    let ordersSubscription
+    if (profile.location === 'all') {
+      // För "all" location, lyssna på alla orders utan filter
+      ordersSubscription = supabase
+        .channel('restaurant-orders')
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'orders'
+        }, handleOrderInsert)
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'orders'
+        }, handleOrderUpdate)
+        .subscribe()
+    } else {
+      // För specifik location, filtrera på location
+      ordersSubscription = supabase
+        .channel('restaurant-orders')
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'orders',
+          filter: `location=eq.${profile.location}`
+        }, handleOrderInsert)
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'orders',
+          filter: `location=eq.${profile.location}`
+        }, handleOrderUpdate)
+        .subscribe()
+    }
 
     // Subscribe to notifications
     const notificationsSubscription = supabase
@@ -65,15 +88,24 @@ export default function RestaurantTerminal() {
         console.log('📍 Min location:', profile.location)
         console.log('📍 Notifikation location:', payload.new.metadata?.location)
         
-        if (payload.new.user_role === 'admin' || 
+        // Visa notifikation om:
+        // 1. Det är en admin-notifikation OCH
+        // 2. Användaren har "all" location ELLER notifikationen matchar användarens location ELLER notifikationen är för "all"
+        if (payload.new.user_role === 'admin' && (
+            profile.location === 'all' ||
             payload.new.metadata?.location === profile.location ||
-            payload.new.metadata?.location === 'all') {
+            payload.new.metadata?.location === 'all')) {
           console.log('✅ Notifikation matchar - visar den')
           setNotifications(prev => [payload.new, ...prev])
           showBrowserNotification(payload.new.title, payload.new.message)
           playNotificationSound()
         } else {
           console.log('❌ Notifikation matchar inte - hoppar över')
+          console.log('Debug info:', {
+            userRole: payload.new.user_role,
+            userLocation: profile.location,
+            notificationLocation: payload.new.metadata?.location
+          })
         }
       })
       .subscribe()
@@ -102,7 +134,7 @@ export default function RestaurantTerminal() {
 
   const fetchOrders = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
         .select(`
           *,
@@ -112,17 +144,26 @@ export default function RestaurantTerminal() {
             phone
           )
         `)
-        .eq('location', profile.location)
         .in('status', ['pending', 'confirmed', 'preparing', 'ready'])
         .order('created_at', { ascending: false })
+      
+      // Om location är "all", hämta från alla platser, annars filtrera på specifik location
+      if (profile.location !== 'all') {
+        query = query.eq('location', profile.location)
+      }
+      
+      const { data, error } = await query
 
       if (error) throw error
       
       // Lägg till debug-information för att se vad som kommer från databasen
-      console.log('📦 Hämtade beställningar:', data?.map(order => ({
+      console.log('📦 Hämtade beställningar för location:', profile.location)
+      console.log('📦 Antal beställningar:', data?.length || 0)
+      console.log('📦 Beställningar:', data?.map(order => ({
         id: order.id,
         order_number: order.order_number,
-        user_id: order.user_id,
+        location: order.location,
+        status: order.status,
         customer_name: order.customer_name,
         profile_name: order.profiles?.name,
         final_name: order.profiles?.name || order.customer_name || 'Gäst'
@@ -147,7 +188,20 @@ export default function RestaurantTerminal() {
         .limit(10)
 
       if (error) throw error
-      setNotifications(data || [])
+      
+      // Filtrera notifikationer baserat på location
+      const filteredNotifications = data?.filter(notification => {
+        if (profile.location === 'all') {
+          // Användare med "all" location ser alla admin-notifikationer
+          return true
+        } else {
+          // Användare med specifik location ser endast notifikationer för sin location eller "all"
+          return notification.metadata?.location === profile.location || 
+                 notification.metadata?.location === 'all'
+        }
+      }) || []
+      
+      setNotifications(filteredNotifications)
     } catch (error) {
       console.error('Error fetching notifications:', error)
     }
