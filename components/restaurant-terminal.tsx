@@ -11,13 +11,36 @@ import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle
 import jsPDF from 'jspdf'
 
 export default function RestaurantTerminal() {
-  const { user, profile } = useSimpleAuth()
+  const { user, profile, setUser, setProfile, updateLocation } = useSimpleAuth()
   const [orders, setOrders] = useState([])
   const [notifications, setNotifications] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [notificationPermission, setNotificationPermission] = useState('default')
   const [notificationDialog, setNotificationDialog] = useState(null)
+  
+  // Filter states
+  const [selectedLocation, setSelectedLocation] = useState(profile?.location || 'all')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [showAssignUser, setShowAssignUser] = useState(false)
+  const [availableUsers, setAvailableUsers] = useState([])
+  const [selectedUserId, setSelectedUserId] = useState('')
+  const [assignLocation, setAssignLocation] = useState('malmo')
+  const [assigningUser, setAssigningUser] = useState(false)
+
+  // Update selectedLocation when profile loads
+  useEffect(() => {
+    console.log('👤 Profile effect triggered:', {
+      profileLocation: profile?.location,
+      currentSelectedLocation: selectedLocation,
+      shouldUpdate: profile?.location && selectedLocation === 'all'
+    })
+    
+    if (profile?.location && selectedLocation === 'all') {
+      console.log('🔄 Uppdaterar selectedLocation från profil:', profile.location)
+      setSelectedLocation(profile.location)
+    }
+  }, [profile?.location, selectedLocation])
 
   // Real-time subscriptions
   useEffect(() => {
@@ -26,19 +49,43 @@ export default function RestaurantTerminal() {
     console.log('🚀 Startar real-time prenumerationer för:', {
       userId: user.id,
       userLocation: profile.location,
-      userRole: profile.role
+      userRole: profile.role,
+      selectedLocation: selectedLocation
     })
 
     // Subscribe to new orders
     const handleOrderInsert = (payload) => {
       console.log('🔔 NY BESTÄLLNING MOTTAGEN:', payload.new)
+      console.log('🔔 Order location:', payload.new.location)
+      console.log('🔔 User location:', profile.location)
+      console.log('🔔 User_id:', payload.new.user_id)
+      console.log('🔔 Customer_name:', payload.new.customer_name)
+      
+      // Kontrollera om denna order ska visas för denna location
+      const shouldShow = selectedLocation === 'all' || payload.new.location === selectedLocation
+      
+      if (!shouldShow) {
+        console.log('🔔 Order inte för denna location, hoppar över notifikation')
+        return
+      }
+      
       setOrders(prev => [payload.new, ...prev])
       
+      // Hantera både inloggade och anonyma användare
       const customerName = payload.new.profiles?.name || payload.new.customer_name || 'Gäst'
-      const notificationTitle = 'Ny beställning!'
-      const notificationBody = `Order #${payload.new.order_number} från ${customerName} - ${payload.new.total_price || payload.new.amount} kr`
+      const isAnonymous = payload.new.user_id === '00000000-0000-0000-0000-000000000000'
+      const customerLabel = isAnonymous ? `${customerName} (Anonym)` : customerName
       
-      console.log('🔔 Visar notifikation:', { title: notificationTitle, body: notificationBody })
+      const notificationTitle = 'Ny beställning!'
+      const notificationBody = `Order #${payload.new.order_number} från ${customerLabel} - ${payload.new.total_price || payload.new.amount} kr`
+      
+      console.log('🔔 Visar notifikation:', { 
+        title: notificationTitle, 
+        body: notificationBody,
+        isAnonymous: isAnonymous,
+        customer_name: payload.new.customer_name,
+        location: payload.new.location
+      })
       showBrowserNotification(notificationTitle, notificationBody, true) // true för ordernotifikation
       playNotificationSound()
     }
@@ -56,7 +103,7 @@ export default function RestaurantTerminal() {
     console.log('📡 Skapar unik kanal:', channelName)
     
     let ordersSubscription
-    if (profile.location === 'all') {
+    if (selectedLocation === 'all') {
       console.log('📡 Prenumererar på ALLA orders (location: all)')
       // För "all" location, lyssna på alla orders utan filter
       ordersSubscription = supabase
@@ -80,7 +127,7 @@ export default function RestaurantTerminal() {
           }
         })
     } else {
-      console.log('📡 Prenumererar på orders för location:', profile.location)
+      console.log('📡 Prenumererar på orders för location:', selectedLocation)
       // För specifik location, filtrera på location
       ordersSubscription = supabase
         .channel(channelName)
@@ -88,13 +135,13 @@ export default function RestaurantTerminal() {
           event: 'INSERT',
           schema: 'public',
           table: 'orders',
-          filter: `location=eq.${profile.location}`
+          filter: `location=eq.${selectedLocation}`
         }, handleOrderInsert)
         .on('postgres_changes', {
           event: 'UPDATE',
           schema: 'public',
           table: 'orders',
-          filter: `location=eq.${profile.location}`
+          filter: `location=eq.${selectedLocation}`
         }, handleOrderUpdate)
         .subscribe((status) => {
           console.log('📡 Orders prenumeration status:', status)
@@ -157,7 +204,7 @@ export default function RestaurantTerminal() {
       ordersSubscription.unsubscribe()
       notificationsSubscription.unsubscribe()
     }
-  }, [user, profile?.location])
+  }, [user, selectedLocation, profile?.location])
 
   // Fetch initial data
   useEffect(() => {
@@ -165,8 +212,16 @@ export default function RestaurantTerminal() {
       fetchOrders()
       fetchNotifications()
       requestNotificationPermission()
+      fetchAvailableUsers()
     }
   }, [user, profile?.location])
+
+  // Update data when location filter changes
+  useEffect(() => {
+    if (user && selectedLocation) {
+      fetchOrders()
+    }
+  }, [selectedLocation])
 
   // Auto-refresh orders every 30 seconds
   useEffect(() => {
@@ -225,8 +280,8 @@ export default function RestaurantTerminal() {
         .order('created_at', { ascending: false })
       
       // Om location är "all", hämta från alla platser, annars filtrera på specifik location
-      if (profile.location !== 'all') {
-        query = query.eq('location', profile.location)
+      if (selectedLocation !== 'all') {
+        query = query.eq('location', selectedLocation)
       }
       
       const { data, error } = await query
@@ -828,11 +883,98 @@ export default function RestaurantTerminal() {
       case 'malmo': return 'Malmö'
       case 'trelleborg': return 'Trelleborg'
       case 'ystad': return 'Ystad'
+      case 'all': return 'Alla platser'
       default: return location
     }
   }
 
+  // Fetch available users from profiles table
+  const fetchAvailableUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name, email, phone, location, role')
+        .order('name')
 
+      if (error) throw error
+      setAvailableUsers(data || [])
+    } catch (error) {
+      console.error('Error fetching users:', error)
+    }
+  }
+
+  // Assign user to location
+  const assignUserToLocation = async () => {
+    try {
+      setAssigningUser(true)
+      
+      if (!selectedUserId) {
+        alert('Välj en användare')
+        return
+      }
+
+      const selectedUser = availableUsers.find(u => u.id === selectedUserId)
+      if (!selectedUser) {
+        alert('Användare hittades inte')
+        return
+      }
+
+      // Uppdatera användarens location i profiles tabellen
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({ 
+          location: assignLocation,
+          role: 'admin', // Sätt till admin för terminalåtkomst
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedUserId)
+        .select()
+
+      if (error) {
+        console.error('Error assigning user:', error)
+        alert('Fel vid tilldelning: ' + error.message)
+        return
+      }
+
+      console.log('Användare tilldelad:', data[0])
+      
+      // Visa bekräftelse
+      showBrowserNotification(
+        'Användare tilldelad!', 
+        `${selectedUser.name} har tilldelats ${getLocationName(assignLocation)}`,
+        false
+      )
+
+      // Återställ formulär och stäng modal
+      setSelectedUserId('')
+      setAssignLocation('malmo')
+      setShowAssignUser(false)
+      
+      // Uppdatera listan
+      fetchAvailableUsers()
+
+    } catch (error) {
+      console.error('Error assigning user:', error)
+      alert('Ett fel uppstod vid tilldelning av användare')
+    } finally {
+      setAssigningUser(false)
+    }
+  }
+
+  // Filter orders based on selected filters
+  const filteredOrders = orders.filter(order => {
+    // Location filter
+    if (selectedLocation !== 'all' && order.location !== selectedLocation) {
+      return false
+    }
+    
+    // Status filter
+    if (statusFilter !== 'all' && order.status !== statusFilter) {
+      return false
+    }
+    
+    return true
+  })
 
   const unreadNotifications = notifications.filter(n => !n.read).length
 
@@ -870,7 +1012,7 @@ export default function RestaurantTerminal() {
                     Restaurang Terminal
                   </CardTitle>
                   <p className="text-white/70 text-sm lg:text-lg">
-                    📍 {getLocationName(profile?.location)} • 👤 {profile?.name}
+                    📍 {getLocationName(selectedLocation)} • 👤 {profile?.name}
                   </p>
                   <p className="text-white/50 text-xs lg:text-sm">
                     {new Date().toLocaleString('sv-SE', { 
@@ -929,29 +1071,97 @@ export default function RestaurantTerminal() {
           </CardHeader>
         </Card>
 
+        {/* Filters */}
+        <Card className="border border-[#e4d699]/30 bg-gradient-to-r from-black/80 to-gray-900/80 backdrop-blur-md mb-6">
+          <CardContent className="p-4">
+            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+              <div className="flex flex-col sm:flex-row gap-4 flex-1">
+                {/* Location Filter */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                  <label className="text-white/70 text-sm font-medium whitespace-nowrap">📍 Plats:</label>
+                  <select 
+                    value={selectedLocation}
+                    onChange={async (e) => {
+                      const newLocation = e.target.value
+                      setSelectedLocation(newLocation)
+                      
+                      // Uppdatera profilen i databasen
+                      if (updateLocation) {
+                        const result = await updateLocation(newLocation)
+                        if (result.error) {
+                          console.error("❌ Kunde inte uppdatera plats:", result.error)
+                        } else {
+                          console.log("✅ Plats uppdaterad till:", newLocation)
+                        }
+                      }
+                    }}
+                    className="bg-black/50 border border-[#e4d699]/30 rounded-md px-3 py-2 text-white text-sm min-w-[150px]"
+                  >
+                    <option value="all">Alla platser</option>
+                    <option value="malmo">Malmö</option>
+                    <option value="trelleborg">Trelleborg</option>
+                    <option value="ystad">Ystad</option>
+                  </select>
+                </div>
+
+                {/* Status Filter */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                  <label className="text-white/70 text-sm font-medium whitespace-nowrap">🔄 Status:</label>
+                  <select 
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="bg-black/50 border border-[#e4d699]/30 rounded-md px-3 py-2 text-white text-sm min-w-[150px]"
+                  >
+                    <option value="all">Alla statusar</option>
+                    <option value="pending">Väntande</option>
+                    <option value="confirmed">Bekräftad</option>
+                    <option value="preparing">Tillagas</option>
+                    <option value="ready">Redo</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Assign User */}
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => {
+                    setShowAssignUser(true)
+                    fetchAvailableUsers()
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                >
+                  👥 Tilldela personal
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Stats Overview */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card className="border border-yellow-500/30 bg-gradient-to-br from-yellow-900/20 to-yellow-800/20 backdrop-blur-sm">
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-yellow-400">{orders.filter(o => o.status === 'pending').length}</div>
+              <div className="text-2xl font-bold text-yellow-400">{filteredOrders.filter(o => o.status === 'pending').length}</div>
               <div className="text-sm text-yellow-300">Väntande</div>
             </CardContent>
           </Card>
           <Card className="border border-blue-500/30 bg-gradient-to-br from-blue-900/20 to-blue-800/20 backdrop-blur-sm">
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-400">{orders.filter(o => o.status === 'preparing').length}</div>
+              <div className="text-2xl font-bold text-blue-400">{filteredOrders.filter(o => o.status === 'preparing').length}</div>
               <div className="text-sm text-blue-300">Tillagas</div>
             </CardContent>
           </Card>
           <Card className="border border-green-500/30 bg-gradient-to-br from-green-900/20 to-green-800/20 backdrop-blur-sm">
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-green-400">{orders.filter(o => o.status === 'ready').length}</div>
+              <div className="text-2xl font-bold text-green-400">{filteredOrders.filter(o => o.status === 'ready').length}</div>
               <div className="text-sm text-green-300">Redo</div>
             </CardContent>
           </Card>
           <Card className="border border-[#e4d699]/30 bg-gradient-to-br from-[#e4d699]/20 to-yellow-600/20 backdrop-blur-sm">
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-[#e4d699]">{orders.length}</div>
+              <div className="text-2xl font-bold text-[#e4d699]">{filteredOrders.length}</div>
               <div className="text-sm text-[#e4d699]/80">Totalt</div>
             </CardContent>
           </Card>
@@ -963,11 +1173,19 @@ export default function RestaurantTerminal() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-white">Aktiva Beställningar</h3>
               <Badge variant="outline" className="border-[#e4d699]/50 text-[#e4d699]">
-                {orders.length} aktiva
+                {filteredOrders.length} visas
               </Badge>
             </div>
             <div className="space-y-4">
-              {orders.map(order => (
+              {filteredOrders.length === 0 ? (
+                <Card className="border border-[#e4d699]/30 bg-gradient-to-br from-black/80 to-gray-900/80 backdrop-blur-sm">
+                  <CardContent className="p-8 text-center">
+                    <div className="text-white/60 mb-2">📋</div>
+                    <p className="text-white/60">Inga beställningar matchar de valda filtren</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                filteredOrders.map(order => (
                 <Card key={order.id} className="border border-[#e4d699]/30 bg-gradient-to-br from-black/80 to-gray-900/80 backdrop-blur-sm hover:border-[#e4d699]/50 transition-all duration-300 shadow-lg">
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
@@ -1077,7 +1295,7 @@ export default function RestaurantTerminal() {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+              )))}
             </div>
           </div>
 
@@ -1131,6 +1349,95 @@ export default function RestaurantTerminal() {
                   size="lg"
                 >
                   OK - Stäng
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Assign User Modal */}
+        <Dialog open={showAssignUser} onOpenChange={setShowAssignUser}>
+          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-[#e4d699] text-xl">👥 Tilldela personal till restaurang</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-white/70 text-sm">Välj en befintlig användare och tilldela dem till en restaurang:</p>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="text-white/70 text-sm font-medium">Välj användare *</label>
+                  <select 
+                    value={selectedUserId}
+                    onChange={(e) => setSelectedUserId(e.target.value)}
+                    className="w-full bg-black/50 border border-[#e4d699]/30 rounded-md px-3 py-2 text-white text-sm mt-1"
+                    disabled={assigningUser}
+                  >
+                    <option value="">-- Välj användare --</option>
+                    {availableUsers.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.name} ({user.email}) - {user.location ? getLocationName(user.location) : 'Ingen plats'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {selectedUserId && (
+                  <div className="bg-black/30 border border-[#e4d699]/20 rounded-md p-3">
+                    <h4 className="text-white/80 text-sm font-medium mb-2">Användarinfo:</h4>
+                    {(() => {
+                      const user = availableUsers.find(u => u.id === selectedUserId)
+                      return user ? (
+                        <div className="space-y-1 text-xs text-white/60">
+                          <p><strong>Namn:</strong> {user.name}</p>
+                          <p><strong>E-post:</strong> {user.email}</p>
+                          <p><strong>Telefon:</strong> {user.phone || 'Ej angivet'}</p>
+                          <p><strong>Nuvarande plats:</strong> {user.location ? getLocationName(user.location) : 'Ingen plats tilldelad'}</p>
+                          <p><strong>Roll:</strong> {user.role || 'Ej angiven'}</p>
+                        </div>
+                      ) : null
+                    })()}
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-white/70 text-sm font-medium">Tilldela till restaurang *</label>
+                  <select 
+                    value={assignLocation}
+                    onChange={(e) => setAssignLocation(e.target.value)}
+                    className="w-full bg-black/50 border border-[#e4d699]/30 rounded-md px-3 py-2 text-white text-sm mt-1"
+                    disabled={assigningUser}
+                  >
+                    <option value="malmo">Malmö</option>
+                    <option value="trelleborg">Trelleborg</option>
+                    <option value="ystad">Ystad</option>
+                    <option value="all">Alla platser (Super Admin)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <Button 
+                  onClick={() => setShowAssignUser(false)}
+                  variant="outline"
+                  className="flex-1"
+                  disabled={assigningUser}
+                >
+                  Avbryt
+                </Button>
+                <Button 
+                  onClick={assignUserToLocation}
+                  className="flex-1 bg-[#e4d699] text-black hover:bg-[#e4d699]/90"
+                  disabled={assigningUser || !selectedUserId}
+                >
+                  {assigningUser ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-black mr-2"></div>
+                      Tilldelar...
+                    </>
+                  ) : (
+                    '👥 Tilldela personal'
+                  )}
                 </Button>
               </div>
             </div>
