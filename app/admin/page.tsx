@@ -6545,24 +6545,32 @@ function EmailManagement() {
   }
 
   const handleSendTestEmail = async () => {
-    if (!testEmail) return
+    if (!testEmail) {
+      toast({
+        title: "E-postadress saknas",
+        description: "Ange en e-postadress för att skicka test-e-post.",
+        variant: "destructive",
+      })
+      return
+    }
 
     setTestingEmail(true)
     try {
-      const response = await fetch('/api/email/send', {
+      const response = await fetch('/api/test-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          action: 'test',
-          email: testEmail
+          email: testEmail,
+          subject: 'Test från Moi Sushi Admin',
+          message: 'Detta är ett test-e-post från ditt Moi Sushi admin-system. Om du får detta meddelande fungerar e-postsystemet korrekt!'
         })
       })
       
       const result = await response.json()
-      if (!response.ok) throw new Error(result.error)
+      if (!response.ok) throw new Error(result.error || 'Okänt fel')
 
       toast({
-        title: "Test-e-post skickad",
+        title: "Test-e-post skickad! ✅",
         description: `Test-e-post skickad till ${testEmail}`,
         variant: "default",
       })
@@ -6571,8 +6579,44 @@ function EmailManagement() {
     } catch (error) {
       console.error('Error sending test email:', error)
       toast({
-        title: "Fel",
-        description: error.message || "Kunde inte skicka test-e-post.",
+        title: "Fel vid e-posttest ❌",
+        description: error.message || "Kunde inte skicka test-e-post. Kontrollera e-postinställningarna.",
+        variant: "destructive",
+      })
+    } finally {
+      setTestingEmail(false)
+    }
+  }
+
+  const handleQuickEmailTest = async () => {
+    const userEmail = prompt("Ange e-postadress för test:")
+    if (!userEmail) return
+
+    setTestingEmail(true)
+    try {
+      const response = await fetch('/api/test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email: userEmail,
+          subject: 'E-posttest från Moi Sushi',
+          message: 'Detta är ett test-e-post från ditt Moi Sushi system. Om du får detta meddelande fungerar e-postsystemet korrekt!'
+        })
+      })
+      
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Okänt fel')
+
+      toast({
+        title: "Test-e-post skickad! ✅",
+        description: `Test-e-post skickad till ${userEmail}`,
+        variant: "default",
+      })
+    } catch (error) {
+      console.error('Error sending test email:', error)
+      toast({
+        title: "Fel vid e-posttest ❌",
+        description: error.message || "Kunde inte skicka test-e-post. Kontrollera e-postinställningarna.",
         variant: "destructive",
       })
     } finally {
@@ -6995,8 +7039,62 @@ function EmailManagement() {
         </TabsContent>
 
         <TabsContent value="settings" className="space-y-4">
-          <h4 className="text-lg font-medium">E-postinställningar</h4>
+          <div className="flex items-center justify-between">
+            <h4 className="text-lg font-medium">E-postinställningar</h4>
+            <Button
+              onClick={handleQuickEmailTest}
+              disabled={testingEmail}
+              variant="outline"
+              className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+            >
+              {testingEmail ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Skickar test...
+                </>
+              ) : (
+                <>
+                  <Send className="mr-2 h-4 w-4" />
+                  Testa e-post
+                </>
+              )}
+            </Button>
+          </div>
+          
+          {/* Email Test Info */}
+          <Card className="border border-blue-500/30 bg-blue-900/20">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+                  <Send className="h-4 w-4 text-blue-400" />
+                </div>
+                <div>
+                  <h5 className="font-medium text-blue-400 mb-1">Testa e-postsystem</h5>
+                  <p className="text-sm text-blue-300/80">
+                    Klicka på "Testa e-post" för att skicka ett test-e-post och verifiera att ditt e-postsystem fungerar korrekt. 
+                    Du kommer att få ange en e-postadress där testet ska skickas.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="border border-[#e4d699]/30 bg-black/30">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">E-postinställningar</CardTitle>
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${
+                    emailConnectionStatus === 'connected' ? 'bg-green-400' : 
+                    emailConnectionStatus === 'error' ? 'bg-red-400' : 'bg-yellow-400'
+                  }`} />
+                  <span className="text-xs text-white/60">
+                    {emailConnectionStatus === 'connected' ? 'Ansluten' : 
+                     emailConnectionStatus === 'error' ? 'Fel' : 'Okänd status'}
+                  </span>
+                </div>
+              </div>
+            </CardHeader>
             <CardContent className="space-y-4">
               {emailSettings.map(setting => (
                 <div key={setting.id} className="space-y-2">
