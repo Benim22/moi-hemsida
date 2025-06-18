@@ -13,23 +13,50 @@ import Link from "next/link"
 // Sequential order number generation
 const generateOrderNumber = async () => {
   try {
-    // Räkna totalt antal orders och lägg till 1
-    const { count, error } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
+    // Försök att hitta nästa tillgängliga ordernummer
+    let attempts = 0
+    const maxAttempts = 10
+    
+    while (attempts < maxAttempts) {
+      // Räkna totalt antal orders och lägg till 1 + attempts för att undvika kollisioner
+      const { count, error } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
 
-    if (error) {
-      console.error('Error counting orders:', error)
-      // Fallback till dagens datum + random nummer om det blir fel
-      return `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}001`
+      if (error) {
+        console.error('Error counting orders:', error)
+        // Fallback till timestamp + random
+        return `${Date.now()}${Math.floor(Math.random() * 1000)}`
+      }
+
+      const candidateNumber = ((count || 0) + 1 + attempts).toString()
+      
+      // Kontrollera om detta nummer redan finns
+      const { data: existingOrder, error: checkError } = await supabase
+        .from('orders')
+        .select('order_number')
+        .eq('order_number', candidateNumber)
+        .single()
+
+      if (checkError && checkError.code === 'PGRST116') {
+        // Ingen order med detta nummer finns, vi kan använda det
+        return candidateNumber
+      }
+      
+      if (checkError) {
+        console.error('Error checking order number:', checkError)
+      }
+      
+      // Numret finns redan, försök nästa
+      attempts++
     }
-
-    const nextNumber = (count || 0) + 1
-    return nextNumber.toString()
+    
+    // Om alla försök misslyckades, använd timestamp + random
+    return `${Date.now()}${Math.floor(Math.random() * 1000)}`
   } catch (error) {
     console.error('Error in generateOrderNumber:', error)
-    // Fallback
-    return Math.floor(100000 + Math.random() * 900000).toString()
+    // Fallback till timestamp + random
+    return `${Date.now()}${Math.floor(Math.random() * 1000)}`
   }
 }
 import { useRouter } from "next/navigation"
@@ -116,6 +143,7 @@ function OrderSuccessModal({
   items, 
   totalPrice,
   specialInstructions,
+  isLoggedIn,
   onClose 
 }: {
   orderNumber: string
@@ -123,6 +151,7 @@ function OrderSuccessModal({
   items: CartItemType[]
   totalPrice: number
   specialInstructions?: string
+  isLoggedIn: boolean
   onClose: () => void
 }) {
   return (
@@ -188,12 +217,21 @@ function OrderSuccessModal({
 
       {/* Action Buttons */}
       <div className="space-y-3 w-full max-w-md">
-        <Button 
-          className="w-full bg-[#e4d699] text-black hover:bg-[#e4d699]/90" 
-          onClick={onClose}
-        >
-          Se mina beställningar
-        </Button>
+        {isLoggedIn ? (
+          <Button 
+            className="w-full bg-[#e4d699] text-black hover:bg-[#e4d699]/90" 
+            onClick={onClose}
+          >
+            Se mina beställningar
+          </Button>
+        ) : (
+          <Button 
+            className="w-full bg-[#e4d699] text-black hover:bg-[#e4d699]/90" 
+            onClick={onClose}
+          >
+            Tillbaka till startsidan
+          </Button>
+        )}
         <Button 
           variant="outline" 
           className="w-full border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10" 
@@ -511,18 +549,23 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         variant: "default",
       })
 
-      if (!user) {
+      // Allow anonymous orders but require validation of customer info
+      if (!customerName || !customerPhone || !customerEmail) {
         toast({
-          title: "Fel",
-          description: "Du måste vara inloggad för att lägga en beställning.",
+          title: "Saknade uppgifter",
+          description: "Alla fält måste fyllas i för att lägga en beställning.",
           variant: "destructive",
         })
         return
       }
 
+      // Use anonymous user ID for non-logged in users
+      const ANONYMOUS_USER_ID = '00000000-0000-0000-0000-000000000000'
+
       // Prepare order data for database
       const orderData = {
-        user_id: user.id,
+        user_id: user?.id || ANONYMOUS_USER_ID,
+        customer_name: customerName, // Lägg till kundnamn
         items: items,
         total_price: totalPrice,
         amount: totalPrice, // För kompatibilitet
@@ -563,6 +606,8 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
       console.log("Database ID:", data.id)
       console.log("Ordernummer:", orderNumber)
       console.log("Kund:", customerName, "-", customerEmail, "-", customerPhone)
+      console.log("Customer_name sparad som:", data.customer_name)
+      console.log("User_id sparad som:", data.user_id)
       console.log("Avhämtningstid:", getPickupTimeText())
       console.log("Notes fält:", orderData.notes)
       console.log("Varor:", items)
@@ -664,11 +709,17 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
       items={items}
       totalPrice={totalPrice}
       specialInstructions={specialInstructions}
+      isLoggedIn={!!user}
       onClose={() => {
         clearCart()
         setShowSuccessModal(false)
         setIsCartOpen(false) // Stäng cart sidebaren
-        router.push("/profile/orders")
+        // Skicka inloggade användare till sina beställningar, anonyma till startsidan
+        if (user) {
+          router.push("/profile/orders")
+        } else {
+          router.push("/")
+        }
       }}
     />
   }

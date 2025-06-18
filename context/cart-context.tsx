@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react"
 import { toast } from "@/hooks/use-toast"
 
 export type CartItem = {
@@ -32,6 +32,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [lastActivity, setLastActivity] = useState<number>(Date.now())
+  const addItemInProgress = useRef(false)
   const [timeUntilClear, setTimeUntilClear] = useState<number>(0)
 
   // Initialize cart from localStorage on client side
@@ -119,7 +120,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval)
   }, [mounted, items.length, lastActivity])
 
-  const addItem = (newItem: Omit<CartItem, "quantity">) => {
+  const addItem = useCallback((newItem: Omit<CartItem, "quantity">) => {
+    // Förhindra samtidiga addItem-anrop
+    if (addItemInProgress.current) {
+      return
+    }
+    
+    addItemInProgress.current = true
+    
     // Uppdatera lastActivity när användaren lägger till något
     const now = Date.now()
     setLastActivity(now)
@@ -132,15 +140,29 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       if (existingItemIndex > -1) {
         // Item exists, increment quantity
-        const updatedItems = [...prevItems]
-        updatedItems[existingItemIndex].quantity += 1
+        const existingItem = prevItems[existingItemIndex]
+        const newQuantity = existingItem.quantity + 1
+        
+        // Skapa ny array med uppdaterat item
+        const updatedItems = prevItems.map((item, index) => 
+          index === existingItemIndex 
+            ? { ...item, quantity: newQuantity }
+            : item
+        )
+        
         return updatedItems
       } else {
         // Item doesn't exist, add new item with quantity 1
-        return [...prevItems, { ...newItem, quantity: 1 }]
+        const newItems = [...prevItems, { ...newItem, quantity: 1 }]
+        return newItems
       }
     })
-  }
+    
+    // Rensa flaggan efter en kort delay
+    setTimeout(() => {
+      addItemInProgress.current = false
+    }, 100)
+  }, [mounted])
 
   const removeItem = (id: number) => {
     // Uppdatera lastActivity när användaren tar bort något

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { ShoppingBag, Check, Plus } from "lucide-react"
 import { useCart } from "@/context/cart-context"
@@ -24,8 +24,31 @@ export function AddToCartButton({ product, variant = "default", size = "default"
   const { addItem } = useCart()
   const { toast } = useToast()
   const [isAdded, setIsAdded] = useState(false)
+  const lastClickTime = useRef(0)
+  const isProcessing = useRef(false)
 
   const handleAddToCart = () => {
+    const now = Date.now()
+    
+    // Robust debounce - förhindra klick inom 500ms
+    if (now - lastClickTime.current < 500) {
+      return
+    }
+    
+    // Förhindra samtidiga processer
+    if (isProcessing.current) {
+      return
+    }
+    
+    // Förhindra dubbla klick genom att kolla om knappen redan är "added"
+    if (isAdded) {
+      return
+    }
+    
+    // Sätt processing-flagga
+    isProcessing.current = true
+    lastClickTime.current = now
+    
     addItem(product)
     setIsAdded(true)
 
@@ -46,6 +69,7 @@ export function AddToCartButton({ product, variant = "default", size = "default"
     // Reset the button after 1.5 seconds
     setTimeout(() => {
       setIsAdded(false)
+      isProcessing.current = false
     }, 1500)
   }
 

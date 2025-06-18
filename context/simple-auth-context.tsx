@@ -11,6 +11,7 @@ interface Profile {
   phone?: string
   address?: string
   role: string
+  location?: string
   avatar_url?: string
   preferences?: {
     notifications: {
@@ -34,11 +35,14 @@ type SimpleAuthContextType = {
   signOut: () => Promise<void>
   updateProfile: (updates: { name: string; phone?: string; address?: string }) => Promise<any>
   updatePreferences: (preferences: Profile['preferences']) => Promise<any>
+  updateLocation: (location: string) => Promise<any>
   signInWithGoogle: () => Promise<any>
   createProfilesTable: () => Promise<any>
   isProfilesTableMissing: boolean
   refreshSession: () => Promise<void>
   loading: boolean
+  setUser: (user: User | null) => void
+  setProfile: (profile: Profile | null) => void
 }
 
 const SimpleAuthContext = createContext<SimpleAuthContextType | undefined>(undefined)
@@ -314,6 +318,37 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const updateLocation = async (location: string) => {
+    if (!user) return { error: "No user logged in" }
+
+    try {
+      console.log("🏢 Updating user location to:", location)
+      
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          location: location,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", user.id)
+
+      if (error) throw error
+
+      if (profile) {
+        setProfile({
+          ...profile,
+          location: location
+        })
+      }
+
+      console.log("✅ Location updated successfully")
+      return { error: null }
+    } catch (error) {
+      console.error("❌ Update location error:", error)
+      return { error }
+    }
+  }
+
   const signInWithGoogle = async () => {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
@@ -363,11 +398,14 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
     signOut,
     updateProfile,
     updatePreferences,
+    updateLocation,
     signInWithGoogle,
     createProfilesTable,
     isProfilesTableMissing,
     refreshSession,
-    loading
+    loading,
+    setUser,
+    setProfile
   }
 
   return <SimpleAuthContext.Provider value={value}>{children}</SimpleAuthContext.Provider>
