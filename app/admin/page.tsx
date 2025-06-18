@@ -4188,38 +4188,10 @@ function SiteSettings() {
       estimatedDeliveryTime: "30-45 min"
     }
   })
-  const [locations, setLocations] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [activeTab, setActiveTab] = useState("general")
   const { toast } = useToast()
-
-  // Hämta platser från databasen
-  useEffect(() => {
-    fetchLocations()
-  }, [])
-
-  const fetchLocations = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('locations')
-        .select('*')
-        .eq('is_active', true)
-        .order('name')
-
-      if (error) throw error
-      setLocations(data || [])
-    } catch (error) {
-      console.error('Error fetching locations:', error)
-      toast({
-        title: "Fel",
-        description: "Kunde inte hämta platser från databasen.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   const handleSaveSettings = async (e) => {
     e.preventDefault()
@@ -4246,67 +4218,7 @@ function SiteSettings() {
     }
   }
 
-  const updateLocationInfo = async (locationId, field, value) => {
-    try {
-      const { error } = await supabase
-        .from('locations')
-        .update({ [field]: value })
-        .eq('id', locationId)
 
-      if (error) throw error
-
-      // Uppdatera lokala state
-      setLocations(prev => 
-        prev.map(loc => 
-          loc.id === locationId ? { ...loc, [field]: value } : loc
-        )
-      )
-
-      toast({
-        title: "Uppdaterat!",
-        description: "Platsinformationen har sparats.",
-        variant: "default",
-      })
-    } catch (error) {
-      console.error('Error updating location:', error)
-      toast({
-        title: "Fel",
-        description: "Kunde inte uppdatera platsinformationen.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const updateLocationHours = async (locationId, hours) => {
-    try {
-      const { error } = await supabase
-        .from('locations')
-        .update({ opening_hours: hours })
-        .eq('id', locationId)
-
-      if (error) throw error
-
-      // Uppdatera lokala state
-      setLocations(prev => 
-        prev.map(loc => 
-          loc.id === locationId ? { ...loc, opening_hours: hours } : loc
-        )
-      )
-
-      toast({
-        title: "Öppettider uppdaterade!",
-        description: "Öppettiderna har sparats.",
-        variant: "default",
-      })
-    } catch (error) {
-      console.error('Error updating hours:', error)
-      toast({
-        title: "Fel",
-        description: "Kunde inte uppdatera öppettiderna.",
-        variant: "destructive",
-      })
-    }
-  }
 
   const updateSetting = (path, value) => {
     setSettings(prev => {
@@ -4330,7 +4242,7 @@ function SiteSettings() {
           <Settings className="mr-2 h-5 w-5" />
           Webbplatsinställningar
         </CardTitle>
-        <CardDescription>Konfigurera webbplatsens grundläggande inställningar och hantera restaurangplatser</CardDescription>
+        <CardDescription>Konfigurera webbplatsens grundläggande inställningar och övervaka systemhälsa</CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -4344,8 +4256,8 @@ function SiteSettings() {
               <TabsTrigger value="general" className="data-[state=active]:bg-[#e4d699] data-[state=active]:text-black">
                 Allmänna inställningar
               </TabsTrigger>
-              <TabsTrigger value="locations" className="data-[state=active]:bg-[#e4d699] data-[state=active]:text-black">
-                Platshantering ({locations.length})
+              <TabsTrigger value="system" className="data-[state=active]:bg-[#e4d699] data-[state=active]:text-black">
+                Systemhälsa
               </TabsTrigger>
             </TabsList>
 
@@ -4504,24 +4416,8 @@ function SiteSettings() {
         </form>
           </TabsContent>
 
-          <TabsContent value="locations">
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-medium text-[#e4d699] mb-2">Hantera restaurangplatser</h3>
-                <p className="text-sm text-white/60">Redigera information för varje restaurangplats</p>
-              </div>
-              
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {locations.map(location => (
-                  <LocationCard 
-                    key={location.id} 
-                    location={location} 
-                    onUpdate={updateLocationInfo}
-                    onUpdateHours={updateLocationHours}
-                  />
-                ))}
-              </div>
-            </div>
+          <TabsContent value="system">
+            <SystemHealthTab />
           </TabsContent>
                   </Tabs>
         )}
@@ -4530,7 +4426,289 @@ function SiteSettings() {
   )
 }
 
-// LocationCard-komponent för att redigera platsinfo
+// SystemHealthTab-komponent för att visa systemstatus
+function SystemHealthTab() {
+  const [systemStatus, setSystemStatus] = useState({
+    database: { status: 'checking', message: 'Kontrollerar...', lastChecked: null },
+    api: { status: 'checking', message: 'Kontrollerar...', lastChecked: null },
+    storage: { status: 'checking', message: 'Kontrollerar...', lastChecked: null },
+    email: { status: 'checking', message: 'Kontrollerar...', lastChecked: null }
+  })
+  const [isChecking, setIsChecking] = useState(false)
+  const [systemStats, setSystemStats] = useState({
+    totalUsers: 0,
+    totalOrders: 0,
+    totalLocations: 0,
+    activeNotifications: 0,
+    dbSize: 'Okänd',
+    uptime: 'Okänd'
+  })
+  const { toast } = useToast()
+
+  useEffect(() => {
+    checkSystemHealth()
+    fetchSystemStats()
+  }, [])
+
+  const checkSystemHealth = async () => {
+    setIsChecking(true)
+    const newStatus = { ...systemStatus }
+
+    try {
+      // Test database connection
+      const { data: dbTest, error: dbError } = await supabase
+        .from('profiles')
+        .select('count')
+        .limit(1)
+
+      newStatus.database = {
+        status: dbError ? 'error' : 'healthy',
+        message: dbError ? `Databasfel: ${dbError.message}` : 'Databasanslutning fungerar',
+        lastChecked: new Date().toLocaleString('sv-SE')
+      }
+
+      // Test API endpoints
+      try {
+        const response = await fetch('/api/test-email')
+        newStatus.api = {
+          status: response.ok ? 'healthy' : 'warning',
+          message: response.ok ? 'API-endpoints fungerar' : 'Vissa API-endpoints svarar inte',
+          lastChecked: new Date().toLocaleString('sv-SE')
+        }
+      } catch (error) {
+        newStatus.api = {
+          status: 'error',
+          message: 'API-endpoints svarar inte',
+          lastChecked: new Date().toLocaleString('sv-SE')
+        }
+      }
+
+      // Test storage (check if we can access menu items)
+      const { data: storageTest, error: storageError } = await supabase
+        .from('menu_items')
+        .select('count')
+        .limit(1)
+
+      newStatus.storage = {
+        status: storageError ? 'warning' : 'healthy',
+        message: storageError ? 'Problem med datalagring' : 'Datalagring fungerar',
+        lastChecked: new Date().toLocaleString('sv-SE')
+      }
+
+      // Test email system
+      const { data: emailTest, error: emailError } = await supabase
+        .from('email_templates')
+        .select('count')
+        .limit(1)
+
+      newStatus.email = {
+        status: emailError ? 'warning' : 'healthy',
+        message: emailError ? 'E-postsystem kan ha problem' : 'E-postsystem fungerar',
+        lastChecked: new Date().toLocaleString('sv-SE')
+      }
+
+    } catch (error) {
+      console.error('System health check failed:', error)
+      toast({
+        title: "Systemkontroll misslyckades",
+        description: "Kunde inte kontrollera systemets hälsa",
+        variant: "destructive",
+      })
+    }
+
+    setSystemStatus(newStatus)
+    setIsChecking(false)
+  }
+
+  const fetchSystemStats = async () => {
+    try {
+      // Fetch various system statistics
+      const [usersResult, ordersResult, locationsResult, notificationsResult] = await Promise.all([
+        supabase.from('profiles').select('count', { count: 'exact', head: true }),
+        supabase.from('orders').select('count', { count: 'exact', head: true }),
+        supabase.from('locations').select('count', { count: 'exact', head: true }),
+        supabase.from('notifications').select('count', { count: 'exact', head: true }).eq('read', false)
+      ])
+
+      setSystemStats({
+        totalUsers: usersResult.count || 0,
+        totalOrders: ordersResult.count || 0,
+        totalLocations: locationsResult.count || 0,
+        activeNotifications: notificationsResult.count || 0,
+        dbSize: 'Beräknas...',
+        uptime: 'Okänd'
+      })
+    } catch (error) {
+      console.error('Failed to fetch system stats:', error)
+    }
+  }
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'healthy': return <CheckCircle className="h-5 w-5 text-green-500" />
+      case 'warning': return <AlertTriangle className="h-5 w-5 text-yellow-500" />
+      case 'error': return <XCircle className="h-5 w-5 text-red-500" />
+      default: return <Clock className="h-5 w-5 text-gray-500 animate-spin" />
+    }
+  }
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'healthy': return 'border-green-500/30 bg-green-900/20'
+      case 'warning': return 'border-yellow-500/30 bg-yellow-900/20'
+      case 'error': return 'border-red-500/30 bg-red-900/20'
+      default: return 'border-gray-500/30 bg-gray-900/20'
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-medium text-[#e4d699] mb-2">Systemhälsa</h3>
+          <p className="text-sm text-white/60">Övervaka systemets status och prestanda</p>
+        </div>
+        <Button
+          onClick={checkSystemHealth}
+          disabled={isChecking}
+          variant="outline"
+          className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+        >
+          {isChecking ? (
+            <>
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              Kontrollerar...
+            </>
+          ) : (
+            <>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Uppdatera status
+            </>
+          )}
+        </Button>
+      </div>
+
+      {/* System Status Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {Object.entries(systemStatus).map(([key, status]) => (
+          <Card key={key} className={`border ${getStatusColor(status.status)}`}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium capitalize text-white">
+                  {key === 'database' ? 'Databas' : 
+                   key === 'api' ? 'API' : 
+                   key === 'storage' ? 'Lagring' : 
+                   key === 'email' ? 'E-post' : key}
+                </h4>
+                {getStatusIcon(status.status)}
+              </div>
+              <p className="text-sm text-white/70 mb-1">{status.message}</p>
+              {status.lastChecked && (
+                <p className="text-xs text-white/50">
+                  Senast kontrollerad: {status.lastChecked}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* System Statistics */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="border border-[#e4d699]/20 bg-black/50">
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-bold text-[#e4d699] mb-1">{systemStats.totalUsers}</div>
+            <div className="text-sm text-white/60">Användare</div>
+          </CardContent>
+        </Card>
+        <Card className="border border-[#e4d699]/20 bg-black/50">
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-bold text-[#e4d699] mb-1">{systemStats.totalOrders}</div>
+            <div className="text-sm text-white/60">Beställningar</div>
+          </CardContent>
+        </Card>
+        <Card className="border border-[#e4d699]/20 bg-black/50">
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-bold text-[#e4d699] mb-1">{systemStats.totalLocations}</div>
+            <div className="text-sm text-white/60">Platser</div>
+          </CardContent>
+        </Card>
+        <Card className="border border-[#e4d699]/20 bg-black/50">
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-bold text-[#e4d699] mb-1">{systemStats.activeNotifications}</div>
+            <div className="text-sm text-white/60">Aktiva notiser</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* System Information */}
+      <Card className="border border-[#e4d699]/20 bg-black/50">
+        <CardHeader>
+          <CardTitle className="text-[#e4d699]">Systeminformation</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label className="text-white/70">Databasstorlek</Label>
+              <p className="text-white font-medium">{systemStats.dbSize}</p>
+            </div>
+            <div>
+              <Label className="text-white/70">Systemupptid</Label>
+              <p className="text-white font-medium">{systemStats.uptime}</p>
+            </div>
+            <div>
+              <Label className="text-white/70">Senaste systemkontroll</Label>
+              <p className="text-white font-medium">
+                {systemStatus.database.lastChecked || 'Aldrig'}
+              </p>
+            </div>
+            <div>
+              <Label className="text-white/70">Systemversion</Label>
+              <p className="text-white font-medium">Moi Sushi v2.0</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Quick Actions */}
+      <Card className="border border-[#e4d699]/20 bg-black/50">
+        <CardHeader>
+          <CardTitle className="text-[#e4d699]">Snabbåtgärder</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Button
+              onClick={() => toast({ title: "Funktion kommer snart", description: "Denna funktion är under utveckling" })}
+              variant="outline"
+              className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Exportera data
+            </Button>
+            <Button
+              onClick={() => toast({ title: "Funktion kommer snart", description: "Denna funktion är under utveckling" })}
+              variant="outline"
+              className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Rensa cache
+            </Button>
+            <Button
+              onClick={() => toast({ title: "Funktion kommer snart", description: "Denna funktion är under utveckling" })}
+              variant="outline"
+              className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+            >
+              <Monitor className="mr-2 h-4 w-4" />
+              Systemloggar
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// LocationCard-komponent för att redigera platsinfo (nu ej använd)
 function LocationCard({ location, onUpdate, onUpdateHours }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState({})
