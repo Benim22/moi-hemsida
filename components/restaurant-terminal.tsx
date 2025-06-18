@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { supabase } from "@/lib/supabase"
-import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle } from "lucide-react"
+import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle, RefreshCw } from "lucide-react"
 import jsPDF from 'jspdf'
 
 export default function RestaurantTerminal() {
@@ -18,6 +18,8 @@ export default function RestaurantTerminal() {
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [notificationPermission, setNotificationPermission] = useState('default')
   const [notificationDialog, setNotificationDialog] = useState(null)
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   
   // Filter states
   const [selectedLocation, setSelectedLocation] = useState(profile?.location || 'all')
@@ -430,9 +432,15 @@ export default function RestaurantTerminal() {
   }
 
   const showBrowserNotification = (title, body, isOrderNotification = false) => {
-    console.log('Försöker visa notifikation:', { title, body, isOrderNotification })
+    console.log('Försöker visa notifikation:', { title, body, isOrderNotification, notificationsEnabled })
     
-    // Visa alltid dialog för ordernotifikationer
+    // Kontrollera om notiser är aktiverade (förutom för system-meddelanden)
+    if (isOrderNotification && !notificationsEnabled) {
+      console.log('🔕 Notiser är avaktiverade - hoppar över ordernotifikation')
+      return
+    }
+    
+    // Visa alltid dialog för ordernotifikationer (om notiser är på)
     if (isOrderNotification) {
       setNotificationDialog({
         title,
@@ -485,7 +493,47 @@ export default function RestaurantTerminal() {
     }
   }
 
+  const toggleNotifications = () => {
+    setNotificationsEnabled(!notificationsEnabled)
+    const newStatus = !notificationsEnabled
+    
+    console.log('🔔 Toggling notifications:', newStatus ? 'ON' : 'OFF')
+    
+    if (newStatus) {
+      showBrowserNotification('Notiser aktiverade', 'Du kommer nu få meddelanden om nya beställningar', false)
+    } else {
+      showBrowserNotification('Notiser avaktiverade', 'Du kommer inte längre få meddelanden', false)
+    }
+  }
+
+  const refreshData = async () => {
+    if (isRefreshing) return
+    
+    setIsRefreshing(true)
+    console.log('🔄 Manuell uppdatering av data...')
+    
+    try {
+      await Promise.all([
+        fetchOrders(),
+        fetchNotifications(),
+        fetchAvailableUsers()
+      ])
+      
+      showBrowserNotification('Data uppdaterad', 'Beställningar och notifikationer har uppdaterats', false)
+    } catch (error) {
+      console.error('❌ Fel vid uppdatering:', error)
+      showBrowserNotification('Uppdateringsfel', 'Kunde inte uppdatera data', false)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
   const playNotificationSound = () => {
+    if (!notificationsEnabled) {
+      console.log('🔕 Notiser är avaktiverade - hoppar över ljudnotifikation')
+      return
+    }
+    
     try {
       // Använd direkt fallback-ljud istället för att leta efter fil
       console.log('🔊 Spelar notifikationsljud...')
@@ -1012,7 +1060,7 @@ export default function RestaurantTerminal() {
                     Restaurang Terminal
                   </CardTitle>
                   <p className="text-white/70 text-sm lg:text-lg">
-                    📍 {getLocationName(selectedLocation)} • 👤 {profile?.name}
+                    📍 {getLocationName(selectedLocation)} • 👤 {profile?.name} • {notificationsEnabled ? '🔔' : '🔕'} {notificationsEnabled ? 'Notiser På' : 'Notiser Av'}
                   </p>
                   <p className="text-white/50 text-xs lg:text-sm">
                     {new Date().toLocaleString('sv-SE', { 
@@ -1029,13 +1077,16 @@ export default function RestaurantTerminal() {
               
               {/* Mobile buttons - stacked */}
               <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
+                  {/* Notification Toggle Button */}
                   <Button 
-                    onClick={requestNotificationPermission} 
+                    onClick={notificationPermission === 'granted' ? toggleNotifications : requestNotificationPermission}
                     variant="outline" 
                     className={`flex-1 sm:flex-none ${
                       notificationPermission === 'granted' 
-                        ? 'border-green-500/40 text-green-400' 
+                        ? notificationsEnabled
+                          ? 'border-green-500/40 text-green-400' 
+                          : 'border-orange-500/40 text-orange-400'
                         : notificationPermission === 'denied'
                         ? 'border-red-500/40 text-red-400'
                         : 'border-yellow-500/40 text-yellow-400'
@@ -1045,7 +1096,7 @@ export default function RestaurantTerminal() {
                     <Bell className="h-4 w-4 mr-1 sm:mr-2" />
                     <span className="hidden sm:inline">
                       {notificationPermission === 'granted' 
-                        ? 'Notiser På' 
+                        ? notificationsEnabled ? 'Notiser På' : 'Notiser Av'
                         : notificationPermission === 'denied'
                         ? 'Notiser Blockerade'
                         : 'Aktivera Notiser'
@@ -1053,11 +1104,28 @@ export default function RestaurantTerminal() {
                     </span>
                     <span className="sm:hidden">
                       {notificationPermission === 'granted' 
-                        ? '🔔' 
+                        ? notificationsEnabled ? '🔔' : '🔕'
                         : notificationPermission === 'denied'
                         ? '🔕'
                         : '🔕'
                       }
+                    </span>
+                  </Button>
+                  
+                  {/* Refresh Button */}
+                  <Button 
+                    onClick={refreshData}
+                    variant="outline" 
+                    className="flex-1 sm:flex-none border-blue-500/40 text-blue-400 hover:bg-blue-500/10"
+                    size="sm"
+                    disabled={isRefreshing}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-1 sm:mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    <span className="hidden sm:inline">
+                      {isRefreshing ? 'Uppdaterar...' : 'Uppdatera'}
+                    </span>
+                    <span className="sm:hidden">
+                      {isRefreshing ? '⏳' : '🔄'}
                     </span>
                   </Button>
                   
@@ -1138,6 +1206,31 @@ export default function RestaurantTerminal() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Notification Status Warning */}
+        {!notificationsEnabled && (
+          <Card className="border border-orange-500/30 bg-gradient-to-r from-orange-900/20 to-red-900/20 backdrop-blur-md mb-6">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-orange-500/20 rounded-full flex items-center justify-center">
+                  <AlertTriangle className="h-4 w-4 text-orange-400" />
+                </div>
+                <div>
+                  <p className="text-orange-400 font-medium">Notiser är avaktiverade</p>
+                  <p className="text-orange-300/80 text-sm">Du kommer inte få meddelanden om nya beställningar</p>
+                </div>
+                <Button
+                  onClick={toggleNotifications}
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto border-orange-500/40 text-orange-400 hover:bg-orange-500/10"
+                >
+                  Aktivera notiser
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats Overview */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
