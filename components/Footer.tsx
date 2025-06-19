@@ -98,10 +98,7 @@ export function Footer() {
                 Kontakt
               </Link>
               <Link href="/privacy" className="block text-sm text-white/70 hover:text-[#e4d699] transition-colors">
-                Integritetspolicy
-              </Link>
-              <Link href="/terms" className="block text-sm text-white/70 hover:text-[#e4d699] transition-colors">
-                Villkor
+                Integritet & Villkor
               </Link>
             </div>
           </div>

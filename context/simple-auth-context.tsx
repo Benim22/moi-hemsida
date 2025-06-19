@@ -231,6 +231,21 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
             name: name,
             role: isAdminEmail ? "admin" : "customer"
           }])
+
+          // Skicka välkomstmail
+          try {
+            await fetch('/api/send-welcome-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                customerName: name,
+                customerEmail: email
+              })
+            })
+          } catch (emailError) {
+            console.error("Welcome email error:", emailError)
+            // Fortsätt även om e-post misslyckas
+          }
         } catch (profileError) {
           console.error("Profile creation error:", profileError)
         }

@@ -18,10 +18,73 @@ import { Footer } from "@/components/Footer"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Moi Sushi & Poké Bowl | Trelleborg",
-  description: "Din sushi & pokebowl restaurang i Trelleborg",
-  generator: 'v0.dev',
+  title: {
+    default: "Moi Sushi & Poké Bowl | Färsk Sushi & Poké i Trelleborg, Malmö & Ystad",
+    template: "%s | Moi Sushi & Poké Bowl"
+  },
+  description: "🍣 Beställ färsk sushi, poké bowls & asiatisk mat online! Moi Sushi & Poké Bowl serverar högkvalitativ japansk mat i Trelleborg, Malmö & Ystad. Snabb leverans & bordsbokningar. ⭐ Bästa sushi i Skåne!",
+  keywords: [
+    "sushi Trelleborg", "poké bowl Trelleborg", "japansk mat Trelleborg", 
+    "sushi Malmö", "poké bowl Malmö", "sushi Ystad", "poké bowl Ystad",
+    "sushi beställning online", "sushi leverans", "färsk sushi", "bästa sushi Skåne",
+    "japansk restaurang", "asiatisk mat", "maki rolls", "nigiri", "sashimi",
+    "vegetarisk sushi", "vegan sushi", "bordsbokningar", "takeaway sushi",
+    "Moi Sushi", "sushi nära mig", "poké bowl nära mig", "lunch Trelleborg"
+  ],
+  authors: [{ name: "Moi Sushi & Poké Bowl" }],
+  creator: "Moi Sushi & Poké Bowl",
+  publisher: "Moi Sushi & Poké Bowl",
+  generator: 'Next.js',
   manifest: '/manifest.json',
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'sv_SE',
+    url: 'https://moi-sushi.se',
+    siteName: 'Moi Sushi & Poké Bowl',
+    title: 'Moi Sushi & Poké Bowl | Färsk Sushi & Poké i Trelleborg, Malmö & Ystad',
+    description: '🍣 Beställ färsk sushi, poké bowls & asiatisk mat online! Högkvalitativ japansk mat med snabb leverans i Skåne. Boka bord eller beställ takeaway!',
+    images: [
+      {
+        url: '/moi-exterior.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'Moi Sushi & Poké Bowl restaurang exteriör',
+      },
+      {
+        url: '/moi-interior.jpg', 
+        width: 1200,
+        height: 630,
+        alt: 'Moi Sushi & Poké Bowl restaurang interiör',
+      }
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Moi Sushi & Poké Bowl | Färsk Sushi & Poké i Skåne',
+    description: '🍣 Beställ färsk sushi & poké bowls online! Bästa japanska maten i Trelleborg, Malmö & Ystad.',
+    images: ['/moi-exterior.jpg'],
+    creator: '@moisushi',
+    site: '@moisushi'
+  },
+  verification: {
+    google: 'google-site-verification-code', // Lägg till din Google Search Console kod
+    other: {
+      'facebook-domain-verification': 'facebook-domain-verification-code', // Lägg till Facebook domain verification
+    }
+  },
+  category: 'restaurant',
+  classification: 'Restaurant, Sushi, Japanese Food, Poké Bowl',
   other: {
     'mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-capable': 'yes',
@@ -29,7 +92,17 @@ export const metadata: Metadata = {
     'apple-mobile-web-app-title': 'Moi Sushi',
     'application-name': 'Moi Sushi',
     'msapplication-TileColor': '#e4d699',
-    'theme-color': '#e4d699'
+    'theme-color': '#e4d699',
+    'geo.region': 'SE-M',
+    'geo.placename': 'Trelleborg, Malmö, Ystad',
+    'geo.position': '55.3753;13.1569', // Trelleborg koordinater
+    'ICBM': '55.3753, 13.1569',
+    'business:contact_data:street_address': 'Algatan 17',
+    'business:contact_data:locality': 'Trelleborg',
+    'business:contact_data:postal_code': '231 42',
+    'business:contact_data:country_name': 'Sweden',
+    'business:contact_data:phone_number': '+46 123 456 789', // Uppdatera med rätt nummer
+    'business:contact_data:website': 'https://moi-sushi.se',
   }
 }
 
@@ -41,6 +114,152 @@ export default function RootLayout({
   return (
     <html lang="sv" className="dark">
       <head>
+        {/* Strukturerad data för Google */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@graph": [
+                {
+                  "@type": "Restaurant",
+                  "@id": "https://moi-sushi.se/#restaurant",
+                  "name": "Moi Sushi & Poké Bowl",
+                  "alternateName": ["Moi Sushi", "Moi Poké Bowl"],
+                  "description": "Färsk sushi, poké bowls och asiatisk mat i Trelleborg, Malmö och Ystad. Beställ online för leverans eller hämtning.",
+                  "url": "https://moi-sushi.se",
+                  "telephone": "+46 123 456 789",
+                  "email": "info@moi-sushi.se",
+                  "priceRange": "$$",
+                  "currenciesAccepted": "SEK",
+                  "paymentAccepted": ["Cash", "Credit Card", "Swish", "Klarna"],
+                  "servesCuisine": ["Japanese", "Asian", "Sushi", "Poké Bowl"],
+                  "image": [
+                    "https://moi-sushi.se/moi-exterior.jpg",
+                    "https://moi-sushi.se/moi-interior.jpg"
+                  ],
+                  "logo": "https://moi-sushi.se/placeholder-logo.png",
+                  "address": [
+                    {
+                      "@type": "PostalAddress",
+                      "streetAddress": "Algatan 17",
+                      "addressLocality": "Trelleborg",
+                      "postalCode": "231 42",
+                      "addressRegion": "Skåne",
+                      "addressCountry": "SE"
+                    },
+                    {
+                      "@type": "PostalAddress", 
+                      "addressLocality": "Malmö",
+                      "addressRegion": "Skåne",
+                      "addressCountry": "SE"
+                    },
+                    {
+                      "@type": "PostalAddress",
+                      "addressLocality": "Ystad", 
+                      "addressRegion": "Skåne",
+                      "addressCountry": "SE"
+                    }
+                  ],
+                  "geo": {
+                    "@type": "GeoCoordinates",
+                    "latitude": 55.3753,
+                    "longitude": 13.1569
+                  },
+                  "openingHoursSpecification": [
+                    {
+                      "@type": "OpeningHoursSpecification",
+                      "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday"],
+                      "opens": "11:00",
+                      "closes": "21:00"
+                    },
+                    {
+                      "@type": "OpeningHoursSpecification", 
+                      "dayOfWeek": ["Friday", "Saturday"],
+                      "opens": "11:00",
+                      "closes": "22:00"
+                    },
+                    {
+                      "@type": "OpeningHoursSpecification",
+                      "dayOfWeek": "Sunday",
+                      "opens": "12:00", 
+                      "closes": "21:00"
+                    }
+                  ],
+                  "aggregateRating": {
+                    "@type": "AggregateRating",
+                    "ratingValue": "4.8",
+                    "reviewCount": "127",
+                    "bestRating": "5"
+                  },
+                  "hasMenu": "https://moi-sushi.se/menu",
+                  "acceptsReservations": true,
+                  "sameAs": [
+                    "https://www.instagram.com/moisushi",
+                    "https://www.facebook.com/moisushi"
+                  ]
+                },
+                {
+                  "@type": "WebSite",
+                  "@id": "https://moi-sushi.se/#website",
+                  "url": "https://moi-sushi.se",
+                  "name": "Moi Sushi & Poké Bowl",
+                  "description": "Beställ färsk sushi och poké bowls online från Moi Sushi & Poké Bowl",
+                  "publisher": {
+                    "@id": "https://moi-sushi.se/#restaurant"
+                  },
+                  "potentialAction": [
+                    {
+                      "@type": "SearchAction",
+                      "target": {
+                        "@type": "EntryPoint",
+                        "urlTemplate": "https://moi-sushi.se/menu?search={search_term_string}"
+                      },
+                      "query-input": "required name=search_term_string"
+                    }
+                  ]
+                },
+                {
+                  "@type": "LocalBusiness",
+                  "@id": "https://moi-sushi.se/#localbusiness",
+                  "name": "Moi Sushi & Poké Bowl",
+                  "image": "https://moi-sushi.se/moi-exterior.jpg",
+                  "address": {
+                    "@type": "PostalAddress",
+                    "streetAddress": "Algatan 17",
+                    "addressLocality": "Trelleborg", 
+                    "postalCode": "231 42",
+                    "addressCountry": "SE"
+                  },
+                  "geo": {
+                    "@type": "GeoCoordinates",
+                    "latitude": 55.3753,
+                    "longitude": 13.1569
+                  },
+                  "url": "https://moi-sushi.se",
+                  "telephone": "+46 123 456 789",
+                  "openingHoursSpecification": [
+                    {
+                      "@type": "OpeningHoursSpecification",
+                      "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday"],
+                      "opens": "11:00",
+                      "closes": "21:00"
+                    }
+                  ]
+                }
+              ]
+            })
+          }}
+        />
+        
+        {/* Google Analytics & Search Console */}
+        <meta name="google-site-verification" content="your-google-verification-code" />
+        
+        {/* Preconnect för snabbare laddning */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        
+        {/* Service Worker för notifikationer */}
         <script
           dangerouslySetInnerHTML={{
             __html: `

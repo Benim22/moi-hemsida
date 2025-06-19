@@ -814,6 +814,7 @@ function ContentEditor() {
   const [editingItem, setEditingItem] = useState(null)
   const [deletingItem, setDeletingItem] = useState(null)
   const [showImagePicker, setShowImagePicker] = useState(false)
+  const [imageSearchQuery, setImageSearchQuery] = useState("")
   
   // Organiserade bildkategorier från /public/
   const imageCategories = {
@@ -1185,7 +1186,7 @@ function ContentEditor() {
             <div className="flex gap-2">
               <Input
                 id="item-image"
-                type="url"
+                type="text"
                 value={newItem.image_url}
                 onChange={(e) => setNewItem(prev => ({ ...prev, image_url: e.target.value }))}
                 className="border-[#e4d699]/30 bg-black/50 flex-1"
@@ -1544,7 +1545,12 @@ function ContentEditor() {
           </Dialog>
 
           {/* Image Picker Modal */}
-          <Dialog open={showImagePicker} onOpenChange={setShowImagePicker}>
+          <Dialog open={showImagePicker} onOpenChange={(open) => {
+            setShowImagePicker(open)
+            if (!open) {
+              setImageSearchQuery("") // Rensa sökningen när modalen stängs
+            }
+          }}>
             <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto bg-black/95 border border-[#e4d699]/30">
               <DialogHeader>
                 <DialogTitle className="text-[#e4d699] text-xl">
@@ -1555,39 +1561,83 @@ function ContentEditor() {
                 </DialogDescription>
               </DialogHeader>
               
+              {/* Sökfunktion */}
+              <div className="mt-4 mb-6">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/50" />
+                  <Input
+                    placeholder="Sök bland bilder... (t.ex. lax, roll, chicken)"
+                    value={imageSearchQuery}
+                    onChange={(e) => setImageSearchQuery(e.target.value)}
+                    className="pl-10 w-full border-[#e4d699]/30 bg-black/50 text-white placeholder:text-white/50"
+                  />
+                  {imageSearchQuery && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setImageSearchQuery("")}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 text-white/50 hover:text-white"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+                {imageSearchQuery && (
+                  <p className="text-xs text-white/60 mt-2">
+                    Söker efter: "{imageSearchQuery}"
+                  </p>
+                )}
+              </div>
+              
               <div className="mt-6 space-y-8">
-                {Object.entries(imageCategories).map(([key, category]) => (
-                  <div key={key} className="space-y-4">
-                    {/* Kategori Header */}
-                    <div className={`bg-gradient-to-r ${
-                      category.color === 'emerald' ? 'from-emerald-900/50 to-emerald-800/30 border-emerald-500/30' :
-                      category.color === 'amber' ? 'from-amber-900/50 to-amber-800/30 border-amber-500/30' :
-                      'from-blue-900/50 to-blue-800/30 border-blue-500/30'
-                    } border rounded-lg p-4`}>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className={`text-lg font-semibold ${
-                            category.color === 'emerald' ? 'text-emerald-300' :
-                            category.color === 'amber' ? 'text-amber-300' :
-                            'text-blue-300'
+                {Object.entries(imageCategories).map(([key, category]) => {
+                  // Filtrera bilder baserat på söksträngen
+                  const filteredImages = category.images.filter(imageName => {
+                    if (!imageSearchQuery) return true
+                    const searchLower = imageSearchQuery.toLowerCase()
+                    const imageLower = imageName.toLowerCase()
+                    // Ta bort filändelse för sökning
+                    const imageNameClean = imageLower.replace(/\.(webp|jpeg|jpg|png|svg)$/i, '')
+                    return imageNameClean.includes(searchLower)
+                  })
+
+                  // Visa inte kategorin om inga bilder matchar sökningen
+                  if (imageSearchQuery && filteredImages.length === 0) {
+                    return null
+                  }
+
+                  return (
+                    <div key={key} className="space-y-4">
+                      {/* Kategori Header */}
+                      <div className={`bg-gradient-to-r ${
+                        category.color === 'emerald' ? 'from-emerald-900/50 to-emerald-800/30 border-emerald-500/30' :
+                        category.color === 'amber' ? 'from-amber-900/50 to-amber-800/30 border-amber-500/30' :
+                        'from-blue-900/50 to-blue-800/30 border-blue-500/30'
+                      } border rounded-lg p-4`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className={`text-lg font-semibold ${
+                              category.color === 'emerald' ? 'text-emerald-300' :
+                              category.color === 'amber' ? 'text-amber-300' :
+                              'text-blue-300'
+                            }`}>
+                              {category.title}
+                            </h3>
+                            <p className="text-white/60 text-sm mt-1">{category.description}</p>
+                          </div>
+                          <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            category.color === 'emerald' ? 'bg-emerald-500/20 text-emerald-300' :
+                            category.color === 'amber' ? 'bg-amber-500/20 text-amber-300' :
+                            'bg-blue-500/20 text-blue-300'
                           }`}>
-                            {category.title}
-                          </h3>
-                          <p className="text-white/60 text-sm mt-1">{category.description}</p>
-                        </div>
-                        <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          category.color === 'emerald' ? 'bg-emerald-500/20 text-emerald-300' :
-                          category.color === 'amber' ? 'bg-amber-500/20 text-amber-300' :
-                          'bg-blue-500/20 text-blue-300'
-                        }`}>
-                          {category.images.length} bilder
+                            {imageSearchQuery ? `${filteredImages.length}/${category.images.length}` : `${category.images.length}`} bilder
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Bildgrid för kategorin */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-                      {category.images.map((imageName) => {
+                      {/* Bildgrid för kategorin */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                        {filteredImages.map((imageName) => {
                         const fullPath = `${category.path}${imageName}`
                         const isSelected = newItem.image_url === fullPath
                         
@@ -1649,13 +1699,52 @@ function ContentEditor() {
                       })}
                     </div>
                   </div>
-                ))}
+                )})}
+                
+                {/* Visa meddelande om inga resultat */}
+                {imageSearchQuery && Object.entries(imageCategories).every(([key, category]) => 
+                  category.images.filter(imageName => {
+                    const searchLower = imageSearchQuery.toLowerCase()
+                    const imageLower = imageName.toLowerCase()
+                    const imageNameClean = imageLower.replace(/\.(webp|jpeg|jpg|png|svg)$/i, '')
+                    return imageNameClean.includes(searchLower)
+                  }).length === 0
+                ) && (
+                  <div className="text-center py-12">
+                    <div className="text-white/40 text-6xl mb-4">🔍</div>
+                    <h3 className="text-lg font-medium text-white/80 mb-2">Inga bilder hittades</h3>
+                    <p className="text-white/60 mb-4">
+                      Inga bilder matchar din sökning "{imageSearchQuery}"
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => setImageSearchQuery("")}
+                      className="border-[#e4d699]/30 hover:bg-[#e4d699]/10"
+                    >
+                      Rensa sökning
+                    </Button>
+                  </div>
+                )}
                 
                 {/* Action buttons */}
                 <div className="sticky bottom-0 bg-gradient-to-t from-black via-black/95 to-transparent pt-6 pb-2">
                   <div className="flex justify-between items-center">
                     <div className="text-sm text-white/60">
-                      Totalt: {Object.values(imageCategories).reduce((sum, cat) => sum + cat.images.length, 0)} bilder tillgängliga
+                      {imageSearchQuery ? (
+                        <>
+                          {Object.entries(imageCategories).reduce((sum, [key, category]) => {
+                            const filteredCount = category.images.filter(imageName => {
+                              const searchLower = imageSearchQuery.toLowerCase()
+                              const imageLower = imageName.toLowerCase()
+                              const imageNameClean = imageLower.replace(/\.(webp|jpeg|jpg|png|svg)$/i, '')
+                              return imageNameClean.includes(searchLower)
+                            }).length
+                            return sum + filteredCount
+                          }, 0)} av {Object.values(imageCategories).reduce((sum, cat) => sum + cat.images.length, 0)} bilder visas
+                        </>
+                      ) : (
+                        <>Totalt: {Object.values(imageCategories).reduce((sum, cat) => sum + cat.images.length, 0)} bilder tillgängliga</>
+                      )}
                     </div>
                     <div className="flex gap-3">
                       <Button
@@ -1939,6 +2028,7 @@ function ImageManagement() {
   const [searchQuery, setSearchQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [imageFilter, setImageFilter] = useState("all") // all, with, without
+  const [imageSearchQuery, setImageSearchQuery] = useState("")
   const { toast } = useToast()
 
   // Lista över tillgängliga bilder från public/Meny-bilder/ (nu WebP-format)
@@ -2262,7 +2352,12 @@ function ImageManagement() {
         )}
 
         {/* Bildväljare Modal */}
-        <Dialog open={showImageModal} onOpenChange={setShowImageModal}>
+        <Dialog open={showImageModal} onOpenChange={(open) => {
+          setShowImageModal(open)
+          if (!open) {
+            setImageSearchQuery("") // Rensa sökningen när modalen stängs
+          }
+        }}>
           <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto bg-black border-[#e4d699]/20">
                          <DialogHeader>
                <DialogTitle>
@@ -2283,8 +2378,42 @@ function ImageManagement() {
                </div>
              </DialogHeader>
             
+             {/* Sökfunktion för bilder */}
+             <div className="mt-4 mb-6">
+               <div className="relative">
+                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/50" />
+                 <Input
+                   placeholder="Sök bland bilder... (t.ex. lax, roll, chicken)"
+                   value={imageSearchQuery}
+                   onChange={(e) => setImageSearchQuery(e.target.value)}
+                   className="pl-10 w-full border-[#e4d699]/30 bg-black/50 text-white placeholder:text-white/50"
+                 />
+                 {imageSearchQuery && (
+                   <Button
+                     variant="ghost"
+                     size="sm"
+                     onClick={() => setImageSearchQuery("")}
+                     className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 text-white/50 hover:text-white"
+                   >
+                     <X className="h-3 w-3" />
+                   </Button>
+                 )}
+               </div>
+               {imageSearchQuery && (
+                 <p className="text-xs text-white/60 mt-2">
+                   Söker efter: "{imageSearchQuery}"
+                 </p>
+               )}
+             </div>
+            
                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 py-4">
-               {availableImages.map((imageName) => (
+               {availableImages.filter(imageName => {
+                 if (!imageSearchQuery) return true
+                 const searchLower = imageSearchQuery.toLowerCase()
+                 const imageLower = imageName.toLowerCase()
+                 const imageNameClean = imageLower.replace(/\.(webp|jpeg|jpg|png|svg)$/i, '')
+                 return imageNameClean.includes(searchLower)
+               }).map((imageName) => (
                  <div
                    key={imageName}
                    className="cursor-pointer border-2 border-transparent hover:border-[#e4d699]/60 rounded-lg overflow-hidden transition-colors"
@@ -2314,9 +2443,46 @@ function ImageManagement() {
                    </div>
                  </div>
                ))}
+               
+               {/* Visa meddelande om inga resultat */}
+               {imageSearchQuery && availableImages.filter(imageName => {
+                 const searchLower = imageSearchQuery.toLowerCase()
+                 const imageLower = imageName.toLowerCase()
+                 const imageNameClean = imageLower.replace(/\.(webp|jpeg|jpg|png|svg)$/i, '')
+                 return imageNameClean.includes(searchLower)
+               }).length === 0 && (
+                 <div className="col-span-full text-center py-12">
+                   <div className="text-white/40 text-6xl mb-4">🔍</div>
+                   <h3 className="text-lg font-medium text-white/80 mb-2">Inga bilder hittades</h3>
+                   <p className="text-white/60 mb-4">
+                     Inga bilder matchar din sökning "{imageSearchQuery}"
+                   </p>
+                   <Button
+                     variant="outline"
+                     onClick={() => setImageSearchQuery("")}
+                     className="border-[#e4d699]/30 hover:bg-[#e4d699]/10"
+                   >
+                     Rensa sökning
+                   </Button>
+                 </div>
+               )}
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="flex justify-between items-center">
+              <div className="text-sm text-white/60">
+                {imageSearchQuery ? (
+                  <>
+                    {availableImages.filter(imageName => {
+                      const searchLower = imageSearchQuery.toLowerCase()
+                      const imageLower = imageName.toLowerCase()
+                      const imageNameClean = imageLower.replace(/\.(webp|jpeg|jpg|png|svg)$/i, '')
+                      return imageNameClean.includes(searchLower)
+                    }).length} av {availableImages.length} bilder visas
+                  </>
+                ) : (
+                  <>{availableImages.length} bilder tillgängliga</>
+                )}
+              </div>
               <Button
                 variant="outline"
                 onClick={() => setShowImageModal(false)}
@@ -6327,6 +6493,21 @@ function EmailManagement() {
   const [emailLogs, setEmailLogs] = useState([])
   const [emailSettings, setEmailSettings] = useState([])
   const [localEmailSettings, setLocalEmailSettings] = useState({})
+  
+  // Email test dialog states
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false)
+  const [testEmailAddress, setTestEmailAddress] = useState('')
+  const [emailTestType, setEmailTestType] = useState('order')
+  
+  // Resend states
+  const [resendConnectionStatus, setResendConnectionStatus] = useState(null)
+  const [testingResend, setTestingResend] = useState(false)
+  const [resendDialogOpen, setResendDialogOpen] = useState(false)
+  const [resendTestEmail, setResendTestEmail] = useState('')
+  const [resendTestType, setResendTestType] = useState('order')
+  const [resendSettings, setResendSettings] = useState([])
+  const [localResendSettings, setLocalResendSettings] = useState({})
+  
   const { toast } = useToast()
 
   const [templateForm, setTemplateForm] = useState({
@@ -6337,14 +6518,41 @@ function EmailManagement() {
     text_content: "",
     variables: [],
     location: null,
-    is_active: true
+    is_active: true,
+    delivery_method: "resend"
   })
 
   useEffect(() => {
     fetchTemplates()
     checkEmailConnection()
     fetchEmailSettings()
+    fetchResendSettings()
+    checkResendConnection()
   }, [])
+
+  const fetchResendSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('email_settings')
+        .select('*')
+        .in('setting_key', ['resend_api_key', 'resend_from_email', 'resend_enabled'])
+
+      if (error) throw error
+
+      setResendSettings(data || [])
+      
+      // Skapa lokala inställningar från databasen
+      const localSettings = {}
+      data?.forEach(setting => {
+        localSettings[setting.setting_key] = setting.setting_value
+      })
+      setLocalResendSettings(localSettings)
+    } catch (error) {
+      console.error('Error fetching Resend settings:', error)
+      setResendSettings([])
+      setLocalResendSettings({})
+    }
+  }
 
   const fetchTemplates = async () => {
     try {
@@ -6378,6 +6586,27 @@ function EmailManagement() {
     } catch (error) {
       console.error('Error checking email connection:', error)
       setEmailConnectionStatus(false)
+    }
+  }
+
+  const checkResendConnection = async () => {
+    try {
+      const response = await fetch('/api/test-resend', {
+        method: 'GET'
+      })
+      const result = await response.json()
+      
+      if (result.success) {
+        setResendConnectionStatus('connected')
+      } else if (result.error && result.error.includes('inte konfigurerad')) {
+        // API-nyckel är inte konfigurerad, visa som "ej testad"
+        setResendConnectionStatus(null)
+      } else {
+        setResendConnectionStatus('error')
+      }
+    } catch (error) {
+      console.error('Error checking Resend connection:', error)
+      setResendConnectionStatus('error')
     }
   }
 
@@ -6475,7 +6704,8 @@ function EmailManagement() {
       text_content: template.text_content || "",
       variables: Array.isArray(template.variables) ? template.variables : JSON.parse(template.variables || '[]'),
       location: template.location,
-      is_active: template.is_active
+      is_active: template.is_active,
+      delivery_method: template.delivery_method || "nodemailer"
     })
     setShowTemplateModal(true)
   }
@@ -6544,83 +6774,218 @@ function EmailManagement() {
     }
   }
 
-  const handleSendTestEmail = async () => {
-    if (!testEmail) {
-      toast({
-        title: "E-postadress saknas",
-        description: "Ange en e-postadress för att skicka test-e-post.",
-        variant: "destructive",
-      })
-      return
-    }
 
-    setTestingEmail(true)
+
+  // Email credentials test (no email sent)
+  const handleTestEmailCredentials = async () => {
     try {
+      setTestingEmail(true)
       const response = await fetch('/api/test-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email: testEmail,
-          subject: 'Test från Moi Sushi Admin',
-          message: 'Detta är ett test-e-post från ditt Moi Sushi admin-system. Om du får detta meddelande fungerar e-postsystemet korrekt!'
-        })
+        method: 'GET'
       })
-      
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || 'Okänt fel')
 
-      toast({
-        title: "Test-e-post skickad! ✅",
-        description: `Test-e-post skickad till ${testEmail}`,
-        variant: "default",
-      })
-      setShowTestModal(false)
-      setTestEmail("")
+      const result = await response.json()
+      
+      if (result.success) {
+        toast({
+          title: "✅ E-post anslutning OK!",
+          description: "SMTP-inställningarna fungerar korrekt",
+        })
+      } else {
+        throw new Error(result.error || 'Anslutningsfel')
+      }
     } catch (error) {
-      console.error('Error sending test email:', error)
+      console.error('Error testing email credentials:', error)
       toast({
-        title: "Fel vid e-posttest ❌",
-        description: error.message || "Kunde inte skicka test-e-post. Kontrollera e-postinställningarna.",
-        variant: "destructive",
+        title: "❌ E-post anslutning misslyckades",
+        description: error instanceof Error ? error.message : 'Kunde inte ansluta till e-postservern',
+        variant: "destructive"
       })
     } finally {
       setTestingEmail(false)
     }
   }
 
-  const handleQuickEmailTest = async () => {
-    const userEmail = prompt("Ange e-postadress för test:")
-    if (!userEmail) return
+  // Send actual test email
+  const handleSendTestEmail = async () => {
+    if (!testEmailAddress.trim()) {
+      toast({
+        title: "❌ E-postadress saknas",
+        description: "Ange en giltig e-postadress",
+        variant: "destructive"
+      })
+      return
+    }
 
-    setTestingEmail(true)
     try {
+      setTestingEmail(true)
       const response = await fetch('/api/test-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          email: userEmail,
-          subject: 'E-posttest från Moi Sushi',
-          message: 'Detta är ett test-e-post från ditt Moi Sushi system. Om du får detta meddelande fungerar e-postsystemet korrekt!'
+          type: emailTestType
         })
       })
-      
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || 'Okänt fel')
 
-      toast({
-        title: "Test-e-post skickad! ✅",
-        description: `Test-e-post skickad till ${userEmail}`,
-        variant: "default",
-      })
+      const result = await response.json()
+      
+      if (result.success) {
+        const typeNames = {
+          order: 'Orderbekräftelse',
+          booking: 'Bokningsbekräftelse', 
+          contact: 'Kontaktmeddelande'
+        }
+        
+        toast({
+          title: "✅ Test-e-post skickad!",
+          description: `${typeNames[emailTestType]} skickades som test`,
+        })
+        setEmailDialogOpen(false)
+        setTestEmailAddress('')
+      } else {
+        throw new Error(result.error || 'Okänt fel')
+      }
     } catch (error) {
       console.error('Error sending test email:', error)
       toast({
-        title: "Fel vid e-posttest ❌",
-        description: error.message || "Kunde inte skicka test-e-post. Kontrollera e-postinställningarna.",
-        variant: "destructive",
+        title: "❌ Fel vid e-posttest",
+        description: error instanceof Error ? error.message : 'Kunde inte skicka test-e-post',
+        variant: "destructive"
       })
     } finally {
       setTestingEmail(false)
+    }
+  }
+
+  // Resend functions
+  const handleTestResendConnection = async () => {
+    try {
+      setTestingResend(true)
+      const response = await fetch('/api/test-resend', {
+        method: 'GET'
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        setResendConnectionStatus('connected')
+        toast({
+          title: "✅ Resend-anslutning fungerar!",
+          description: `${result.message} (${result.domainsCount} domäner)`
+        })
+      } else {
+        setResendConnectionStatus('error')
+        throw new Error(result.error || 'Okänt fel')
+      }
+    } catch (error) {
+      console.error('Error testing Resend connection:', error)
+      setResendConnectionStatus('error')
+      toast({
+        title: "❌ Resend-anslutning misslyckades",
+        description: error instanceof Error ? error.message : 'Kunde inte ansluta till Resend',
+        variant: "destructive"
+      })
+    } finally {
+      setTestingResend(false)
+    }
+  }
+
+  const handleSendResendTestEmail = async () => {
+    if (!resendTestEmail.trim()) {
+      toast({
+        title: "❌ E-postadress saknas",
+        description: "Ange en giltig e-postadress",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      setTestingResend(true)
+      const response = await fetch('/api/test-resend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          type: resendTestType,
+          email: resendTestEmail
+        })
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        const typeNames = {
+          order: 'Orderbekräftelse',
+          booking: 'Bokningsbekräftelse', 
+          contact: 'Kontaktmeddelande'
+        }
+        
+        toast({
+          title: "✅ Resend test-e-post skickad!",
+          description: `${typeNames[resendTestType]} skickades via Resend (ID: ${result.messageId})`
+        })
+        setResendDialogOpen(false)
+        setResendTestEmail('')
+      } else {
+        throw new Error(result.error || 'Okänt fel')
+      }
+    } catch (error) {
+      console.error('Error sending Resend test email:', error)
+      toast({
+        title: "❌ Fel vid Resend e-posttest",
+        description: error instanceof Error ? error.message : 'Kunde inte skicka test-e-post via Resend',
+        variant: "destructive"
+      })
+    } finally {
+      setTestingResend(false)
+    }
+  }
+
+  const updateResendSetting = async (settingKey, newValue) => {
+    // Uppdatera lokala inställningar direkt för bättre UX
+    setLocalResendSettings(prev => ({
+      ...prev,
+      [settingKey]: newValue
+    }))
+
+    try {
+      const { error } = await supabase
+        .from('email_settings')
+        .update({ setting_value: newValue })
+        .eq('setting_key', settingKey)
+
+      if (error) throw error
+
+      // Uppdatera resendSettings utan att hämta om hela listan
+      setResendSettings(prev => 
+        prev.map(setting => 
+          setting.setting_key === settingKey 
+            ? { ...setting, setting_value: newValue }
+            : setting
+        )
+      )
+
+      toast({
+        title: "Uppdaterat",
+        description: "Resend-inställning har uppdaterats.",
+      })
+    } catch (error) {
+      console.error('Error updating Resend setting:', error)
+      // Återställ lokala inställningar vid fel
+      setLocalResendSettings(prev => {
+        const restored = { ...prev }
+        const originalSetting = resendSettings.find(s => s.setting_key === settingKey)
+        if (originalSetting) {
+          restored[settingKey] = originalSetting.setting_value
+        }
+        return restored
+      })
+      
+      toast({
+        title: "Fel",
+        description: "Kunde inte uppdatera Resend-inställning.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -6676,7 +7041,8 @@ function EmailManagement() {
       text_content: "",
       variables: [],
       location: null,
-      is_active: true
+      is_active: true,
+      delivery_method: "resend"
     })
   }
 
@@ -6910,10 +7276,11 @@ function EmailManagement() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="templates">Mallar</TabsTrigger>
           <TabsTrigger value="logs">Loggar</TabsTrigger>
-          <TabsTrigger value="settings">Inställningar</TabsTrigger>
+          <TabsTrigger value="settings">NodeMailer</TabsTrigger>
+          <TabsTrigger value="resend">Resend</TabsTrigger>
         </TabsList>
 
         <TabsContent value="templates" className="space-y-4">
@@ -6941,7 +7308,16 @@ function EmailManagement() {
                       </span>
                     </div>
                   </div>
-                  <CardDescription>{template.template_key}</CardDescription>
+                  <CardDescription className="flex items-center gap-2">
+                    <span>{template.type}</span>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      template.delivery_method === 'resend' 
+                        ? 'bg-blue-500/20 text-blue-400' 
+                        : 'bg-green-500/20 text-green-400'
+                    }`}>
+                      {template.delivery_method === 'resend' ? 'Resend' : 'NodeMailer'}
+                    </span>
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-white/70 mb-3">{template.subject}</p>
@@ -7041,24 +7417,35 @@ function EmailManagement() {
         <TabsContent value="settings" className="space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="text-lg font-medium">E-postinställningar</h4>
-            <Button
-              onClick={handleQuickEmailTest}
-              disabled={testingEmail}
-              variant="outline"
-              className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
-            >
-              {testingEmail ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Skickar test...
-                </>
-              ) : (
-                <>
-                  <Send className="mr-2 h-4 w-4" />
-                  Testa e-post
-                </>
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleTestEmailCredentials}
+                disabled={testingEmail}
+                variant="outline"
+                className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+              >
+                {testingEmail ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Testar...
+                  </>
+                ) : (
+                  <>
+                    <Check className="mr-2 h-4 w-4" />
+                    Testa anslutning
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={() => setEmailDialogOpen(true)}
+                disabled={testingEmail}
+                variant="outline"
+                className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+              >
+                <Send className="mr-2 h-4 w-4" />
+                Skicka test-e-post
+              </Button>
+            </div>
           </div>
           
           {/* Email Test Info */}
@@ -7071,8 +7458,8 @@ function EmailManagement() {
                 <div>
                   <h5 className="font-medium text-blue-400 mb-1">Testa e-postsystem</h5>
                   <p className="text-sm text-blue-300/80">
-                    Klicka på "Testa e-post" för att skicka ett test-e-post och verifiera att ditt e-postsystem fungerar korrekt. 
-                    Du kommer att få ange en e-postadress där testet ska skickas.
+                    <strong>Testa anslutning:</strong> Kontrollerar att SMTP-inställningarna fungerar utan att skicka e-post.<br/>
+                    <strong>Skicka test-e-post:</strong> Skickar en riktig test-e-post för att verifiera fullständig funktionalitet.
                   </p>
                 </div>
               </div>
@@ -7136,6 +7523,163 @@ function EmailManagement() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="resend" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-lg font-medium">Resend E-posttjänst</h4>
+            <div className="flex gap-2">
+              {resendSettings.length === 0 && (
+                <Button
+                  onClick={async () => {
+                    try {
+                      const response = await fetch('/api/setup-resend', { method: 'POST' })
+                      const result = await response.json()
+                      if (result.success) {
+                        toast({ title: "✅ Resend-inställningar skapade", description: result.message })
+                        fetchResendSettings()
+                      } else {
+                        throw new Error(result.error)
+                      }
+                    } catch (error) {
+                      toast({ title: "❌ Fel", description: error.message, variant: "destructive" })
+                    }
+                  }}
+                  variant="outline"
+                  className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Skapa inställningar
+                </Button>
+              )}
+              <Button
+                onClick={handleTestResendConnection}
+                disabled={testingResend || resendSettings.length === 0}
+                variant="outline"
+                className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+              >
+                {testingResend ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Testar...
+                  </>
+                ) : (
+                  <>
+                    <Check className="mr-2 h-4 w-4" />
+                    Testa anslutning
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={() => setResendDialogOpen(true)}
+                disabled={testingResend || resendSettings.length === 0}
+                variant="outline"
+                className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+              >
+                <Send className="mr-2 h-4 w-4" />
+                Skicka test-e-post
+              </Button>
+            </div>
+          </div>
+          
+          {/* Resend Info */}
+          <Card className="border border-blue-500/30 bg-blue-900/20">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+                  <Send className="h-4 w-4 text-blue-400" />
+                </div>
+                <div>
+                  <h5 className="font-medium text-blue-400 mb-1">Resend E-posttjänst</h5>
+                  <p className="text-sm text-blue-300/80 mb-2">
+                    Resend är en modern e-posttjänst som är enklare att konfigurera än traditionella SMTP-servrar.
+                  </p>
+                  <div className="space-y-1 text-xs text-blue-300/70">
+                    <p><strong>Fördelar:</strong></p>
+                    <ul className="list-disc list-inside ml-2 space-y-1">
+                      <li>Enkel konfiguration - bara API-nyckel krävs</li>
+                      <li>Hög leveransgrad och tillförlitlighet</li>
+                      <li>Detaljerad analytics och spårning</li>
+                      <li>Automatisk hantering av SPF/DKIM/DMARC</li>
+                      <li>Stöd för anpassade domäner</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-[#e4d699]/30 bg-black/30">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Resend Status</CardTitle>
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${
+                    resendConnectionStatus === 'connected' ? 'bg-green-400' : 
+                    resendConnectionStatus === 'error' ? 'bg-red-400' : 'bg-yellow-400'
+                  }`} />
+                  <span className="text-xs text-white/60">
+                    {resendConnectionStatus === 'connected' ? 'Ansluten' : 
+                     resendConnectionStatus === 'error' ? 'Fel' : 'Ej testad'}
+                  </span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {resendSettings.length === 0 ? (
+                <div className="p-4 bg-yellow-900/20 border border-yellow-500/30 rounded-lg text-center">
+                  <h6 className="font-medium text-yellow-400 mb-2">⚠️ Inga Resend-inställningar hittades</h6>
+                  <p className="text-sm text-yellow-300/80 mb-3">
+                    Klicka på "Skapa inställningar" ovan för att lägga till Resend-konfiguration i databasen.
+                  </p>
+                </div>
+              ) : (
+                resendSettings.map(setting => (
+                <div key={setting.id} className="space-y-2">
+                  <Label htmlFor={setting.setting_key}>
+                    {setting.setting_key === 'resend_api_key' ? 'API-nyckel' :
+                     setting.setting_key === 'resend_from_email' ? 'Avsändaradress' :
+                     setting.setting_key === 'resend_enabled' ? 'Aktiverad' :
+                     setting.setting_key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </Label>
+                  {setting.setting_key === 'resend_api_key' ? (
+                    <Input
+                      id={setting.setting_key}
+                      type="password"
+                      value={localResendSettings[setting.setting_key] || setting.setting_value}
+                      onChange={(e) => updateResendSetting(setting.setting_key, e.target.value)}
+                      className="border-[#e4d699]/30 bg-black/50"
+                      placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    />
+                  ) : setting.setting_key === 'resend_enabled' ? (
+                    <select
+                      id={setting.setting_key}
+                      value={localResendSettings[setting.setting_key] || setting.setting_value}
+                      onChange={(e) => updateResendSetting(setting.setting_key, e.target.value)}
+                      className="w-full p-2 rounded-md border border-[#e4d699]/30 bg-black/50 text-white"
+                    >
+                      <option value="true">Ja</option>
+                      <option value="false">Nej</option>
+                    </select>
+                  ) : (
+                    <Input
+                      id={setting.setting_key}
+                      value={localResendSettings[setting.setting_key] || setting.setting_value}
+                      onChange={(e) => updateResendSetting(setting.setting_key, e.target.value)}
+                      className="border-[#e4d699]/30 bg-black/50"
+                      placeholder={setting.setting_key === 'resend_from_email' ? '"Moi Sushi <noreply@yourdomain.com>"' : ''}
+                    />
+                                     )}
+                   {setting.description && (
+                     <p className="text-xs text-white/60">{setting.description}</p>
+                   )}
+                 </div>
+                ))
+              )}
+
+
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* Template Modal */}
@@ -7159,16 +7703,60 @@ function EmailManagement() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="template_key">Mall-nyckel</Label>
-                <Input
-                  id="template_key"
-                  value={templateForm.template_key}
-                  onChange={(e) => setTemplateForm(prev => ({ ...prev, template_key: e.target.value }))}
-                  className="border-[#e4d699]/30 bg-black/50"
-                  placeholder="order_confirmation"
+                <Label htmlFor="type">Malltyp</Label>
+                <select
+                  id="type"
+                  value={templateForm.type}
+                  onChange={(e) => setTemplateForm(prev => ({ ...prev, type: e.target.value }))}
+                  className="w-full p-2 rounded-md border border-[#e4d699]/30 bg-black/50 text-white"
                   required
                   disabled={!!editingTemplate}
-                />
+                >
+                  <option value="order_confirmation">Orderbekräftelse</option>
+                  <option value="booking_confirmation">Bokningsbekräftelse</option>
+                  <option value="welcome">Välkomstmail</option>
+                  <option value="promotional">Kampanjmail</option>
+                  <option value="order_status_update">Orderstatusuppdatering</option>
+                  <option value="booking_reminder">Bokningspåminnelse</option>
+                  <option value="password_reset">Lösenordsåterställning</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="delivery_method">E-posttjänst</Label>
+                <select
+                  id="delivery_method"
+                  value={templateForm.delivery_method}
+                  onChange={(e) => setTemplateForm(prev => ({ ...prev, delivery_method: e.target.value }))}
+                  className="w-full p-2 rounded-md border border-[#e4d699]/30 bg-black/50 text-white"
+                  required
+                >
+                  <option value="nodemailer">NodeMailer (SMTP)</option>
+                  <option value="resend">Resend</option>
+                </select>
+                <p className="text-xs text-white/60">
+                  {templateForm.delivery_method === 'resend' 
+                    ? '📨 Använder Resend för snabb och tillförlitlig leverans'
+                    : '📧 Använder NodeMailer med SMTP-inställningar'
+                  }
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <div className="flex items-center space-x-2 pt-2">
+                  <input
+                    type="checkbox"
+                    id="is_active"
+                    checked={templateForm.is_active}
+                    onChange={(e) => setTemplateForm(prev => ({ ...prev, is_active: e.target.checked }))}
+                    className="rounded border-[#e4d699]/30"
+                  />
+                  <Label htmlFor="is_active" className="text-sm">
+                    {templateForm.is_active ? 'Aktiv' : 'Inaktiv'}
+                  </Label>
+                </div>
               </div>
             </div>
 
@@ -7647,6 +8235,152 @@ function EmailManagement() {
             >
               <Trash2 className="h-4 w-4 mr-2" />
               Ta bort mall
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Test Dialog */}
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent className="bg-black border border-[#e4d699]/30 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-[#e4d699]">Skicka test-e-post</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Välj typ av test-e-post och ange mottagaradress
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="test-type" className="text-white">E-posttyp</Label>
+              <select
+                id="test-type"
+                value={emailTestType}
+                onChange={(e) => setEmailTestType(e.target.value)}
+                className="w-full p-2 rounded-md border border-[#e4d699]/30 bg-black/50 text-white"
+              >
+                <option value="order">Orderbekräftelse</option>
+                <option value="booking">Bokningsbekräftelse</option>
+                <option value="contact">Kontaktmeddelande</option>
+              </select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="test-email" className="text-white">E-postadress</Label>
+              <Input
+                id="test-email"
+                type="email"
+                value={testEmailAddress}
+                onChange={(e) => setTestEmailAddress(e.target.value)}
+                placeholder="test@example.com"
+                className="border-[#e4d699]/30 bg-black/50"
+              />
+            </div>
+            
+            <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3">
+              <p className="text-sm text-blue-300/80">
+                <strong>OBS:</strong> Detta skickar en riktig e-post med testdata till den angivna adressen.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEmailDialogOpen(false)}
+              className="border-[#e4d699]/30"
+            >
+              Avbryt
+            </Button>
+            <Button
+              onClick={handleSendTestEmail}
+              disabled={testingEmail || !testEmailAddress.trim()}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              {testingEmail ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Skickar...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Skicka test
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Resend Test Dialog */}
+      <Dialog open={resendDialogOpen} onOpenChange={setResendDialogOpen}>
+        <DialogContent className="bg-black border border-[#e4d699]/30 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-[#e4d699]">Skicka Resend test-e-post</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Välj typ av test-e-post och ange mottagaradress för Resend
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="resend-test-type" className="text-white">E-posttyp</Label>
+              <select
+                id="resend-test-type"
+                value={resendTestType}
+                onChange={(e) => setResendTestType(e.target.value)}
+                className="w-full p-2 rounded-md border border-[#e4d699]/30 bg-black/50 text-white"
+              >
+                <option value="order">Orderbekräftelse</option>
+                <option value="booking">Bokningsbekräftelse</option>
+                <option value="contact">Kontaktmeddelande</option>
+              </select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="resend-test-email" className="text-white">E-postadress</Label>
+              <Input
+                id="resend-test-email"
+                type="email"
+                value={resendTestEmail}
+                onChange={(e) => setResendTestEmail(e.target.value)}
+                placeholder="test@example.com"
+                className="border-[#e4d699]/30 bg-black/50"
+              />
+            </div>
+            
+            <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3">
+              <p className="text-sm text-blue-300/80">
+                <strong>OBS:</strong> Detta skickar en riktig e-post via Resend med testdata till den angivna adressen.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setResendDialogOpen(false)}
+              className="border-[#e4d699]/30"
+            >
+              Avbryt
+            </Button>
+            <Button
+              onClick={handleSendResendTestEmail}
+              disabled={testingResend || !resendTestEmail.trim()}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              {testingResend ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Skickar...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Skicka via Resend
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

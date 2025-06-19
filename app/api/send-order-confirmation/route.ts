@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sendOrderConfirmation } from '@/lib/email'
+import { sendOrderConfirmationFromTemplate } from '@/lib/email-template-service'
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const result = await sendOrderConfirmation(orderData)
+    const result = await sendOrderConfirmationFromTemplate(orderData)
     
     if (result.success) {
       return NextResponse.json({ success: true, message: 'Order confirmation sent successfully' })

@@ -60,6 +60,71 @@ export default function Home() {
   }, [])
 
   return (
+    <>
+      {/* Strukturerad data för startsidan */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Var ligger Moi Sushi & Poké Bowl?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Vi finns i Trelleborg på Algatan 17, samt i Malmö och Ystad. Se alla våra platser och öppettider på vår platssida."
+                }
+              },
+              {
+                "@type": "Question", 
+                "name": "Kan jag beställa online?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Ja! Du kan enkelt beställa online för leverans eller hämtning. Vi erbjuder snabb leverans och accepterar betalning med kort, Swish och Klarna."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Serverar ni vegetarisk och vegan mat?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Absolut! Vi har flera vegetariska och veganska alternativ på vår meny, inklusive veganska sushi rolls och poké bowls med tofu."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Kan jag boka bord?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Ja, du kan enkelt boka bord online genom vår bokningssida. Välj datum, tid och antal gäster så bekräftar vi din bokning via e-post."
+                }
+              }
+            ]
+          })
+        }}
+      />
+      
+      {/* Breadcrumb strukturerad data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Hem",
+                "item": "https://moi-sushi.se/"
+              }
+            ]
+          })
+        }}
+      />
+      
     <div className="flex flex-col min-h-screen overflow-x-hidden bg-gradient-to-b from-black via-black to-gray-900">
       {/* Hero Section */}
       <section className="relative h-[80vh] md:h-[70vh] w-full overflow-hidden">
@@ -310,6 +375,7 @@ export default function Home() {
         </div>
       </section>
     </div>
+    </>
   )
 }
 

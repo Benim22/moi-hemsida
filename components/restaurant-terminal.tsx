@@ -1129,6 +1129,31 @@ export default function RestaurantTerminal() {
                     </span>
                   </Button>
                   
+                  {/* Test Notifications Button */}
+                  <Button 
+                    onClick={() => {
+                      console.log('🧪 Testar notifikationer och ljud...')
+                      
+                      // Testa både popup och ljud
+                      showBrowserNotification(
+                        'Test Notifikation! 🔔', 
+                        `Testnotifikation från ${getLocationName(selectedLocation)} - ${new Date().toLocaleTimeString('sv-SE')}`, 
+                        true // true = visa popup modal också
+                      )
+                      playNotificationSound()
+                      
+                      console.log('✅ Testnotifikation skickad!')
+                    }}
+                    variant="outline" 
+                    className="flex-1 sm:flex-none border-purple-500/40 text-purple-400 hover:bg-purple-500/10 transition-all duration-200"
+                    size="sm"
+                    title="Testa notifikationer och ljud"
+                  >
+                    <Bell className="h-4 w-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">Testa Notis</span>
+                    <span className="sm:hidden">🔔</span>
+                  </Button>
+                  
                   <Badge variant="outline" className="border-green-500/50 text-green-400 px-2 py-1 flex items-center">
                     <span className="hidden sm:inline">🟢 Auto-uppdatering</span>
                     <span className="sm:hidden">🟢 Auto</span>

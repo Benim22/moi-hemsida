@@ -410,6 +410,6 @@ export const testEmailConnection = async () => {
     return { success: true, message: 'Email connection successful' }
   } catch (error) {
     console.error('Email connection failed:', error)
-    return { success: false, error: 'Email connection failed' }
+    return { success: false, error: `Email connection failed: ${error.message}` }
   }
 } 

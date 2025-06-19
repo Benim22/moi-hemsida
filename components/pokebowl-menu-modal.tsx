@@ -11,6 +11,29 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useCart } from "@/context/cart-context"
+import { useLocation } from "@/contexts/LocationContext"
+
+// Ystad food truck priser och tillgängliga rätter
+const ystadPokeBowlPrices = {
+  "Crispy Chicken": 109,
+  "Veggo": 109,
+  "Vegan Bowl": 109,
+  "Lemon Shrimp": 109,
+  "Crazy Swede": 129,
+  "Magic Lax": 129,
+}
+
+// Rätter som är tillgängliga på Ystad food truck
+const ystadAvailableItems = Object.keys(ystadPokeBowlPrices)
+
+// Funktion för att få rätt pris baserat på location
+const getLocationPrice = (itemName: string, originalPrice: number, selectedLocation: any) => {
+  // Endast för Ystad och endast för poké bowls
+  if (selectedLocation?.id === 'ystad' && ystadPokeBowlPrices[itemName as keyof typeof ystadPokeBowlPrices]) {
+    return ystadPokeBowlPrices[itemName as keyof typeof ystadPokeBowlPrices]
+  }
+  return originalPrice
+}
 
 // Poké Bowl data
 const pokeBowls = [
@@ -196,6 +219,7 @@ interface PokeBowlMenuModalProps {
 export function PokeBowlMenuModal({ open, onOpenChange }: PokeBowlMenuModalProps) {
   const { toast } = useToast()
   const { addItem } = useCart()
+  const { selectedLocation } = useLocation()
   const [selectedBowl, setSelectedBowl] = useState<(typeof pokeBowls)[0] | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [activeCategory, setActiveCategory] = useState("alla")
@@ -206,6 +230,11 @@ export function PokeBowlMenuModal({ open, onOpenChange }: PokeBowlMenuModalProps
   // Filter bowls based on search query and category
   useEffect(() => {
     let result = pokeBowls
+
+    // För Ystad: filtrera bort rätter som inte finns på food trucken
+    if (selectedLocation?.id === 'ystad') {
+      result = result.filter((bowl) => ystadAvailableItems.includes(bowl.name))
+    }
 
     // Filter by search query
     if (searchQuery) {
@@ -224,7 +253,7 @@ export function PokeBowlMenuModal({ open, onOpenChange }: PokeBowlMenuModalProps
     }
 
     setFilteredBowls(result)
-  }, [searchQuery, activeCategory])
+  }, [searchQuery, activeCategory, selectedLocation])
 
   // Set first bowl as selected when modal opens
   useEffect(() => {
@@ -246,10 +275,12 @@ export function PokeBowlMenuModal({ open, onOpenChange }: PokeBowlMenuModalProps
   const handleAddToCart = () => {
     if (!selectedBowl) return
 
+    const locationPrice = getLocationPrice(selectedBowl.name, selectedBowl.price, selectedLocation)
+
     const cartItem = {
       id: selectedBowl.id,
       name: selectedBowl.name,
-      price: selectedBowl.price,
+      price: locationPrice,
       image: selectedBowl.image,
       category: "pokebowls",
       quantity: quantity,
@@ -260,7 +291,7 @@ export function PokeBowlMenuModal({ open, onOpenChange }: PokeBowlMenuModalProps
       addItem({
         id: selectedBowl.id,
         name: selectedBowl.name,
-        price: selectedBowl.price,
+        price: locationPrice,
         image: selectedBowl.image,
         category: "pokebowls",
       })
@@ -336,6 +367,7 @@ export function PokeBowlMenuModal({ open, onOpenChange }: PokeBowlMenuModalProps
                   <h3 className="text-sm font-medium text-white/60 mb-2">REKOMMENDERADE</h3>
                   {pokeBowls
                     .filter((bowl) => bowl.popular)
+                    .filter((bowl) => selectedLocation?.id === 'ystad' ? ystadAvailableItems.includes(bowl.name) : true)
                     .map((bowl) => (
                       <motion.div
                         key={`popular-${bowl.id}`}
@@ -353,7 +385,16 @@ export function PokeBowlMenuModal({ open, onOpenChange }: PokeBowlMenuModalProps
                           <h3 className="font-medium">{bowl.name}</h3>
                           <div className="flex items-center gap-2">
                             <Star className="h-4 w-4 text-[#e4d699] fill-[#e4d699]" />
-                            <span className="text-[#e4d699]">{bowl.price} kr</span>
+                            <div className="flex flex-col items-end">
+                              <span className="text-[#e4d699]">{getLocationPrice(bowl.name, bowl.price, selectedLocation)} kr</span>
+                              {selectedLocation?.id === 'ystad' && 
+                               ystadPokeBowlPrices[bowl.name as keyof typeof ystadPokeBowlPrices] && 
+                               ystadPokeBowlPrices[bowl.name as keyof typeof ystadPokeBowlPrices] !== bowl.price && (
+                                <span className="text-xs text-white/50 line-through">
+                                  {bowl.price} kr
+                                </span>
+                              )}
+                            </div>
                             <ChevronRight className="h-4 w-4 text-white/50" />
                           </div>
                         </div>
@@ -399,14 +440,23 @@ export function PokeBowlMenuModal({ open, onOpenChange }: PokeBowlMenuModalProps
                       whileHover={{ x: 5 }}
                       whileTap={{ scale: 0.98 }}
                     >
-                      <div className="flex justify-between items-center">
-                        <h3 className="font-medium">{bowl.name}</h3>
-                        <div className="flex items-center gap-2">
-                          {bowl.popular && <Star className="h-4 w-4 text-[#e4d699] fill-[#e4d699]" />}
-                          <span className="text-[#e4d699]">{bowl.price} kr</span>
-                          <ChevronRight className="h-4 w-4 text-white/50" />
+                                              <div className="flex justify-between items-center">
+                          <h3 className="font-medium">{bowl.name}</h3>
+                          <div className="flex items-center gap-2">
+                            {bowl.popular && <Star className="h-4 w-4 text-[#e4d699] fill-[#e4d699]" />}
+                            <div className="flex flex-col items-end">
+                              <span className="text-[#e4d699]">{getLocationPrice(bowl.name, bowl.price, selectedLocation)} kr</span>
+                              {selectedLocation?.id === 'ystad' && 
+                               ystadPokeBowlPrices[bowl.name as keyof typeof ystadPokeBowlPrices] && 
+                               ystadPokeBowlPrices[bowl.name as keyof typeof ystadPokeBowlPrices] !== bowl.price && (
+                                <span className="text-xs text-white/50 line-through">
+                                  {bowl.price} kr
+                                </span>
+                              )}
+                            </div>
+                            <ChevronRight className="h-4 w-4 text-white/50" />
+                          </div>
                         </div>
-                      </div>
                     </motion.div>
                   ))
                 )}
@@ -453,7 +503,7 @@ export function PokeBowlMenuModal({ open, onOpenChange }: PokeBowlMenuModalProps
                   <div className="p-6 flex-grow flex flex-col">
                     <div className="flex justify-between items-center mb-4">
                       <div className="flex items-center gap-2">
-                        <span className="text-lg font-bold text-[#e4d699]">{selectedBowl.price} kr</span>
+                        <span className="text-lg font-bold text-[#e4d699]">{getLocationPrice(selectedBowl.name, selectedBowl.price, selectedLocation)} kr</span>
                         {selectedBowl.spicyLevel > 0 && (
                           <div className="flex items-center gap-1 ml-2">
                             <span className="text-xs text-white/60">Kryddnivå:</span>
@@ -584,7 +634,7 @@ export function PokeBowlMenuModal({ open, onOpenChange }: PokeBowlMenuModalProps
                         </div>
                         <Button className="bg-[#e4d699] text-black hover:bg-[#e4d699]/90" onClick={handleAddToCart}>
                           <ShoppingBag className="mr-2 h-4 w-4" />
-                          Lägg till i kundvagn ({quantity * selectedBowl.price} kr)
+                          Lägg till i kundvagn ({quantity * getLocationPrice(selectedBowl.name, selectedBowl.price, selectedLocation)} kr)
                         </Button>
                       </div>
                     </div>

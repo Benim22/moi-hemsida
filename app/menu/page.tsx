@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import type { Metadata } from "next"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -13,6 +14,28 @@ import { Info, MapPin, Loader2 } from "lucide-react"
 import { useLocation } from "@/contexts/LocationContext"
 import { trackMenuInteraction, trackEvent } from "@/lib/analytics"
 import { supabase } from "@/lib/supabase"
+
+// Ystad food truck priser och tillgängliga rätter
+const ystadPokeBowlPrices = {
+  "Crispy Chicken": 109,
+  "Veggo": 109,
+  "Vegan Bowl": 109,
+  "Lemon Shrimp": 109,
+  "Crazy Swede": 129,
+  "Magic Lax": 129,
+}
+
+// Rätter som är tillgängliga på Ystad food truck
+const ystadAvailableItems = Object.keys(ystadPokeBowlPrices)
+
+// Funktion för att få rätt pris baserat på location
+const getLocationPrice = (itemName: string, originalPrice: number, selectedLocation: any) => {
+  // Endast för Ystad och endast för poké bowls
+  if (selectedLocation?.id === 'ystad' && ystadPokeBowlPrices[itemName as keyof typeof ystadPokeBowlPrices]) {
+    return ystadPokeBowlPrices[itemName as keyof typeof ystadPokeBowlPrices]
+  }
+  return originalPrice
+}
 
 // Complete menu data with added nutritional and allergen information
 const menuData = {
@@ -298,7 +321,7 @@ const menuData = {
       name: "Spicy Beef",
       description:
         "En pokébowl med marinerat yakiniku-kött som kombineras med mango, sjögräs, gurka, kimchi, inlagd rödlök, edamame och salladsmix. En kryddig och färgglad rätt som levererar en explosion av smak i varje tugga.",
-      price: 135,
+      price: 135, // Originalpris - kommer uppdateras baserat på location
       image: "/Meny-bilder/spicy beef.jpg",
       popular: true,
       ingredients: [
@@ -1021,7 +1044,14 @@ export default function MenuPage() {
 
   // Get menu items for a specific category
   const getItemsForCategory = (category: string) => {
-    return menuItems.filter(item => item.category === category)
+    let items = menuItems.filter(item => item.category === category)
+    
+    // För Ystad: filtrera bort poké bowls som inte finns på food trucken
+    if (selectedLocation?.id === 'ystad' && category === 'Pokébowls') {
+      items = items.filter(item => ystadAvailableItems.includes(item.name))
+    }
+    
+    return items
   }
 
   // Handle scroll to control dock visibility
@@ -1069,11 +1099,13 @@ export default function MenuPage() {
     setSelectedItem(item)
     setIsModalOpen(true)
     
-    // Spåra meny-interaktion
-    trackMenuInteraction(item.name, item.category || activeTab, item.price)
+    // Spåra meny-interaktion med location-baserat pris
+    const locationPrice = getLocationPrice(item.name, item.price, selectedLocation)
+    trackMenuInteraction(item.name, item.category || activeTab, locationPrice)
     trackEvent('menu_interaction', 'item_details_view', {
       item_name: item.name,
-      item_price: item.price,
+      item_price: locationPrice,
+      original_price: item.price,
       category: item.category || activeTab,
       location: selectedLocation?.name || 'unknown'
     })
@@ -1157,16 +1189,37 @@ export default function MenuPage() {
                           {item.popular && (
                             <Badge className="absolute top-2 right-2 bg-[#e4d699] text-black">Populär</Badge>
                           )}
-                          {item.spicy_level > 0 && (
-                            <Badge className="absolute top-2 left-2 bg-red-500 text-white">
-                              {"🌶️".repeat(item.spicy_level)}
-                            </Badge>
+                          {selectedLocation?.id === 'ystad' && 
+                           ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] && 
+                           ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] !== item.price && (
+                            <Badge className="absolute top-2 left-2 bg-green-600 text-white">Food Truck Pris</Badge>
                           )}
+                                                     {item.spicy_level > 0 && (
+                              <Badge className={`absolute top-2 bg-red-500 text-white ${
+                                selectedLocation?.id === 'ystad' && 
+                                ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] && 
+                                ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] !== item.price 
+                                  ? 'left-2 top-10' : 'left-2'
+                              }`}>
+                                {"🌶️".repeat(item.spicy_level)}
+                              </Badge>
+                            )}
                         </div>
                         <CardContent className="p-5 flex flex-col flex-grow">
                           <div className="flex justify-between items-start mb-2">
                             <h3 className="text-xl font-semibold">{item.name}</h3>
-                            <div className="text-lg font-medium text-[#e4d699]">{item.price} kr</div>
+                            <div className="flex flex-col items-end">
+                              <div className="text-lg font-medium text-[#e4d699]">
+                                {getLocationPrice(item.name, item.price, selectedLocation)} kr
+                              </div>
+                              {selectedLocation?.id === 'ystad' && 
+                               ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] && 
+                               ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] !== item.price && (
+                                <div className="text-xs text-white/50 line-through">
+                                  {item.price} kr
+                                </div>
+                              )}
+                            </div>
                           </div>
                           <p className="text-white/70 text-sm mb-4 flex-grow">{item.description}</p>
                           <div className="mt-auto flex justify-between items-center">
@@ -1178,7 +1231,7 @@ export default function MenuPage() {
                                 id: item.id,
                                 name: item.name,
                                 description: item.description,
-                                price: item.price,
+                                price: getLocationPrice(item.name, item.price, selectedLocation),
                                 image: item.image_url,
                                 category: item.category,
                                 popular: item.popular,
@@ -1196,7 +1249,7 @@ export default function MenuPage() {
                               product={{
                                 id: item.id,
                                 name: item.name,
-                                price: item.price,
+                                price: getLocationPrice(item.name, item.price, selectedLocation),
                                 image: item.image_url,
                                 category: item.category,
                               }}

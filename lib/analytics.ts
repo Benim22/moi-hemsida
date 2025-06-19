@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 
 // Analytics konfiguration
 const ANALYTICS_CONFIG = {
-  ENABLE_TRACKING: true, // Nu aktiverat - databastabeller finns
+  ENABLE_TRACKING: true, // Aktiverat efter RLS-fix
   SESSION_TIMEOUT: 30 * 60 * 1000, // 30 minuter
   HEARTBEAT_INTERVAL: 30 * 1000, // 30 sekunder
 }
