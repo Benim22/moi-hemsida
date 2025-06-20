@@ -10,13 +10,20 @@ export type CartItem = {
   quantity: number
   image?: string
   category?: string
+  options?: {
+    flamberad?: boolean
+    glutenFritt?: boolean
+    laktosFritt?: boolean
+    customizations?: string[]
+  }
 }
 
 type CartContextType = {
   items: CartItem[]
   addItem: (item: Omit<CartItem, "quantity">) => void
-  removeItem: (id: number) => void
-  updateQuantity: (id: number, quantity: number) => void
+  addItemWithOptions: (item: Omit<CartItem, "quantity">, options?: CartItem['options']) => void
+  removeItem: (id: number, itemIndex?: number) => void
+  updateQuantity: (id: number, quantity: number, itemIndex?: number) => void
   clearCart: () => void
   totalItems: number
   totalPrice: number
@@ -136,7 +143,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
 
     setItems((prevItems) => {
-      const existingItemIndex = prevItems.findIndex((item) => item.id === newItem.id)
+      const existingItemIndex = prevItems.findIndex((item) => 
+        item.id === newItem.id && 
+        JSON.stringify(item.options) === JSON.stringify(undefined)
+      )
 
       if (existingItemIndex > -1) {
         // Item exists, increment quantity
@@ -164,7 +174,56 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }, 100)
   }, [mounted])
 
-  const removeItem = (id: number) => {
+  const addItemWithOptions = useCallback((newItem: Omit<CartItem, "quantity">, options?: CartItem['options']) => {
+    // Förhindra samtidiga addItem-anrop
+    if (addItemInProgress.current) {
+      return
+    }
+    
+    addItemInProgress.current = true
+    
+    // Uppdatera lastActivity när användaren lägger till något
+    const now = Date.now()
+    setLastActivity(now)
+    if (mounted) {
+      localStorage.setItem("cartLastActivity", now.toString())
+    }
+
+    setItems((prevItems) => {
+      // Skapa unik identifierare för item med options
+      const itemWithOptions = { ...newItem, options }
+      const existingItemIndex = prevItems.findIndex((item) => 
+        item.id === newItem.id && 
+        JSON.stringify(item.options) === JSON.stringify(options)
+      )
+
+      if (existingItemIndex > -1) {
+        // Item med samma options exists, increment quantity
+        const existingItem = prevItems[existingItemIndex]
+        const newQuantity = existingItem.quantity + 1
+        
+        // Skapa ny array med uppdaterat item
+        const updatedItems = prevItems.map((item, index) => 
+          index === existingItemIndex 
+            ? { ...item, quantity: newQuantity }
+            : item
+        )
+        
+        return updatedItems
+      } else {
+        // Item med dessa options doesn't exist, add new item with quantity 1
+        const newItems = [...prevItems, { ...itemWithOptions, quantity: 1 }]
+        return newItems
+      }
+    })
+    
+    // Rensa flaggan efter en kort delay
+    setTimeout(() => {
+      addItemInProgress.current = false
+    }, 100)
+  }, [mounted])
+
+  const removeItem = (id: number, itemIndex?: number) => {
     // Uppdatera lastActivity när användaren tar bort något
     const now = Date.now()
     setLastActivity(now)
@@ -172,10 +231,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("cartLastActivity", now.toString())
     }
 
-    setItems((prevItems) => prevItems.filter((item) => item.id !== id))
+    setItems((prevItems) => {
+      if (itemIndex !== undefined) {
+        // Ta bort specifik item med index (för items med alternativ)
+        return prevItems.filter((_, index) => index !== itemIndex)
+      } else {
+        // Ta bort första item med detta id (backward compatibility)
+        return prevItems.filter((item) => item.id !== id)
+      }
+    })
   }
 
-  const updateQuantity = (id: number, quantity: number) => {
+  const updateQuantity = (id: number, quantity: number, itemIndex?: number) => {
     // Uppdatera lastActivity när användaren ändrar kvantitet
     const now = Date.now()
     setLastActivity(now)
@@ -184,11 +251,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
 
     if (quantity <= 0) {
-      removeItem(id)
+      removeItem(id, itemIndex)
       return
     }
 
-    setItems((prevItems) => prevItems.map((item) => (item.id === id ? { ...item, quantity } : item)))
+    setItems((prevItems) => {
+      if (itemIndex !== undefined) {
+        // Uppdatera specifik item med index
+        return prevItems.map((item, index) => 
+          index === itemIndex ? { ...item, quantity } : item
+        )
+      } else {
+        // Uppdatera första item med detta id (backward compatibility)
+        return prevItems.map((item) => (item.id === id ? { ...item, quantity } : item))
+      }
+    })
   }
 
   const clearCart = () => {
@@ -209,6 +286,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       value={{
         items,
         addItem,
+        addItemWithOptions,
         removeItem,
         updateQuantity,
         clearCart,

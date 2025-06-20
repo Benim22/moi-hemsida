@@ -85,7 +85,7 @@ export function CartIcon() {
   )
 }
 
-function CartItem({ item }: { item: CartItemType }) {
+function CartItem({ item, itemIndex }: { item: CartItemType, itemIndex: number }) {
   const { updateQuantity, removeItem } = useCart()
 
   return (
@@ -100,6 +100,29 @@ function CartItem({ item }: { item: CartItemType }) {
 
       <div className="ml-4 flex-grow">
         <h4 className="font-medium">{item.name}</h4>
+        {item.options && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {item.options.flamberad !== undefined && (
+              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                item.options.flamberad 
+                  ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30' 
+                  : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+              }`}>
+                {item.options.flamberad ? '🔥 Flamberad' : '❄️ Inte flamberad'}
+              </span>
+            )}
+            {item.options.glutenFritt && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30">
+                Glutenfritt
+              </span>
+            )}
+            {item.options.laktosFritt && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                Laktosfritt
+              </span>
+            )}
+          </div>
+        )}
         <p className="text-[#e4d699]">{item.price} kr</p>
       </div>
 
@@ -109,7 +132,7 @@ function CartItem({ item }: { item: CartItemType }) {
             variant="ghost"
             size="icon"
             className="h-8 w-8 rounded-none hover:bg-[#e4d699]/10"
-            onClick={() => updateQuantity(item.id, item.quantity - 1)}
+            onClick={() => updateQuantity(item.id, item.quantity - 1, itemIndex)}
           >
             <Minus className="h-3 w-3" />
           </Button>
@@ -118,7 +141,7 @@ function CartItem({ item }: { item: CartItemType }) {
             variant="ghost"
             size="icon"
             className="h-8 w-8 rounded-none hover:bg-[#e4d699]/10"
-            onClick={() => updateQuantity(item.id, item.quantity + 1)}
+            onClick={() => updateQuantity(item.id, item.quantity + 1, itemIndex)}
           >
             <Plus className="h-3 w-3" />
           </Button>
@@ -128,7 +151,7 @@ function CartItem({ item }: { item: CartItemType }) {
           variant="ghost"
           size="icon"
           className="ml-2 text-white/60 hover:text-white hover:bg-red-500/10"
-          onClick={() => removeItem(item.id)}
+          onClick={() => removeItem(item.id, itemIndex)}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -181,10 +204,35 @@ function OrderSuccessModal({
 
         <div className="space-y-2 mb-4">
           <h4 className="font-medium text-sm text-white/80">Beställda varor:</h4>
-          {items.map((item) => (
-            <div key={item.id} className="flex justify-between text-sm">
-              <span>{item.quantity}x {item.name}</span>
-              <span className="text-[#e4d699]">{item.price * item.quantity} kr</span>
+          {items.map((item, index) => (
+            <div key={`${item.id}-${index}`} className="text-sm">
+              <div className="flex justify-between">
+                <span>{item.quantity}x {item.name}</span>
+                <span className="text-[#e4d699]">{item.price * item.quantity} kr</span>
+              </div>
+              {item.options && (
+                <div className="flex flex-wrap gap-1 mt-1 ml-4">
+                  {item.options.flamberad !== undefined && (
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      item.options.flamberad 
+                        ? 'bg-orange-500/20 text-orange-300' 
+                        : 'bg-blue-500/20 text-blue-300'
+                    }`}>
+                      {item.options.flamberad ? '🔥 Flamberad' : '❄️ Inte flamberad'}
+                    </span>
+                  )}
+                  {item.options.glutenFritt && (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-300">
+                      Glutenfritt
+                    </span>
+                  )}
+                  {item.options.laktosFritt && (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                      Laktosfritt
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -329,9 +377,9 @@ export function ShoppingCart() {
                     </div>
                   ) : (
                     <>
-                      {items.map((item) => (
-                        <CartItem key={item.id} item={item} />
-                      ))}
+                                    {items.map((item, index) => (
+                <CartItem key={`${item.id}-${index}`} item={item} itemIndex={index} />
+              ))}
 
                       <div className="mt-4">
                         <Button

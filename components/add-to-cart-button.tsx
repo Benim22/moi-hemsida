@@ -7,6 +7,7 @@ import { useCart } from "@/context/cart-context"
 import { useToast } from "@/hooks/use-toast"
 import { motion, AnimatePresence } from "framer-motion"
 import { trackEvent } from "@/lib/analytics"
+import { ItemOptionsModal } from "@/components/item-options-modal"
 
 interface AddToCartButtonProps {
   product: {
@@ -24,8 +25,16 @@ export function AddToCartButton({ product, variant = "default", size = "default"
   const { addItem } = useCart()
   const { toast } = useToast()
   const [isAdded, setIsAdded] = useState(false)
+  const [showOptionsModal, setShowOptionsModal] = useState(false)
   const lastClickTime = useRef(0)
   const isProcessing = useRef(false)
+
+  // Kontrollera om produkten behöver alternativ
+  const needsOptions = [
+    "Crazy Shrimp", 
+    "Crazy Salmon", 
+    "Magic Tempura"
+  ].includes(product.name)
 
   const handleAddToCart = () => {
     const now = Date.now()
@@ -48,6 +57,13 @@ export function AddToCartButton({ product, variant = "default", size = "default"
     // Sätt processing-flagga
     isProcessing.current = true
     lastClickTime.current = now
+    
+    // Om produkten behöver alternativ, visa modal
+    if (needsOptions) {
+      setShowOptionsModal(true)
+      isProcessing.current = false
+      return
+    }
     
     addItem(product)
     setIsAdded(true)
@@ -109,44 +125,52 @@ export function AddToCartButton({ product, variant = "default", size = "default"
   }
 
   return (
-    <Button
-      variant={variant}
-      size={size}
-      className={
-        variant === "outline"
-          ? "border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
-          : "bg-[#e4d699] text-black hover:bg-[#e4d699]/90"
-      }
-      onClick={handleAddToCart}
-    >
-      <AnimatePresence mode="wait">
-        {isAdded ? (
-          <motion.div
-            key="added"
-            initial={{ y: 10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -10, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="flex items-center"
-          >
-            <Check className="mr-2 h-4 w-4" />
-            Tillagd
-          </motion.div>
-        ) : (
-          <motion.div
-            key="add"
-            initial={{ y: -10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 10, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="flex items-center"
-          >
-            <ShoppingBag className="mr-2 h-4 w-4" />
-            Lägg till
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </Button>
+    <>
+      <Button
+        variant={variant}
+        size={size}
+        className={
+          variant === "outline"
+            ? "border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+            : "bg-[#e4d699] text-black hover:bg-[#e4d699]/90"
+        }
+        onClick={handleAddToCart}
+      >
+        <AnimatePresence mode="wait">
+          {isAdded ? (
+            <motion.div
+              key="added"
+              initial={{ y: 10, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -10, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="flex items-center"
+            >
+              <Check className="mr-2 h-4 w-4" />
+              Tillagd
+            </motion.div>
+          ) : (
+            <motion.div
+              key="add"
+              initial={{ y: -10, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 10, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="flex items-center"
+            >
+              <ShoppingBag className="mr-2 h-4 w-4" />
+              Lägg till
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </Button>
+
+      <ItemOptionsModal
+        isOpen={showOptionsModal}
+        onClose={() => setShowOptionsModal(false)}
+        product={product}
+      />
+    </>
   )
 }
 

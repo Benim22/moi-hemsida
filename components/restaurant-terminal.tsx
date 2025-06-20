@@ -642,15 +642,16 @@ export default function RestaurantTerminal() {
   }
 
   const generateReceipt = (order) => {
-    const doc = new jsPDF()
+    // Skapa termisk kvitto-format (58mm bredd)
+    const doc = new jsPDF({
+      unit: 'mm',
+      format: [58, 200], // 58mm bred, variabel höjd
+      orientation: 'portrait'
+    })
     
-    // Färger - guldig palett med svart
-    const goldColor = [228, 214, 153] // #e4d699 - huvudguldfärg
-    const darkGoldColor = [184, 168, 104] // mörkare guld
-    const blackColor = [0, 0, 0] // ren svart
-    const darkGrayColor = [33, 33, 33] // mörk grå
-    const lightGrayColor = [128, 128, 128] // ljus grå
-    const creamColor = [252, 248, 227] // krämvit bakgrund
+    // Enkla färger för termisk utskrift
+    const blackColor = [0, 0, 0]
+    const grayColor = [100, 100, 100]
     
     // Hjälpfunktion för att rensa text från problematiska tecken (behåller ÅÄÖ)
     const cleanText = (text) => {
@@ -660,123 +661,55 @@ export default function RestaurantTerminal() {
         .trim()
     }
     
-    // Header med gradient-effekt (simulerad med flera rektanglar)
-    for (let i = 0; i < 10; i++) {
-      const alpha = 1 - (i * 0.1)
-      const color = goldColor.map(c => Math.floor(c * alpha + 255 * (1 - alpha)))
-      doc.setFillColor(...color)
-      doc.rect(0, i * 5, 210, 5, 'F')
-    }
+    let yPos = 5
     
-    // Mörk guldram runt header
-    doc.setDrawColor(...darkGoldColor)
-    doc.setLineWidth(2)
-    doc.rect(0, 0, 210, 50)
-    
-    // Logo/Titel - elegant design
-    doc.setTextColor(...blackColor)
-    doc.setFontSize(28)
-    doc.setFont('helvetica', 'bold')
-    doc.text('MOI SUSHI', 105, 20, { align: 'center' })
-    
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'normal')
-    doc.text('Autentisk japansk sushi', 105, 30, { align: 'center' })
-    
-    // Dekorativ linje
-    doc.setDrawColor(...darkGoldColor)
-    doc.setLineWidth(1)
-    doc.line(70, 35, 140, 35)
-    
-    doc.setFontSize(16)
-    doc.setTextColor(...blackColor)
-    doc.setFont('helvetica', 'bold')
-    doc.text('KVITTO', 105, 45, { align: 'center' })
-    
-    // Order information - elegant box
-    let yPos = 65
-    doc.setFillColor(...creamColor)
-    doc.rect(15, yPos, 180, 43, 'F')
-    doc.setDrawColor(...goldColor)
-    doc.setLineWidth(1)
-    doc.rect(15, yPos, 180, 43)
-    
-    yPos += 12
-    doc.setFontSize(20)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(...blackColor)
-    doc.text(`Order #${order.order_number}`, 105, yPos, { align: 'center' })
-    
-    yPos += 10
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(10)
-    doc.setTextColor(...darkGrayColor)
-    const orderDate = new Date(order.created_at).toLocaleString('sv-SE')
-    doc.text(`Datum: ${cleanText(orderDate)}`, 105, yPos, { align: 'center' })
-    
-    yPos += 8
-    const customerName = cleanText(order.profiles?.name || order.customer_name || 'Gäst')
-    doc.text(`Kund: ${customerName}`, 105, yPos, { align: 'center' })
-    
-    yPos += 8
-    const phone = cleanText(order.profiles?.phone || order.phone || 'Ej angivet')
-    doc.text(`Telefon: ${phone}`, 105, yPos, { align: 'center' })
-    
-    // Leverans/Hämtning info - stilren box
-    yPos += 25
-    doc.setFillColor(245, 245, 245)
-    doc.rect(15, yPos, 180, 35, 'F')
-    doc.setDrawColor(...lightGrayColor)
-    doc.setLineWidth(0.5)
-    doc.rect(15, yPos, 180, 35)
-    
-    yPos += 12
-    doc.setFontSize(14)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(...blackColor)
-    
-    if (order.delivery_type === 'delivery') {
-      doc.text('LEVERANS', 105, yPos, { align: 'center' })
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(10)
-      doc.setTextColor(...darkGrayColor)
-      yPos += 8
-      const address = cleanText(order.delivery_address || 'Ej angiven')
-      doc.text(`Adress: ${address}`, 105, yPos, { align: 'center' })
-      yPos += 8
-      const location = cleanText(getLocationName(order.location))
-      doc.text(`Plats: ${location}`, 105, yPos, { align: 'center' })
-    } else {
-      doc.text('AVHÄMTNING', 105, yPos, { align: 'center' })
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(10)
-      doc.setTextColor(...darkGrayColor)
-      yPos += 8
-      const location = cleanText(getLocationName(order.location))
-      doc.text(`Plats: ${location}`, 105, yPos, { align: 'center' })
-      yPos += 8
-      doc.text('Hämta på restaurangen', 105, yPos, { align: 'center' })
-    }
-    
-    // Beställning header - elegant guldig design
-    yPos += 30
-    doc.setFillColor(...goldColor)
-    doc.rect(15, yPos, 180, 18, 'F')
-    doc.setDrawColor(...darkGoldColor)
-    doc.setLineWidth(1)
-    doc.rect(15, yPos, 180, 18)
-    
+    // Header - termisk kvittostil
     doc.setTextColor(...blackColor)
     doc.setFontSize(12)
     doc.setFont('helvetica', 'bold')
-    doc.text('BESTÄLLNING', 20, yPos + 12)
-    doc.text('PRIS', 175, yPos + 12, { align: 'right' })
+    doc.text('Moi Sushi & Poké Bowl', 29, yPos, { align: 'center' })
     
-    // Items sektion
-    yPos += 25
-    doc.setTextColor(...darkGrayColor)
+    yPos += 5
+    doc.setFontSize(8)
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(11)
+    const locationText = `Moi Sushi & Poké Bowl - ${getLocationName(order.location)}`
+    doc.text(cleanText(locationText), 29, yPos, { align: 'center' })
+    
+    yPos += 8
+    // Separator linje
+    doc.setLineWidth(0.1)
+    doc.line(2, yPos, 56, yPos)
+    
+    yPos += 5
+    
+    // Order information - termisk stil
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'normal')
+    doc.text('Beställnings-ID:', 2, yPos)
+    doc.text(`#${order.order_number}`, 56, yPos, { align: 'right' })
+    
+    yPos += 4
+    doc.text('Mottagen kl:', 2, yPos)
+    const orderDate = new Date(order.created_at).toLocaleString('sv-SE', {
+      day: 'numeric',
+      month: 'long', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+    doc.text(cleanText(orderDate), 56, yPos, { align: 'right' })
+    
+    yPos += 8
+    
+    // Items lista
+    doc.setLineWidth(0.1)
+    doc.line(2, yPos, 56, yPos)
+    yPos += 3
+    
+    // Items sektion - termisk stil
+    doc.setTextColor(...blackColor)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
     
     let totalAmount = 0
     
@@ -789,106 +722,164 @@ export default function RestaurantTerminal() {
         const itemTotal = (item.price || 0) * (item.quantity || 1)
         totalAmount += itemTotal
         
-        // Alternating background för bättre läsbarhet
-        if (index % 2 === 0) {
-          doc.setFillColor(250, 250, 250)
-          doc.rect(15, yPos - 3, 180, 12, 'F')
-        }
-        
-        // Item namn och antal
+        // Item namn och antal - termisk stil
         const itemName = cleanText(item.name)
         doc.setTextColor(...blackColor)
         doc.setFont('helvetica', 'normal')
-        doc.text(`${item.quantity || 1}x ${itemName}`, 20, yPos + 5)
-        doc.setFont('helvetica', 'bold')
-        doc.text(`${itemTotal} kr`, 175, yPos + 5, { align: 'right' })
-        yPos += 12
+        doc.setFontSize(8)
+        doc.text(`${item.quantity || 1} x`, 2, yPos)
+        doc.text(itemName, 8, yPos)
+        doc.text(`${itemTotal.toFixed(2)} kr`, 56, yPos, { align: 'right' })
+        yPos += 4
+        
+        // Visa alternativ om de finns - kompakt format
+        if (item.options) {
+          doc.setTextColor(...grayColor)
+          doc.setFontSize(6)
+          
+          if (item.options.flamberad !== undefined) {
+            const flamberadText = item.options.flamberad ? '- Flamberad' : '- Inte flamberad'
+            doc.text(cleanText(flamberadText), 8, yPos)
+            yPos += 3
+          }
+          
+          if (item.options.glutenFritt) {
+            doc.text('- Glutenfritt', 8, yPos)
+            yPos += 3
+          }
+          
+          if (item.options.laktosFritt) {
+            doc.text('- Laktosfritt', 8, yPos)
+            yPos += 3
+          }
+          
+          doc.setTextColor(...blackColor)
+          doc.setFontSize(8)
+        }
         
         // Extras/tillägg
         if (item.extras?.length) {
           item.extras.forEach(extra => {
             const extraTotal = (extra.price || 0) * (item.quantity || 1)
             totalAmount += extraTotal
-            doc.setTextColor(...lightGrayColor)
-            doc.setFont('helvetica', 'normal')
-            doc.setFontSize(9)
+            doc.setTextColor(...grayColor)
+            doc.setFontSize(6)
             const extraName = cleanText(extra.name)
-            doc.text(`   + ${extraName}`, 25, yPos + 3)
-            doc.text(`+${extraTotal} kr`, 175, yPos + 3, { align: 'right' })
-            yPos += 10
-            doc.setTextColor(...darkGrayColor)
-            doc.setFontSize(11)
+            doc.text(`+ ${extraName}`, 8, yPos)
+            doc.text(`+${extraTotal.toFixed(2)} kr`, 56, yPos, { align: 'right' })
+            yPos += 3
           })
         }
         
-        yPos += 3 // Mellanrum mellan items
+        yPos += 2 // Mellanrum mellan items
       })
     }
     
-    // Total sektion - elegant guldig design
-    yPos += 15
-    
-    // Dekorativ linje före total
-    doc.setDrawColor(...goldColor)
-    doc.setLineWidth(2)
-    doc.line(15, yPos, 195, yPos)
-    
-    yPos += 15
-    
-    // Guldig total-box med skugga-effekt
-    doc.setFillColor(240, 240, 240) // skugga
-    doc.rect(17, yPos - 10, 180, 28, 'F')
-    doc.setFillColor(...goldColor)
-    doc.rect(15, yPos - 12, 180, 28, 'F')
-    doc.setDrawColor(...darkGoldColor)
-    doc.setLineWidth(2)
-    doc.rect(15, yPos - 12, 180, 28)
+    // Delsumma och total - termisk stil
+    yPos += 3
+    doc.setLineWidth(0.1)
+    doc.line(2, yPos, 56, yPos)
+    yPos += 3
     
     doc.setTextColor(...blackColor)
-    doc.setFontSize(22)
-    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'normal')
+    doc.text('Delsumma', 2, yPos)
     const finalTotal = order.total_price || order.amount || totalAmount
-    doc.text(`TOTALT: ${finalTotal} kr`, 105, yPos + 5, { align: 'center' })
+    doc.text(`${finalTotal.toFixed(2)} kr`, 56, yPos, { align: 'right' })
     
-    // Betalningsinfo
-    yPos += 35
-    doc.setTextColor(...darkGrayColor)
-    doc.setFontSize(10)
+    yPos += 4
+    doc.setFont('helvetica', 'bold')
+    doc.text('Total', 2, yPos)
+    doc.text(`${finalTotal.toFixed(2)} kr`, 56, yPos, { align: 'right' })
+    
+    // Separator och kundinfo
+    yPos += 8
+    doc.setLineWidth(0.1)
+    doc.line(2, yPos, 56, yPos)
+    yPos += 5
+    
+    // Kundinfo
+    const customerName = cleanText(order.profiles?.name || order.customer_name || 'Gäst')
+    doc.setTextColor(...blackColor)
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'bold')
+    doc.text(customerName, 29, yPos, { align: 'center' })
+    
+    yPos += 5
     doc.setFont('helvetica', 'normal')
-    doc.text('Betalningsmetod: Kontant vid leverans/hämtning', 105, yPos, { align: 'center' })
+    doc.text('Leveransmetod:', 2, yPos)
     
-    // Footer - elegant design
-    yPos += 25
+    yPos += 4
+    if (order.delivery_type === 'delivery') {
+      doc.text('Leverans', 2, yPos)
+    } else {
+      doc.text('Avhämtning', 2, yPos)
+    }
     
-    // Guldig footer med dekorativ kant
-    doc.setFillColor(...creamColor)
-    doc.rect(0, yPos, 210, 35, 'F')
-    doc.setDrawColor(...goldColor)
-    doc.setLineWidth(1)
-    doc.line(0, yPos, 210, yPos)
-    doc.line(0, yPos + 35, 210, yPos + 35)
+    yPos += 4
+    doc.text('Leveranstid:', 2, yPos)
     
-    // Dekorativa linjer
-    doc.setDrawColor(...darkGoldColor)
-    doc.setLineWidth(0.5)
-    doc.line(50, yPos + 5, 160, yPos + 5)
-    doc.line(50, yPos + 30, 160, yPos + 30)
+    yPos += 4
+    doc.text('ASAP', 2, yPos)
+    
+    yPos += 5
+    const phone = cleanText(order.profiles?.phone || order.phone || '')
+    if (phone) {
+      doc.text('Telefonnummer:', 2, yPos)
+      yPos += 4
+      doc.text(phone, 2, yPos)
+      yPos += 5
+    }
+    
+    const email = cleanText(order.profiles?.email || order.email || '')
+    if (email) {
+      doc.text('E-postadress:', 2, yPos)
+      yPos += 4
+      // Dela upp långa email-adresser
+      if (email.length > 20) {
+        const emailParts = email.match(/.{1,20}/g) || [email]
+        emailParts.forEach(part => {
+          doc.text(part, 2, yPos)
+          yPos += 3
+        })
+      } else {
+        doc.text(email, 2, yPos)
+        yPos += 4
+      }
+    }
+    
+    // Separator och betalningsinfo
+    yPos += 8
+    doc.setLineWidth(0.1)
+    doc.line(2, yPos, 56, yPos)
+    yPos += 5
     
     doc.setTextColor(...blackColor)
-    doc.setFontSize(16)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Tack för ditt köp!', 105, yPos + 15, { align: 'center' })
-    
-    doc.setFontSize(10)
+    doc.setFontSize(8)
     doc.setFont('helvetica', 'normal')
-    doc.setTextColor(...darkGrayColor)
-    doc.text('Vi hoppas du njuter av din måltid!', 105, yPos + 25, { align: 'center' })
+    doc.text('Betalar med:', 2, yPos)
     
-    // Utvecklarinfo - större och mer synlig
-    doc.setFontSize(12)
+    yPos += 4
+    doc.text('Manuell betalning', 2, yPos)
+    doc.text(`${finalTotal.toFixed(2)} kr`, 56, yPos, { align: 'right' })
+    
+    // Footer med restaurangnamn och utvecklarinfo - Kompaktare
+    yPos += 8
+    doc.setLineWidth(0.1)
+    doc.line(2, yPos, 56, yPos)
+    yPos += 4
+    
+    doc.setTextColor(...blackColor)
+    doc.setFontSize(8)
     doc.setFont('helvetica', 'bold')
-    doc.setTextColor(100, 100, 100) // Mörkare grå för bättre synlighet
-    doc.text('Utvecklad av Skaply.se', 105, 285, { align: 'center' })
+    doc.text('Moi Sushi & Pokébowl', 29, yPos, { align: 'center' })
+    
+    yPos += 3
+    doc.setFontSize(6)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...grayColor)
+    doc.text('Utvecklad av Skaply', 29, yPos, { align: 'center' })
     
     return doc
   }
@@ -1337,6 +1328,10 @@ export default function RestaurantTerminal() {
                           <span className="text-white/50">{order.delivery_type === 'delivery' ? '🚚' : '🏪'}</span>
                           <span className="text-white"><strong>Typ:</strong> {order.delivery_type === 'delivery' ? 'Leverans' : 'Avhämtning'}</span>
                         </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white/50">📍</span>
+                          <span className="text-white"><strong>Plats:</strong> {getLocationName(order.location)}</span>
+                        </div>
                       </div>
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
@@ -1349,6 +1344,105 @@ export default function RestaurantTerminal() {
                         </div>
                       </div>
                     </div>
+
+                    {/* Order Items - Visa vad som beställts */}
+                    <div className="mb-4">
+                      <h5 className="text-white/80 font-medium mb-2 flex items-center gap-2">
+                        🍱 Beställda varor:
+                      </h5>
+                      <div className="bg-black/30 rounded-lg p-3 border border-[#e4d699]/20">
+                        {(() => {
+                          // Hantera både 'items' och 'cart_items' kolumner
+                          let orderItems = []
+                          
+                          if (order.items) {
+                            try {
+                              orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items
+                            } catch (e) {
+                              console.error('Error parsing order.items:', e)
+                            }
+                          } else if (order.cart_items) {
+                            try {
+                              orderItems = typeof order.cart_items === 'string' ? JSON.parse(order.cart_items) : order.cart_items
+                            } catch (e) {
+                              console.error('Error parsing order.cart_items:', e)
+                            }
+                          }
+
+                          if (!orderItems || orderItems.length === 0) {
+                            return (
+                              <div className="text-white/50 text-sm italic">
+                                ⚠️ Ingen detaljerad information tillgänglig
+                              </div>
+                            )
+                          }
+
+                          return (
+                            <div className="space-y-2">
+                              {orderItems.map((item, index) => (
+                                <div key={index} className="flex justify-between items-start border-b border-[#e4d699]/10 last:border-0 pb-2 last:pb-0">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="bg-[#e4d699]/20 text-[#e4d699] px-2 py-1 rounded text-xs font-bold">
+                                        {item.quantity}x
+                                      </span>
+                                      <span className="text-white font-medium">{item.name}</span>
+                                    </div>
+                                    {/* Visa alternativ om de finns */}
+                                    {item.options && (
+                                      <div className="ml-8 mt-1">
+                                        {item.options.flamberad !== undefined && (
+                                          <span className="text-orange-400 text-xs">
+                                            {item.options.flamberad ? '🔥 Flamberad' : '❄️ Inte flamberad'}
+                                          </span>
+                                        )}
+                                        {item.options.glutenFritt && (
+                                          <span className="text-blue-400 text-xs ml-2">🌾 Glutenfritt</span>
+                                        )}
+                                        {item.options.laktosFritt && (
+                                          <span className="text-green-400 text-xs ml-2">🥛 Laktosfritt</span>
+                                        )}
+                                      </div>
+                                    )}
+                                    {/* Visa extras om de finns */}
+                                    {item.extras && item.extras.length > 0 && (
+                                      <div className="ml-8 mt-1">
+                                        {item.extras.map((extra, extraIndex) => (
+                                          <div key={extraIndex} className="text-orange-300 text-xs">
+                                            + {extra.name} (+{extra.price} kr)
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="text-[#e4d699] font-bold text-sm ml-4">
+                                    {(item.price * item.quantity).toFixed(0)} kr
+                                  </div>
+                                </div>
+                              ))}
+                              <div className="flex justify-between items-center pt-2 border-t border-[#e4d699]/20 font-bold">
+                                <span className="text-white">Totalt:</span>
+                                <span className="text-[#e4d699] text-lg">{order.total_price || order.amount} kr</span>
+                              </div>
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Visa speciella önskemål om de finns */}
+                    {(order.notes || order.special_instructions) && (
+                      <div className="mb-4">
+                        <h5 className="text-white/80 font-medium mb-2 flex items-center gap-2">
+                          📝 Speciella önskemål:
+                        </h5>
+                        <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3">
+                          <p className="text-orange-300 text-sm">
+                            {order.notes || order.special_instructions}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="space-y-3 mb-4">
                       {/* Status Actions */}
@@ -1590,6 +1684,7 @@ export default function RestaurantTerminal() {
                   <div>
                     <h4 className="font-medium mb-2">Leveransinfo:</h4>
                     <p>Typ: {selectedOrder.delivery_type === 'delivery' ? 'Leverans' : 'Avhämtning'}</p>
+                    <p>Plats: {getLocationName(selectedOrder.location)}</p>
                     {selectedOrder.delivery_address && (
                       <p>Adress: {selectedOrder.delivery_address}</p>
                     )}
@@ -1599,30 +1694,116 @@ export default function RestaurantTerminal() {
                   </div>
 
                   <div>
-                    <h4 className="font-medium mb-2">Beställning:</h4>
-                    {selectedOrder.cart_items && (
-                      <div className="space-y-2">
-                        {(typeof selectedOrder.cart_items === 'string' ? 
-                          JSON.parse(selectedOrder.cart_items) : selectedOrder.cart_items
-                        ).map((item, index) => (
-                          <div key={index} className="border-l-2 border-[#e4d699]/30 pl-3">
-                            <p className="font-medium">{item.quantity}x {item.name}</p>
-                            <p className="text-sm text-white/70">{item.price} kr</p>
-                            {item.extras?.map((extra, extraIndex) => (
-                              <p key={extraIndex} className="text-sm text-white/60">
-                                + {extra.name} (+{extra.price} kr)
-                              </p>
-                            ))}
+                    <h4 className="font-medium mb-3 text-[#e4d699]">🍱 Detaljerad beställning:</h4>
+                    {(() => {
+                      // Hantera både 'items' och 'cart_items' kolumner
+                      let orderItems = []
+                      
+                      if (selectedOrder.items) {
+                        try {
+                          orderItems = typeof selectedOrder.items === 'string' ? JSON.parse(selectedOrder.items) : selectedOrder.items
+                        } catch (e) {
+                          console.error('Error parsing selectedOrder.items:', e)
+                        }
+                      } else if (selectedOrder.cart_items) {
+                        try {
+                          orderItems = typeof selectedOrder.cart_items === 'string' ? JSON.parse(selectedOrder.cart_items) : selectedOrder.cart_items
+                        } catch (e) {
+                          console.error('Error parsing selectedOrder.cart_items:', e)
+                        }
+                      }
+
+                      if (!orderItems || orderItems.length === 0) {
+                        return (
+                          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                            <p className="text-red-400 text-sm">⚠️ Ingen detaljerad beställningsinformation tillgänglig</p>
+                            <p className="text-red-300/80 text-xs mt-1">Detta kan bero på att beställningen gjordes innan det nya systemet implementerades.</p>
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        )
+                      }
+
+                      return (
+                        <div className="bg-black/30 rounded-lg p-4 border border-[#e4d699]/20">
+                          <div className="space-y-3">
+                            {orderItems.map((item, index) => (
+                              <div key={index} className="border-l-4 border-[#e4d699]/50 pl-4 py-2 bg-black/20 rounded-r-lg">
+                                <div className="flex justify-between items-start mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="bg-[#e4d699] text-black px-2 py-1 rounded text-sm font-bold">
+                                      {item.quantity}x
+                                    </span>
+                                    <span className="text-white font-medium text-lg">{item.name}</span>
+                                  </div>
+                                  <div className="text-[#e4d699] font-bold text-lg">
+                                    {(item.price * item.quantity)} kr
+                                  </div>
+                                </div>
+                                
+                                {/* Visa alternativ om de finns */}
+                                {item.options && (
+                                  <div className="mb-2">
+                                    <h6 className="text-white/70 text-sm font-medium mb-1">Alternativ:</h6>
+                                    <div className="flex flex-wrap gap-2">
+                                      {item.options.flamberad !== undefined && (
+                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                          item.options.flamberad 
+                                            ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' 
+                                            : 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
+                                        }`}>
+                                          {item.options.flamberad ? '🔥 Flamberad' : '❄️ Inte flamberad'}
+                                        </span>
+                                      )}
+                                      {item.options.glutenFritt && (
+                                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/40">
+                                          🌾 Glutenfritt
+                                        </span>
+                                      )}
+                                      {item.options.laktosFritt && (
+                                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/40">
+                                          🥛 Laktosfritt
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                                
+                                {/* Visa extras om de finns */}
+                                {item.extras && item.extras.length > 0 && (
+                                  <div>
+                                    <h6 className="text-white/70 text-sm font-medium mb-1">Tillägg:</h6>
+                                    <div className="space-y-1">
+                                      {item.extras.map((extra, extraIndex) => (
+                                        <div key={extraIndex} className="flex justify-between text-sm">
+                                          <span className="text-orange-300">+ {extra.name}</span>
+                                          <span className="text-orange-400 font-medium">+{extra.price} kr</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                
+                                <div className="text-white/60 text-xs mt-2">
+                                  Enhetspris: {item.price} kr
+                                </div>
+                              </div>
+                            ))}
+                            
+                            <div className="flex justify-between items-center pt-3 border-t-2 border-[#e4d699]/40 font-bold text-lg">
+                              <span className="text-white">Totalt att betala:</span>
+                              <span className="text-[#e4d699] text-2xl">{selectedOrder.total_price || selectedOrder.amount} kr</span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
 
-                  {selectedOrder.notes && (
+                  {(selectedOrder.notes || selectedOrder.special_instructions) && (
                     <div>
-                      <h4 className="font-medium mb-2">Kommentarer:</h4>
-                      <p className="text-white/70">{selectedOrder.notes}</p>
+                      <h4 className="font-medium mb-2 text-orange-400">📝 Speciella önskemål & kommentarer:</h4>
+                      <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3">
+                        <p className="text-orange-300">{selectedOrder.notes || selectedOrder.special_instructions}</p>
+                      </div>
                     </div>
                   )}
 

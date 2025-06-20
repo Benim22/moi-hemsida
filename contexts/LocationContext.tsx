@@ -163,29 +163,79 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Transform database format to component format
-      const transformedLocations: Location[] = data.map(location => ({
-        id: location.id,
-        name: location.name,
-        displayName: location.display_name,
-        address: location.address,
-        phone: location.phone,
-        email: location.email,
-        description: location.description,
-        image: location.image_url,
-        coordinates: { 
-          lat: parseFloat(location.latitude), 
-          lng: parseFloat(location.longitude) 
-        },
-        services: location.services || [],
-        features: location.features || [],
-        hours: location.opening_hours || {
-          weekdays: "11.00 – 21.00",
-          saturday: "12.00 – 21.00", 
-          sunday: "15.00 – 21.00"
-        },
-        menu: location.menu_type || 'full',
-        deliveryServices: ["Foodora"] // Default for now
-      }))
+      const transformedLocations: Location[] = data.map(location => {
+        // Transform opening hours from Swedish format to component format
+        const transformHours = (openingHours: any) => {
+          if (!openingHours) {
+            return {
+              weekdays: "11.00 – 21.00",
+              saturday: "12.00 – 21.00", 
+              sunday: "15.00 – 21.00"
+            }
+          }
+
+          // Helper function to format time strings
+          const formatTime = (timeStr: string) => {
+            if (!timeStr || timeStr === "Stängt") return "Stängt"
+            return timeStr.replace(/:/g, ".").replace(" - ", " – ")
+          }
+
+          // Get weekdays (måndag-fredag) and find the most common schedule
+          const weekdaySchedules = [
+            openingHours.måndag,
+            openingHours.tisdag, 
+            openingHours.onsdag,
+            openingHours.torsdag,
+            openingHours.fredag
+          ].filter(h => h && h !== "Stängt")
+
+          // Group by schedule to find most common
+          const scheduleCount: { [key: string]: number } = {}
+          weekdaySchedules.forEach(schedule => {
+            scheduleCount[schedule] = (scheduleCount[schedule] || 0) + 1
+          })
+
+          // Find most common schedule
+          let mostCommonSchedule = ""
+          let maxCount = 0
+          Object.entries(scheduleCount).forEach(([schedule, count]) => {
+            if (count > maxCount) {
+              maxCount = count
+              mostCommonSchedule = schedule
+            }
+          })
+
+          const weekdays = mostCommonSchedule ? formatTime(mostCommonSchedule) : "Stängt"
+          const saturday = formatTime(openingHours.lördag || "Stängt")
+          const sunday = formatTime(openingHours.söndag || "Stängt")
+
+          return {
+            weekdays,
+            saturday,
+            sunday
+          }
+        }
+
+        return {
+          id: location.id,
+          name: location.name,
+          displayName: location.display_name,
+          address: location.address,
+          phone: location.phone,
+          email: location.email,
+          description: location.description,
+          image: location.image_url,
+          coordinates: { 
+            lat: parseFloat(location.latitude), 
+            lng: parseFloat(location.longitude) 
+          },
+          services: location.services || [],
+          features: location.features || [],
+          hours: transformHours(location.opening_hours),
+          menu: location.menu_type || 'full',
+          deliveryServices: ["Foodora"] // Default for now
+        }
+      })
 
       setLocations(transformedLocations)
       

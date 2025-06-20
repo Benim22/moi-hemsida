@@ -25,6 +25,39 @@ export default function OrderPage() {
   const { selectedLocation, setSelectedLocation, locations, isLoading } = useLocation()
   const [orderType, setOrderType] = useState<string>("delivery")
 
+  // Function to check if location is currently open
+  const isCurrentlyOpen = (hours: { weekdays: string; saturday: string; sunday: string }) => {
+    const now = new Date()
+    const currentDay = now.getDay() // 0 = Sunday, 1 = Monday, etc.
+    const currentTime = now.getHours() * 100 + now.getMinutes() // e.g., 14:30 = 1430
+
+    let todayHours = ""
+    
+    if (currentDay === 0) { // Sunday
+      todayHours = hours.sunday
+    } else if (currentDay === 6) { // Saturday
+      todayHours = hours.saturday
+    } else { // Monday-Friday
+      todayHours = hours.weekdays
+    }
+
+    if (todayHours === "Stängt") return false
+
+    // Parse hours like "11.00 – 21.00"
+    const timeMatch = todayHours.match(/(\d{1,2})\.(\d{2})\s*–\s*(\d{1,2})\.(\d{2})/)
+    if (!timeMatch) return false
+
+    const openHour = parseInt(timeMatch[1])
+    const openMin = parseInt(timeMatch[2])
+    const closeHour = parseInt(timeMatch[3])
+    const closeMin = parseInt(timeMatch[4])
+
+    const openTime = openHour * 100 + openMin
+    const closeTime = closeHour * 100 + closeMin
+
+    return currentTime >= openTime && currentTime <= closeTime
+  }
+
   // Enhanced delivery service data - now available for ALL locations
   const getDeliveryServices = (locationId: string) => [
     {
@@ -384,20 +417,43 @@ export default function OrderPage() {
                   <div className="bg-black/50 border border-[#e4d699]/20 p-6 rounded-xl">
                     <h3 className="text-lg font-semibold mb-4 text-[#e4d699] flex items-center">
                       <Clock className="mr-2 h-5 w-5" />
-                      Öppettider
+                      Öppettider för {selectedLocation.displayName}
                     </h3>
                     <div className="grid sm:grid-cols-3 gap-4 text-sm">
                       <div>
                         <div className="font-medium text-white/90">Måndag–Fredag</div>
-                        <div className="text-white/70">{selectedLocation.hours.weekdays}</div>
+                        <div className={`${selectedLocation.hours.weekdays === "Stängt" ? "text-red-400" : "text-white/70"}`}>
+                          {selectedLocation.hours.weekdays}
+                        </div>
                       </div>
                       <div>
                         <div className="font-medium text-white/90">Lördag</div>
-                        <div className="text-white/70">{selectedLocation.hours.saturday}</div>
+                        <div className={`${selectedLocation.hours.saturday === "Stängt" ? "text-red-400" : "text-white/70"}`}>
+                          {selectedLocation.hours.saturday}
+                        </div>
                       </div>
                       <div>
                         <div className="font-medium text-white/90">Söndag</div>
-                        <div className="text-white/70">{selectedLocation.hours.sunday}</div>
+                        <div className={`${selectedLocation.hours.sunday === "Stängt" ? "text-red-400" : "text-white/70"}`}>
+                          {selectedLocation.hours.sunday}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Current status */}
+                    <div className="mt-4 pt-4 border-t border-[#e4d699]/20">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-white/80">Status just nu:</span>
+                        <div className="flex items-center">
+                          <div className={`w-2 h-2 rounded-full mr-2 ${
+                            isCurrentlyOpen(selectedLocation.hours) ? "bg-green-400" : "bg-red-400"
+                          }`}></div>
+                          <span className={`text-sm font-medium ${
+                            isCurrentlyOpen(selectedLocation.hours) ? "text-green-400" : "text-red-400"
+                          }`}>
+                            {isCurrentlyOpen(selectedLocation.hours) ? "Öppet" : "Stängt"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>

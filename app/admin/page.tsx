@@ -802,6 +802,353 @@ function AdminOverview() {
   )
 }
 
+const MenuItemForm = ({ 
+  isEdit = false, 
+  onSubmit, 
+  onCancel, 
+  inModal = false,
+  newItem,
+  setNewItem,
+  setShowImagePicker 
+}) => {
+  const FormContent = (
+    <div>
+      <form onSubmit={onSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="item-name">Namn</Label>
+            <Input
+              id="item-name"
+              value={newItem.name}
+              onChange={(e) => setNewItem(prev => ({ ...prev, name: e.target.value }))}
+              className="border-[#e4d699]/30 bg-black/50"
+              placeholder="t.ex. Lax Nigiri"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="item-price">Pris (kr)</Label>
+            <Input
+              id="item-price"
+              type="number"
+              step="0.01"
+              value={newItem.price}
+              onChange={(e) => setNewItem(prev => ({ ...prev, price: e.target.value }))}
+              className="border-[#e4d699]/30 bg-black/50"
+              placeholder="99.00"
+              required
+            />
+          </div>
+        </div>
+        
+        <div className="space-y-2">
+          <Label htmlFor="item-description">Beskrivning</Label>
+          <Textarea
+            id="item-description"
+            value={newItem.description}
+            onChange={(e) => setNewItem(prev => ({ ...prev, description: e.target.value }))}
+            className="border-[#e4d699]/30 bg-black/50"
+            placeholder="Beskrivning av rätten..."
+            required
+          />
+        </div>
+        
+        <div className="space-y-2">
+          <Label htmlFor="item-image">Bild-URL</Label>
+          <div className="flex gap-2">
+            <Input
+              id="item-image"
+              type="text"
+              value={newItem.image_url}
+              onChange={(e) => setNewItem(prev => ({ ...prev, image_url: e.target.value }))}
+              className="border-[#e4d699]/30 bg-black/50 flex-1"
+              placeholder="https://example.com/image.jpg eller /Meny-bilder/bild.webp"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowImagePicker(true)}
+              className="border-[#e4d699]/30 hover:bg-[#e4d699]/10 whitespace-nowrap"
+            >
+              📁 Välj bild
+            </Button>
+          </div>
+          <p className="text-xs text-white/60">Valfritt: Skriv URL eller välj från tillgängliga bilder</p>
+          {newItem.image_url && (
+            <div className="mt-2">
+              <p className="text-sm text-white/80 mb-2">Förhandsvisning:</p>
+              <img 
+                src={newItem.image_url} 
+                alt="Förhandsvisning" 
+                className="w-32 h-32 object-cover rounded-lg border border-[#e4d699]/30"
+                onError={(e) => {
+                  e.target.style.display = 'none'
+                }}
+              />
+            </div>
+          )}
+        </div>
+        
+        <div className="space-y-2">
+          <Label htmlFor="item-category">Kategori</Label>
+          <select
+            id="item-category"
+            value={newItem.category}
+            onChange={(e) => setNewItem(prev => ({ ...prev, category: e.target.value }))}
+            className="w-full p-2 rounded-md border border-[#e4d699]/30 bg-black/50 text-white"
+            required
+          >
+            <option value="">Välj kategori</option>
+            <option value="Mois Rolls">Mois Rolls</option>
+            <option value="Nigiri">Nigiri</option>
+            <option value="Nigiri Combo">Nigiri Combo</option>
+            <option value="Pokébowls">Pokébowls</option>
+            <option value="Helfriterade Maki">Helfriterade Maki</option>
+            <option value="Smått och Gott">Smått och Gott</option>
+            <option value="Barnmeny">Barnmeny</option>
+            <option value="Drycker">Drycker</option>
+            <option value="Såser">Såser</option>
+            <option value="Exotiska Delikatesser">Exotiska Delikatesser</option>
+          </select>
+        </div>
+
+        {/* Nutrition Information */}
+        <div className="space-y-4 border-t border-[#e4d699]/20 pt-4">
+          <h4 className="text-lg font-medium text-[#e4d699]">Näringsvärden (per portion)</h4>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="calories">Kalorier (kcal)</Label>
+              <Input
+                id="calories"
+                type="number"
+                value={newItem.nutritional_info.calories}
+                onChange={(e) => setNewItem(prev => ({ 
+                  ...prev, 
+                  nutritional_info: { ...prev.nutritional_info, calories: e.target.value }
+                }))}
+                className="border-[#e4d699]/30 bg-black/50"
+                placeholder="250"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="protein">Protein (g)</Label>
+              <Input
+                id="protein"
+                type="number"
+                step="0.1"
+                value={newItem.nutritional_info.protein}
+                onChange={(e) => setNewItem(prev => ({ 
+                  ...prev, 
+                  nutritional_info: { ...prev.nutritional_info, protein: e.target.value }
+                }))}
+                className="border-[#e4d699]/30 bg-black/50"
+                placeholder="15.5"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="carbs">Kolhydrater (g)</Label>
+              <Input
+                id="carbs"
+                type="number"
+                step="0.1"
+                value={newItem.nutritional_info.carbs}
+                onChange={(e) => setNewItem(prev => ({ 
+                  ...prev, 
+                  nutritional_info: { ...prev.nutritional_info, carbs: e.target.value }
+                }))}
+                className="border-[#e4d699]/30 bg-black/50"
+                placeholder="30.2"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="fat">Fett (g)</Label>
+              <Input
+                id="fat"
+                type="number"
+                step="0.1"
+                value={newItem.nutritional_info.fat}
+                onChange={(e) => setNewItem(prev => ({ 
+                  ...prev, 
+                  nutritional_info: { ...prev.nutritional_info, fat: e.target.value }
+                }))}
+                className="border-[#e4d699]/30 bg-black/50"
+                placeholder="8.5"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="fiber">Fiber (g)</Label>
+              <Input
+                id="fiber"
+                type="number"
+                step="0.1"
+                value={newItem.nutritional_info.fiber}
+                onChange={(e) => setNewItem(prev => ({ 
+                  ...prev, 
+                  nutritional_info: { ...prev.nutritional_info, fiber: e.target.value }
+                }))}
+                className="border-[#e4d699]/30 bg-black/50"
+                placeholder="2.1"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sodium">Natrium (mg)</Label>
+              <Input
+                id="sodium"
+                type="number"
+                value={newItem.nutritional_info.sodium}
+                onChange={(e) => setNewItem(prev => ({ 
+                  ...prev, 
+                  nutritional_info: { ...prev.nutritional_info, sodium: e.target.value }
+                }))}
+                className="border-[#e4d699]/30 bg-black/50"
+                placeholder="450"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Additional Settings */}
+        <div className="space-y-4 border-t border-[#e4d699]/20 pt-4">
+          <h4 className="text-lg font-medium text-[#e4d699]">Ytterligare inställningar</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="spicy-level">Styrka (0-5)</Label>
+              <Input
+                id="spicy-level"
+                type="number"
+                min="0"
+                max="5"
+                value={newItem.spicy_level}
+                onChange={(e) => setNewItem(prev => ({ 
+                  ...prev, 
+                  spicy_level: parseInt(e.target.value) || 0
+                }))}
+                className="border-[#e4d699]/30 bg-black/50"
+                placeholder="0"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={newItem.popular}
+                  onChange={(e) => setNewItem(prev => ({ 
+                    ...prev, 
+                    popular: e.target.checked
+                  }))}
+                  className="rounded border-[#e4d699]/30 bg-black/50 text-[#e4d699] focus:ring-[#e4d699] focus:ring-offset-0"
+                />
+                <span>Populär rätt</span>
+              </Label>
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={newItem.available}
+                  onChange={(e) => setNewItem(prev => ({ 
+                    ...prev, 
+                    available: e.target.checked
+                  }))}
+                  className="rounded border-[#e4d699]/30 bg-black/50 text-[#e4d699] focus:ring-[#e4d699] focus:ring-offset-0"
+                />
+                <span>Tillgänglig</span>
+              </Label>
+            </div>
+          </div>
+        </div>
+
+        {/* Allergens */}
+        <div className="space-y-4 border-t border-[#e4d699]/20 pt-4">
+          <h4 className="text-lg font-medium text-[#e4d699]">Allergener</h4>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {[
+              { id: 'gluten', label: 'Gluten' },
+              { id: 'dairy', label: 'Mjölkprodukter' },
+              { id: 'eggs', label: 'Ägg' },
+              { id: 'fish', label: 'Fisk' },
+              { id: 'shellfish', label: 'Skaldjur' },
+              { id: 'nuts', label: 'Nötter' },
+              { id: 'peanuts', label: 'Jordnötter' },
+              { id: 'soy', label: 'Soja' },
+              { id: 'sesame', label: 'Sesam' },
+              { id: 'mustard', label: 'Senap' },
+              { id: 'celery', label: 'Selleri' },
+              { id: 'sulfites', label: 'Sulfiter' }
+            ].map((allergen) => (
+              <div key={allergen.id} className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id={`allergen-${allergen.id}`}
+                  checked={newItem.allergens.includes(allergen.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setNewItem(prev => ({ 
+                        ...prev, 
+                        allergens: [...prev.allergens, allergen.id]
+                      }))
+                    } else {
+                      setNewItem(prev => ({ 
+                        ...prev, 
+                        allergens: prev.allergens.filter(a => a !== allergen.id)
+                      }))
+                    }
+                  }}
+                  className="rounded border-[#e4d699]/30 bg-black/50 text-[#e4d699] focus:ring-[#e4d699] focus:ring-offset-0"
+                />
+                <Label 
+                  htmlFor={`allergen-${allergen.id}`} 
+                  className="text-sm cursor-pointer"
+                >
+                  {allergen.label}
+                </Label>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-white/60">
+            Markera alla allergener som finns i rätten
+          </p>
+        </div>
+        
+        <div className="flex gap-2">
+          <Button 
+            type="submit" 
+            className="bg-[#e4d699] text-black hover:bg-[#e4d699]/90"
+          >
+            {isEdit ? "Uppdatera objekt" : "Skapa objekt"}
+          </Button>
+          <Button 
+            type="button" 
+            variant="outline"
+            onClick={onCancel}
+            className="border-[#e4d699]/30"
+          >
+            Avbryt
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
+
+  // Returnera antingen med Card wrapper eller bara innehållet för modal
+  if (inModal) {
+    return FormContent
+  }
+
+  return (
+    <Card className="border border-[#e4d699]/30 bg-black/30">
+      <CardHeader>
+        <CardTitle className="text-lg">
+          {isEdit ? "Redigera menyobjekt" : "Skapa nytt menyobjekt"}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {FormContent}
+      </CardContent>
+    </Card>
+  )
+}
+
 function ContentEditor() {
   const [isLoading, setIsLoading] = useState(true)
   const [menuItems, setMenuItems] = useState([])
@@ -1138,352 +1485,7 @@ function ContentEditor() {
     setEditingItem(null)
   }
 
-  const MenuItemForm = ({ isEdit = false, onSubmit, onCancel, inModal = false }) => {
-    const FormContent = (
-      <div>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="item-name">Namn</Label>
-              <Input
-                id="item-name"
-                value={newItem.name}
-                onChange={(e) => setNewItem(prev => ({ ...prev, name: e.target.value }))}
-                className="border-[#e4d699]/30 bg-black/50"
-                placeholder="t.ex. Lax Nigiri"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="item-price">Pris (kr)</Label>
-              <Input
-                id="item-price"
-                type="number"
-                step="0.01"
-                value={newItem.price}
-                onChange={(e) => setNewItem(prev => ({ ...prev, price: e.target.value }))}
-                className="border-[#e4d699]/30 bg-black/50"
-                placeholder="99.00"
-                required
-              />
-            </div>
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="item-description">Beskrivning</Label>
-            <Textarea
-              id="item-description"
-              value={newItem.description}
-              onChange={(e) => setNewItem(prev => ({ ...prev, description: e.target.value }))}
-              className="border-[#e4d699]/30 bg-black/50"
-              placeholder="Beskrivning av rätten..."
-              required
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="item-image">Bild-URL</Label>
-            <div className="flex gap-2">
-              <Input
-                id="item-image"
-                type="text"
-                value={newItem.image_url}
-                onChange={(e) => setNewItem(prev => ({ ...prev, image_url: e.target.value }))}
-                className="border-[#e4d699]/30 bg-black/50 flex-1"
-                placeholder="https://example.com/image.jpg eller /Meny-bilder/bild.webp"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowImagePicker(true)}
-                className="border-[#e4d699]/30 hover:bg-[#e4d699]/10 whitespace-nowrap"
-              >
-                📁 Välj bild
-              </Button>
-            </div>
-            <p className="text-xs text-white/60">Valfritt: Skriv URL eller välj från tillgängliga bilder</p>
-            {newItem.image_url && (
-              <div className="mt-2">
-                <p className="text-sm text-white/80 mb-2">Förhandsvisning:</p>
-                <img 
-                  src={newItem.image_url} 
-                  alt="Förhandsvisning" 
-                  className="w-32 h-32 object-cover rounded-lg border border-[#e4d699]/30"
-                  onError={(e) => {
-                    e.target.style.display = 'none'
-                  }}
-                />
-              </div>
-            )}
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="item-category">Kategori</Label>
-            <select
-              id="item-category"
-              value={newItem.category}
-              onChange={(e) => setNewItem(prev => ({ ...prev, category: e.target.value }))}
-              className="w-full p-2 rounded-md border border-[#e4d699]/30 bg-black/50 text-white"
-              required
-            >
-              <option value="">Välj kategori</option>
-              <option value="Mois Rolls">Mois Rolls</option>
-              <option value="Nigiri">Nigiri</option>
-              <option value="Nigiri Combo">Nigiri Combo</option>
-              <option value="Pokébowls">Pokébowls</option>
-              <option value="Helfriterade Maki">Helfriterade Maki</option>
-              <option value="Smått och Gott">Smått och Gott</option>
-              <option value="Barnmeny">Barnmeny</option>
-              <option value="Drycker">Drycker</option>
-              <option value="Såser">Såser</option>
-              <option value="Exotiska Delikatesser">Exotiska Delikatesser</option>
-            </select>
-          </div>
 
-          {/* Nutrition Information */}
-          <div className="space-y-4 border-t border-[#e4d699]/20 pt-4">
-            <h4 className="text-lg font-medium text-[#e4d699]">Näringsvärden (per portion)</h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="calories">Kalorier (kcal)</Label>
-                <Input
-                  id="calories"
-                  type="number"
-                  value={newItem.nutritional_info.calories}
-                  onChange={(e) => setNewItem(prev => ({ 
-                    ...prev, 
-                    nutritional_info: { ...prev.nutritional_info, calories: e.target.value }
-                  }))}
-                  className="border-[#e4d699]/30 bg-black/50"
-                  placeholder="250"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="protein">Protein (g)</Label>
-                <Input
-                  id="protein"
-                  type="number"
-                  step="0.1"
-                  value={newItem.nutritional_info.protein}
-                  onChange={(e) => setNewItem(prev => ({ 
-                    ...prev, 
-                    nutritional_info: { ...prev.nutritional_info, protein: e.target.value }
-                  }))}
-                  className="border-[#e4d699]/30 bg-black/50"
-                  placeholder="15.5"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="carbs">Kolhydrater (g)</Label>
-                <Input
-                  id="carbs"
-                  type="number"
-                  step="0.1"
-                  value={newItem.nutritional_info.carbs}
-                  onChange={(e) => setNewItem(prev => ({ 
-                    ...prev, 
-                    nutritional_info: { ...prev.nutritional_info, carbs: e.target.value }
-                  }))}
-                  className="border-[#e4d699]/30 bg-black/50"
-                  placeholder="30.2"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fat">Fett (g)</Label>
-                <Input
-                  id="fat"
-                  type="number"
-                  step="0.1"
-                  value={newItem.nutritional_info.fat}
-                  onChange={(e) => setNewItem(prev => ({ 
-                    ...prev, 
-                    nutritional_info: { ...prev.nutritional_info, fat: e.target.value }
-                  }))}
-                  className="border-[#e4d699]/30 bg-black/50"
-                  placeholder="8.5"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fiber">Fiber (g)</Label>
-                <Input
-                  id="fiber"
-                  type="number"
-                  step="0.1"
-                  value={newItem.nutritional_info.fiber}
-                  onChange={(e) => setNewItem(prev => ({ 
-                    ...prev, 
-                    nutritional_info: { ...prev.nutritional_info, fiber: e.target.value }
-                  }))}
-                  className="border-[#e4d699]/30 bg-black/50"
-                  placeholder="2.1"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="sodium">Natrium (mg)</Label>
-                <Input
-                  id="sodium"
-                  type="number"
-                  value={newItem.nutritional_info.sodium}
-                  onChange={(e) => setNewItem(prev => ({ 
-                    ...prev, 
-                    nutritional_info: { ...prev.nutritional_info, sodium: e.target.value }
-                  }))}
-                  className="border-[#e4d699]/30 bg-black/50"
-                  placeholder="450"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Additional Settings */}
-          <div className="space-y-4 border-t border-[#e4d699]/20 pt-4">
-            <h4 className="text-lg font-medium text-[#e4d699]">Ytterligare inställningar</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="spicy-level">Styrka (0-5)</Label>
-                <Input
-                  id="spicy-level"
-                  type="number"
-                  min="0"
-                  max="5"
-                  value={newItem.spicy_level}
-                  onChange={(e) => setNewItem(prev => ({ 
-                    ...prev, 
-                    spicy_level: parseInt(e.target.value) || 0
-                  }))}
-                  className="border-[#e4d699]/30 bg-black/50"
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={newItem.popular}
-                    onChange={(e) => setNewItem(prev => ({ 
-                      ...prev, 
-                      popular: e.target.checked
-                    }))}
-                    className="rounded border-[#e4d699]/30 bg-black/50 text-[#e4d699] focus:ring-[#e4d699] focus:ring-offset-0"
-                  />
-                  <span>Populär rätt</span>
-                </Label>
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={newItem.available}
-                    onChange={(e) => setNewItem(prev => ({ 
-                      ...prev, 
-                      available: e.target.checked
-                    }))}
-                    className="rounded border-[#e4d699]/30 bg-black/50 text-[#e4d699] focus:ring-[#e4d699] focus:ring-offset-0"
-                  />
-                  <span>Tillgänglig</span>
-                </Label>
-              </div>
-            </div>
-          </div>
-
-          {/* Allergens */}
-          <div className="space-y-4 border-t border-[#e4d699]/20 pt-4">
-            <h4 className="text-lg font-medium text-[#e4d699]">Allergener</h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {[
-                { id: 'gluten', label: 'Gluten' },
-                { id: 'dairy', label: 'Mjölkprodukter' },
-                { id: 'eggs', label: 'Ägg' },
-                { id: 'fish', label: 'Fisk' },
-                { id: 'shellfish', label: 'Skaldjur' },
-                { id: 'nuts', label: 'Nötter' },
-                { id: 'peanuts', label: 'Jordnötter' },
-                { id: 'soy', label: 'Soja' },
-                { id: 'sesame', label: 'Sesam' },
-                { id: 'mustard', label: 'Senap' },
-                { id: 'celery', label: 'Selleri' },
-                { id: 'sulfites', label: 'Sulfiter' }
-              ].map((allergen) => (
-                <div key={allergen.id} className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id={`allergen-${allergen.id}`}
-                    checked={newItem.allergens.includes(allergen.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setNewItem(prev => ({ 
-                          ...prev, 
-                          allergens: [...prev.allergens, allergen.id]
-                        }))
-                      } else {
-                        setNewItem(prev => ({ 
-                          ...prev, 
-                          allergens: prev.allergens.filter(a => a !== allergen.id)
-                        }))
-                      }
-                    }}
-                    className="rounded border-[#e4d699]/30 bg-black/50 text-[#e4d699] focus:ring-[#e4d699] focus:ring-offset-0"
-                  />
-                  <Label 
-                    htmlFor={`allergen-${allergen.id}`} 
-                    className="text-sm cursor-pointer"
-                  >
-                    {allergen.label}
-                  </Label>
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-white/60">
-              Markera alla allergener som finns i rätten
-            </p>
-          </div>
-          
-          <div className="flex gap-2">
-            <Button 
-              type="submit" 
-              disabled={isLoading}
-              className="bg-[#e4d699] text-black hover:bg-[#e4d699]/90"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {isEdit ? "Uppdaterar..." : "Skapar..."}
-                </>
-              ) : (
-                isEdit ? "Uppdatera objekt" : "Skapa objekt"
-              )}
-            </Button>
-            <Button 
-              type="button" 
-              variant="outline"
-              onClick={onCancel}
-              className="border-[#e4d699]/30"
-            >
-              Avbryt
-            </Button>
-          </div>
-        </form>
-      </div>
-    )
-
-    // Returnera antingen med Card wrapper eller bara innehållet för modal
-    if (inModal) {
-      return FormContent
-    }
-
-    return (
-      <Card className="border border-[#e4d699]/30 bg-black/30">
-        <CardHeader>
-          <CardTitle className="text-lg">
-            {isEdit ? "Redigera menyobjekt" : "Skapa nytt menyobjekt"}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {FormContent}
-        </CardContent>
-      </Card>
-    )
-  }
 
   return (
     <Card className="border border-[#e4d699]/20 bg-black/50">
@@ -1512,15 +1514,21 @@ function ContentEditor() {
             <MenuItemForm 
               onSubmit={handleCreateItem}
               onCancel={resetForm}
+              newItem={newItem}
+              setNewItem={setNewItem}
+              setShowImagePicker={setShowImagePicker}
             />
           )}
 
           {/* Edit Modal Dialog - ersätter det gamla formuläret längst upp */}
-          <Dialog open={showEditForm} onOpenChange={(open) => {
-            if (!open) {
-              resetForm()
-            }
-          }}>
+          <Dialog 
+            key={editingItem?.id || 'edit-dialog'} 
+            open={showEditForm} 
+            onOpenChange={(open) => {
+              if (!open) {
+                resetForm()
+              }
+            }}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-black/95 border border-[#e4d699]/30">
               <DialogHeader>
                 <DialogTitle className="text-[#e4d699] text-xl">
@@ -1534,10 +1542,14 @@ function ContentEditor() {
               {showEditForm && (
                 <div className="mt-4">
                   <MenuItemForm 
+                    key={editingItem?.id || 'edit-form'}
                     isEdit={true}
                     inModal={true}
                     onSubmit={handleUpdateItem}
                     onCancel={resetForm}
+                    newItem={newItem}
+                    setNewItem={setNewItem}
+                    setShowImagePicker={setShowImagePicker}
                   />
                 </div>
               )}
