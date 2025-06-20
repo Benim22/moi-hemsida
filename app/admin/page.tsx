@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
-import { Loader2, Users, FileText, Settings, Gift, Plus, Edit, Trash2, AlertTriangle, Bell, BarChart3, Globe, Eye, Clock, Search, Target, TrendingUp, MapPin, Phone, Mail, Star, Save, X, Send, PauseCircle, PlayCircle, ShoppingCart, Package, Truck, CheckCircle, XCircle, AlertCircle, Filter, Download, Calendar, DollarSign, RefreshCw, ChevronDown, Menu, Monitor, Check } from "lucide-react"
+import { Loader2, Users, FileText, Settings, Gift, Plus, Edit, Trash2, AlertTriangle, Bell, BarChart3, Globe, Eye, Clock, Search, Target, TrendingUp, MapPin, Phone, Mail, Star, Save, X, Send, PauseCircle, PlayCircle, ShoppingCart, Package, Truck, CheckCircle, XCircle, AlertCircle, Filter, Download, Calendar, DollarSign, RefreshCw, ChevronDown, Menu, Monitor, Check, Upload } from "lucide-react"
 
 export default function AdminPage() {
   const { user, profile, isAdmin, loading } = useSimpleAuth()
@@ -1163,52 +1163,119 @@ function ContentEditor() {
   const [showImagePicker, setShowImagePicker] = useState(false)
   const [imageSearchQuery, setImageSearchQuery] = useState("")
   
-  // Organiserade bildkategorier från /public/
-  const imageCategories = {
+  // Dynamiska bildkategorier från API
+  const [imageCategories, setImageCategories] = useState({
     menyBilder: {
       title: "🍣 Menybilder",
       description: "Bilder av maträtter och drycker",
       path: "/Meny-bilder/",
       color: "emerald",
-      images: [
-        "1 par avokado.webp", "1 par gurka.webp", "1 par lax flamberad.webp", "1 par lax.webp",
-        "1 par räka.webp", "1 par surumi.webp", "1 par tamago.webp", "1 par tofu.webp",
-        "8 risbollar natruella .webp", "avokai.webp", "beef helfriterad maki.webp", "california roll.webp",
-        "coca-cola-zero.webp", "coca-cola.webp", "crazy salmon.webp", "crispy chicken.webp",
-        "crispy chicken2.webp", "crispy kid.webp", "edamame bönor.webp", "green maki.webp",
-        "gyoza och wakame sallad.webp", "helfriterad chicken.webp", "helfriterad salmon.webp",
-        "lemon shrimp.webp", "magic avokado.webp", "magic lax.webp", "magic shrimp.webp",
-        "magic shrimp2.webp", "magic tempura random.webp", "magic tempura.webp", "miso soppa.webp",
-        "nigiri mix 8.webp", "rainbow roll.webp", "rainbow roll2.webp", "random.webp", "random1.webp",
-        "sashimi lax.webp", "shrimp bowl.webp", "shrimp roll.webp", "shrimptempura.webp",
-        "spicy beef.webp", "vegan bowl.webp", "vegan roll.webp", "veggo bowl.webp"
-      ]
+      images: []
     },
     restaurangBilder: {
       title: "🏪 Restaurangbilder",
       description: "Bilder av restaurangen och food trucks",
       path: "/restaurang-bilder/",
       color: "amber",
-      images: [
-        "image0.jpeg", "image1.jpeg", "image2.jpeg", "image3.png",
-        "vagn1.jpeg", "vagn2.jpeg", "vagn3.jpeg", "vagn4.jpeg", "vagn5.jpeg"
-      ]
+      images: []
     },
     ovrigt: {
       title: "🎨 Övrigt",
       description: "Logotyper och andra bilder",
       path: "/",
       color: "blue",
-      images: [
-        "moi-exterior.jpg", "moi-interior.jpg", "Foodora.png", "Wolt.png", "Uber-Eats.png",
-        "placeholder-logo.png", "placeholder-logo.svg", "placeholder-user.jpg", "placeholder.jpg"
-      ]
+      images: []
     }
-  }
+  })
+  
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [selectedUploadCategory, setSelectedUploadCategory] = useState('menyBilder')
 
   const handleSelectImage = (imagePath) => {
     setNewItem(prev => ({ ...prev, image_url: imagePath }))
     setShowImagePicker(false)
+  }
+
+  // Ladda bilder från API
+  const loadImages = async () => {
+    try {
+      const folders = ['Meny-bilder', 'restaurang-bilder', '']
+      const folderKeys = ['menyBilder', 'restaurangBilder', 'ovrigt']
+      
+      const imagePromises = folders.map(folder => 
+        fetch(`/api/images?folder=${folder}`).then(res => res.json())
+      )
+      
+      const results = await Promise.all(imagePromises)
+      
+      setImageCategories(prev => {
+        const updated = { ...prev }
+        results.forEach((result, index) => {
+          if (result.images) {
+            updated[folderKeys[index]].images = result.images
+          }
+        })
+        return updated
+      })
+    } catch (error) {
+      console.error('Error loading images:', error)
+      toast({
+        title: "Fel",
+        description: "Kunde inte ladda bilder.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Hantera bilduppladdning
+  const handleImageUpload = async (file, category) => {
+    if (!file) return
+    
+    setUploadingImage(true)
+    
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      
+      // Mappa kategori till mapp
+      const folderMap = {
+        menyBilder: 'Meny-bilder',
+        restaurangBilder: 'restaurang-bilder',
+        ovrigt: ''
+      }
+      
+      formData.append('folder', folderMap[category])
+      
+      const response = await fetch('/api/images', {
+        method: 'POST',
+        body: formData
+      })
+      
+      const result = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Uppladdning misslyckades')
+      }
+      
+      toast({
+        title: "Bild uppladdad!",
+        description: `${result.image.name} har laddats upp.`,
+        variant: "default",
+      })
+      
+      // Ladda om bilderna
+      await loadImages()
+      
+    } catch (error) {
+      console.error('Error uploading image:', error)
+      toast({
+        title: "Fel",
+        description: error.message || "Kunde inte ladda upp bild.",
+        variant: "destructive",
+      })
+    } finally {
+      setUploadingImage(false)
+    }
   }
 
   const [newItem, setNewItem] = useState({
@@ -1260,6 +1327,7 @@ function ContentEditor() {
     }
 
     fetchMenuItems()
+    loadImages() // Ladda bilder när komponenten mountas
   }, [toast])
 
   // Filter and search effect
@@ -1601,12 +1669,71 @@ function ContentEditor() {
                 )}
               </div>
               
+              {/* Uppladdningssektion */}
+              <div className="bg-gradient-to-r from-purple-900/50 to-purple-800/30 border border-purple-500/30 rounded-lg p-4 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-purple-300 flex items-center">
+                      <Upload className="mr-2 h-5 w-5" />
+                      Ladda upp ny bild
+                    </h3>
+                    <p className="text-white/60 text-sm mt-1">Välj en mapp och ladda upp en ny bild</p>
+                  </div>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row gap-4">
+                  {/* Mappval */}
+                  <div className="flex-1">
+                    <Label className="text-sm font-medium mb-2 block text-white/80">Välj mapp</Label>
+                    <select
+                      value={selectedUploadCategory}
+                      onChange={(e) => setSelectedUploadCategory(e.target.value)}
+                      className="w-full bg-black/70 border border-purple-500/40 rounded-lg px-3 py-2 text-sm text-white"
+                    >
+                      <option value="menyBilder">🍣 Menybilder</option>
+                      <option value="restaurangBilder">🏪 Restaurangbilder</option>
+                      <option value="ovrigt">🎨 Övrigt</option>
+                    </select>
+                  </div>
+                  
+                  {/* Filuppladdning */}
+                  <div className="flex-1">
+                    <Label className="text-sm font-medium mb-2 block text-white/80">Välj fil</Label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          handleImageUpload(file, selectedUploadCategory)
+                          e.target.value = '' // Rensa input
+                        }
+                      }}
+                      className="w-full bg-black/70 border border-purple-500/40 rounded-lg px-3 py-2 text-sm text-white file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-500 file:text-white hover:file:bg-purple-600"
+                      disabled={uploadingImage}
+                    />
+                  </div>
+                </div>
+                
+                {uploadingImage && (
+                  <div className="mt-4 flex items-center text-purple-300">
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Laddar upp bild...
+                  </div>
+                )}
+                
+                <div className="mt-3 text-xs text-white/60">
+                  Tillåtna format: JPG, PNG, WebP, SVG • Max storlek: 5MB
+                </div>
+              </div>
+
               <div className="mt-6 space-y-8">
                 {Object.entries(imageCategories).map(([key, category]) => {
                   // Filtrera bilder baserat på söksträngen
-                  const filteredImages = category.images.filter(imageName => {
+                  const filteredImages = category.images.filter(image => {
                     if (!imageSearchQuery) return true
                     const searchLower = imageSearchQuery.toLowerCase()
+                    const imageName = typeof image === 'string' ? image : image.name
                     const imageLower = imageName.toLowerCase()
                     // Ta bort filändelse för sökning
                     const imageNameClean = imageLower.replace(/\.(webp|jpeg|jpg|png|svg)$/i, '')
@@ -1649,8 +1776,9 @@ function ContentEditor() {
 
                       {/* Bildgrid för kategorin */}
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-                        {filteredImages.map((imageName) => {
-                        const fullPath = `${category.path}${imageName}`
+                        {filteredImages.map((image) => {
+                        const imageName = typeof image === 'string' ? image : image.name
+                        const fullPath = typeof image === 'string' ? `${category.path}${image}` : image.path
                         const isSelected = newItem.image_url === fullPath
                         
                         return (
@@ -2041,26 +2169,30 @@ function ImageManagement() {
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [imageFilter, setImageFilter] = useState("all") // all, with, without
   const [imageSearchQuery, setImageSearchQuery] = useState("")
+  const [uploadingImage, setUploadingImage] = useState(false)
   const { toast } = useToast()
 
-  // Lista över tillgängliga bilder från public/Meny-bilder/ (nu WebP-format)
-  const publicImages = [
-    '1 par avokado.webp', '1 par gurka.webp', '1 par lax flamberad.webp', '1 par lax.webp',
-    '1 par räka.webp', '1 par surumi.webp', '1 par tamago.webp', '1 par tofu.webp',
-    '8 risbollar natruella .webp', 'avokai.webp', 'beef helfriterad maki.webp',
-    'california roll.webp', 'coca-cola-zero.webp', 'coca-cola.webp', 'crazy salmon.webp',
-    'crispy chicken.webp', 'crispy chicken2.webp', 'crispy kid.webp', 'edamame bönor.webp',
-    'green maki.webp', 'gyoza och wakame sallad.webp', 'helfriterad chicken.webp',
-    'helfriterad salmon.webp', 'lemon shrimp.webp', 'magic avokado.webp', 'magic lax.webp',
-    'magic shrimp.webp', 'magic shrimp2.webp', 'magic tempura random.webp', 'magic tempura.webp',
-    'miso soppa.webp', 'nigiri mix 8.webp', 'rainbow roll.webp', 'rainbow roll2.webp',
-    'random.webp', 'random1.webp', 'sashimi lax.webp', 'shrimp bowl.webp', 'shrimp roll.webp',
-    'shrimptempura.webp', 'spicy beef.webp', 'vegan bowl.webp', 'vegan roll.webp', 'veggo bowl.webp'
-  ]
+  // Ladda bilder dynamiskt från API
+  const loadAvailableImages = async () => {
+    try {
+      const response = await fetch('/api/images?folder=Meny-bilder')
+      const result = await response.json()
+      if (result.images) {
+        setAvailableImages(result.images.map(img => img.name))
+      }
+    } catch (error) {
+      console.error('Error loading images:', error)
+      toast({
+        title: "Fel",
+        description: "Kunde inte ladda bilder.",
+        variant: "destructive",
+      })
+    }
+  }
 
   useEffect(() => {
     fetchMenuItems()
-    setAvailableImages(publicImages)
+    loadAvailableImages()
   }, [])
 
   const fetchMenuItems = async () => {
@@ -2148,6 +2280,49 @@ function ImageManagement() {
         description: "Kunde inte ta bort bilden.",
         variant: "destructive",
       })
+    }
+  }
+
+  // Hantera bilduppladdning
+  const handleImageUpload = async (file) => {
+    if (!file) return
+    
+    setUploadingImage(true)
+    
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('folder', 'Meny-bilder')
+      
+      const response = await fetch('/api/images', {
+        method: 'POST',
+        body: formData
+      })
+      
+      const result = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Uppladdning misslyckades')
+      }
+      
+      toast({
+        title: "Bild uppladdad!",
+        description: `${result.image.name} har laddats upp.`,
+        variant: "default",
+      })
+      
+      // Ladda om bilderna
+      await loadAvailableImages()
+      
+    } catch (error) {
+      console.error('Error uploading image:', error)
+      toast({
+        title: "Fel",
+        description: error.message || "Kunde inte ladda upp bild.",
+        variant: "destructive",
+      })
+    } finally {
+      setUploadingImage(false)
     }
   }
 
@@ -2260,6 +2435,49 @@ function ImageManagement() {
               <div className="bg-black/30 rounded-lg p-4 text-center">
                 <div className="text-2xl font-bold text-[#e4d699]">{availableImages.length}</div>
                 <div className="text-sm text-white/60">Tillgängliga</div>
+              </div>
+            </div>
+
+            {/* Uppladdningssektion */}
+            <div className="bg-gradient-to-r from-purple-900/50 to-purple-800/30 border border-purple-500/30 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-purple-300 flex items-center">
+                    <Upload className="mr-2 h-5 w-5" />
+                    Ladda upp ny bild
+                  </h3>
+                  <p className="text-white/60 text-sm mt-1">Ladda upp en ny bild till Meny-bilder mappen</p>
+                </div>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-4 items-end">
+                <div className="flex-1">
+                  <Label className="text-sm font-medium mb-2 block text-white/80">Välj fil</Label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        handleImageUpload(file)
+                        e.target.value = '' // Rensa input
+                      }
+                    }}
+                    className="w-full bg-black/70 border border-purple-500/40 rounded-lg px-3 py-2 text-sm text-white file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-500 file:text-white hover:file:bg-purple-600"
+                    disabled={uploadingImage}
+                  />
+                </div>
+              </div>
+              
+              {uploadingImage && (
+                <div className="mt-4 flex items-center text-purple-300">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Laddar upp bild...
+                </div>
+              )}
+              
+              <div className="mt-3 text-xs text-white/60">
+                Tillåtna format: JPG, PNG, WebP, SVG • Max storlek: 5MB
               </div>
             </div>
 
