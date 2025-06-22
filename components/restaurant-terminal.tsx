@@ -1493,8 +1493,8 @@ Utvecklad av Skaply
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black pt-20 md:pt-24 pb-8 px-4">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black pt-20 md:pt-24 pb-8 px-2 sm:px-4 overflow-x-hidden">
+      <div className="max-w-7xl mx-auto w-full">
         {/* Header */}
         <Card className="border border-[#e4d699]/30 bg-gradient-to-r from-black/80 to-gray-900/80 backdrop-blur-md mb-6 shadow-2xl">
           <CardHeader className="pb-4">
@@ -1531,13 +1531,13 @@ Utvecklad av Skaply
               </div>
               
               {/* Mobile buttons - stacked */}
-              <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-                <div className="flex gap-2 flex-wrap">
+              <div className="flex flex-col gap-2 w-full lg:w-auto">
+                <div className="grid grid-cols-2 sm:flex gap-2">
                   {/* Notification Toggle Button */}
                   <Button 
                     onClick={notificationPermission === 'granted' ? toggleNotifications : requestNotificationPermission}
                     variant="outline" 
-                    className={`flex-1 sm:flex-none ${
+                    className={`text-xs sm:text-sm ${
                       notificationPermission === 'granted' 
                         ? notificationsEnabled
                           ? 'border-green-500/40 text-green-400' 
@@ -1548,7 +1548,7 @@ Utvecklad av Skaply
                     }`}
                     size="sm"
                   >
-                    <Bell className="h-4 w-4 mr-1 sm:mr-2" />
+                    <Bell className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                     <span className="hidden sm:inline">
                       {notificationPermission === 'granted' 
                         ? notificationsEnabled ? 'Notiser På' : 'Notiser Av'
@@ -1559,10 +1559,10 @@ Utvecklad av Skaply
                     </span>
                     <span className="sm:hidden">
                       {notificationPermission === 'granted' 
-                        ? notificationsEnabled ? '🔔' : '🔕'
+                        ? notificationsEnabled ? 'På' : 'Av'
                         : notificationPermission === 'denied'
-                        ? '🔕'
-                        : '🔕'
+                        ? 'Block'
+                        : 'Aktiv'
                       }
                     </span>
                   </Button>
@@ -1571,11 +1571,11 @@ Utvecklad av Skaply
                   <Button 
                     onClick={refreshData}
                     variant="outline" 
-                    className="flex-1 sm:flex-none border-blue-500/40 text-blue-400 hover:bg-blue-500/10"
+                    className="border-blue-500/40 text-blue-400 hover:bg-blue-500/10 text-xs sm:text-sm"
                     size="sm"
                     disabled={isRefreshing}
                   >
-                    <RefreshCw className={`h-4 w-4 mr-1 sm:mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`h-3 w-3 sm:h-4 sm:w-4 mr-1 ${isRefreshing ? 'animate-spin' : ''}`} />
                     <span className="hidden sm:inline">
                       {isRefreshing ? 'Uppdaterar...' : 'Uppdatera'}
                     </span>
@@ -1588,7 +1588,7 @@ Utvecklad av Skaply
                   <Button 
                     onClick={() => setShowPrinterSettings(true)}
                     variant="outline" 
-                    className={`flex-1 sm:flex-none transition-all duration-200 ${
+                    className={`transition-all duration-200 text-xs sm:text-sm ${
                       printerSettings.enabled 
                         ? printerStatus.connected 
                           ? 'border-green-500/40 text-green-400 hover:bg-green-500/10'
@@ -1649,13 +1649,13 @@ Utvecklad av Skaply
         </Card>
 
         {/* Filters */}
-        <Card className="border border-[#e4d699]/30 bg-gradient-to-r from-black/80 to-gray-900/80 backdrop-blur-md mb-6">
-          <CardContent className="p-4">
-            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-              <div className="flex flex-col sm:flex-row gap-4 flex-1">
+        <Card className="border border-[#e4d699]/30 bg-gradient-to-r from-black/80 to-gray-900/80 backdrop-blur-md mb-4 sm:mb-6">
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex flex-col gap-3 sm:gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 {/* Location Filter */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
-                  <label className="text-white/70 text-sm font-medium whitespace-nowrap">📍 Plats:</label>
+                <div className="flex flex-col gap-2">
+                  <label className="text-white/70 text-xs sm:text-sm font-medium">📍 Plats:</label>
                   <select 
                     value={selectedLocation}
                     onChange={async (e) => {
@@ -1672,7 +1672,7 @@ Utvecklad av Skaply
                         }
                       }
                     }}
-                    className="bg-black/50 border border-[#e4d699]/30 rounded-md px-3 py-2 text-white text-sm min-w-[150px]"
+                    className="bg-black/50 border border-[#e4d699]/30 rounded-md px-3 py-2 text-white text-sm w-full"
                   >
                     <option value="all">Alla platser</option>
                     <option value="malmo">Malmö</option>
@@ -1682,12 +1682,12 @@ Utvecklad av Skaply
                 </div>
 
                 {/* Status Filter */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
-                  <label className="text-white/70 text-sm font-medium whitespace-nowrap">🔄 Status:</label>
+                <div className="flex flex-col gap-2">
+                  <label className="text-white/70 text-xs sm:text-sm font-medium">🔄 Status:</label>
                   <select 
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="bg-black/50 border border-[#e4d699]/30 rounded-md px-3 py-2 text-white text-sm min-w-[150px]"
+                    className="bg-black/50 border border-[#e4d699]/30 rounded-md px-3 py-2 text-white text-sm w-full"
                   >
                     <option value="all">Alla statusar</option>
                     <option value="pending">Väntande</option>
@@ -1699,7 +1699,7 @@ Utvecklad av Skaply
               </div>
 
               {/* Assign User */}
-              <div className="flex gap-2">
+              <div className="flex justify-center sm:justify-start">
                 <Button
                   onClick={() => {
                     setShowAssignUser(true)
@@ -1707,7 +1707,7 @@ Utvecklad av Skaply
                   }}
                   variant="outline"
                   size="sm"
-                  className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                  className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10 text-xs sm:text-sm w-full sm:w-auto"
                 >
                   👥 Tilldela personal
                 </Button>
@@ -1769,9 +1769,9 @@ Utvecklad av Skaply
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
           {/* Orders List */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 min-w-0">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-white">Aktiva Beställningar</h3>
               <Badge variant="outline" className="border-[#e4d699]/50 text-[#e4d699]">
@@ -1807,33 +1807,33 @@ Utvecklad av Skaply
                       </Badge>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6">
                       <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-white/50">👤</span>
-                          <span className="text-white"><strong>Kund:</strong> {order.profiles?.name || order.customer_name || 'Gäst'}</span>
+                        <div className="flex items-start gap-2">
+                          <span className="text-white/50 flex-shrink-0">👤</span>
+                          <span className="text-white text-sm break-words min-w-0"><strong>Kund:</strong> {order.profiles?.name || order.customer_name || 'Gäst'}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-white/50">📞</span>
-                          <span className="text-white"><strong>Telefon:</strong> {order.profiles?.phone || order.phone || 'Ej angivet'}</span>
+                        <div className="flex items-start gap-2">
+                          <span className="text-white/50 flex-shrink-0">📞</span>
+                          <span className="text-white text-sm break-words min-w-0"><strong>Telefon:</strong> {order.profiles?.phone || order.phone || 'Ej angivet'}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-white/50">{order.delivery_type === 'delivery' ? '🚚' : '🏪'}</span>
-                          <span className="text-white"><strong>Typ:</strong> {order.delivery_type === 'delivery' ? 'Leverans' : 'Avhämtning'}</span>
+                        <div className="flex items-start gap-2">
+                          <span className="text-white/50 flex-shrink-0">{order.delivery_type === 'delivery' ? '🚚' : '🏪'}</span>
+                          <span className="text-white text-sm"><strong>Typ:</strong> {order.delivery_type === 'delivery' ? 'Leverans' : 'Avhämtning'}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-white/50">📍</span>
-                          <span className="text-white"><strong>Plats:</strong> {getLocationName(order.location)}</span>
+                        <div className="flex items-start gap-2">
+                          <span className="text-white/50 flex-shrink-0">📍</span>
+                          <span className="text-white text-sm"><strong>Plats:</strong> {getLocationName(order.location)}</span>
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-white/50">💰</span>
-                          <span className="text-white"><strong>Totalt:</strong> <span className="text-[#e4d699] font-bold">{order.total_price || order.amount} kr</span></span>
+                        <div className="flex items-start gap-2">
+                          <span className="text-white/50 flex-shrink-0">💰</span>
+                          <span className="text-white text-sm"><strong>Totalt:</strong> <span className="text-[#e4d699] font-bold">{order.total_price || order.amount} kr</span></span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-white/50">💳</span>
-                          <span className="text-white"><strong>Betalning:</strong> {order.payment_method || 'Ej angivet'}</span>
+                        <div className="flex items-start gap-2">
+                          <span className="text-white/50 flex-shrink-0">💳</span>
+                          <span className="text-white text-sm break-words min-w-0"><strong>Betalning:</strong> {order.payment_method || 'Ej angivet'}</span>
                         </div>
                       </div>
                     </div>
@@ -1873,49 +1873,49 @@ Utvecklad av Skaply
                           return (
                             <div className="space-y-2">
                               {orderItems.map((item, index) => (
-                                <div key={index} className="flex justify-between items-start border-b border-[#e4d699]/10 last:border-0 pb-2 last:pb-0">
-                                  <div className="flex-1">
+                                <div key={index} className="flex flex-col sm:flex-row sm:justify-between border-b border-[#e4d699]/10 last:border-0 pb-2 last:pb-0 gap-2">
+                                  <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
-                                      <span className="bg-[#e4d699]/20 text-[#e4d699] px-2 py-1 rounded text-xs font-bold">
+                                      <span className="bg-[#e4d699]/20 text-[#e4d699] px-2 py-1 rounded text-xs font-bold flex-shrink-0">
                                         {item.quantity}x
                                       </span>
-                                      <span className="text-white font-medium">{item.name}</span>
+                                      <span className="text-white font-medium text-sm break-words">{item.name}</span>
                                     </div>
                                     {/* Visa alternativ om de finns */}
                                     {item.options && (
-                                      <div className="ml-8 mt-1">
+                                      <div className="ml-6 sm:ml-8 mt-1 flex flex-wrap gap-1">
                                         {item.options.flamberad !== undefined && (
                                           <span className="text-orange-400 text-xs">
                                             {item.options.flamberad ? '🔥 Flamberad' : '❄️ Inte flamberad'}
                                           </span>
                                         )}
                                         {item.options.glutenFritt && (
-                                          <span className="text-blue-400 text-xs ml-2">🌾 Glutenfritt</span>
+                                          <span className="text-blue-400 text-xs">🌾 Glutenfritt</span>
                                         )}
                                         {item.options.laktosFritt && (
-                                          <span className="text-green-400 text-xs ml-2">🥛 Laktosfritt</span>
+                                          <span className="text-green-400 text-xs">🥛 Laktosfritt</span>
                                         )}
                                       </div>
                                     )}
                                     {/* Visa extras om de finns */}
                                     {item.extras && item.extras.length > 0 && (
-                                      <div className="ml-8 mt-1">
+                                      <div className="ml-6 sm:ml-8 mt-1">
                                         {item.extras.map((extra, extraIndex) => (
-                                          <div key={extraIndex} className="text-orange-300 text-xs">
+                                          <div key={extraIndex} className="text-orange-300 text-xs break-words">
                                             + {extra.name} (+{extra.price} kr)
                                           </div>
                                         ))}
                                       </div>
                                     )}
                                   </div>
-                                  <div className="text-[#e4d699] font-bold text-sm ml-4">
+                                  <div className="text-[#e4d699] font-bold text-sm flex-shrink-0 self-start ml-6 sm:ml-4">
                                     {(item.price * item.quantity).toFixed(0)} kr
                                   </div>
                                 </div>
                               ))}
-                              <div className="flex justify-between items-center pt-2 border-t border-[#e4d699]/20 font-bold">
-                                <span className="text-white">Totalt:</span>
-                                <span className="text-[#e4d699] text-lg">{order.total_price || order.amount} kr</span>
+                              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 pt-2 border-t border-[#e4d699]/20 font-bold">
+                                <span className="text-white text-sm">Totalt:</span>
+                                <span className="text-[#e4d699] text-base sm:text-lg">{order.total_price || order.amount} kr</span>
                               </div>
                             </div>
                           )
@@ -1965,13 +1965,13 @@ Utvecklad av Skaply
                       )}
                       
                       {/* Action Buttons */}
-                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         <Button 
                           size="sm" 
                           onClick={() => printReceipt(order)}
-                          className="bg-gradient-to-r from-[#e4d699] to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-black font-medium shadow-lg"
+                          className="bg-gradient-to-r from-[#e4d699] to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-black font-medium shadow-lg text-xs sm:text-sm"
                         >
-                          <Printer className="h-4 w-4 mr-2" />
+                          <Printer className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                           <span className="hidden sm:inline">📄 PDF</span>
                           <span className="sm:hidden">📄</span>
                         </Button>
@@ -1979,14 +1979,14 @@ Utvecklad av Skaply
                         <Button 
                           size="sm" 
                           onClick={() => printEPOSReceipt(order)}
-                          className={`font-medium shadow-lg ${
+                          className={`font-medium shadow-lg text-xs sm:text-sm ${
                             printerSettings.enabled && printerStatus.connected
                               ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white'
                               : 'bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white'
                           }`}
                           title={printerSettings.enabled ? 'Skriv ut på termisk skrivare' : 'Simulator-utskrift (skrivare inte aktiverad)'}
                         >
-                          <Printer className="h-4 w-4 mr-2" />
+                          <Printer className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                           <span className="hidden sm:inline">
                             {printerSettings.enabled ? '🖨️ ePOS' : '🎭 Sim'}
                           </span>
@@ -1999,11 +1999,11 @@ Utvecklad av Skaply
                           size="sm" 
                           variant="outline"
                           onClick={() => sendEmailConfirmation(order)}
-                          className="border-blue-500/50 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500 shadow-lg"
+                          className="border-blue-500/50 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500 shadow-lg text-xs sm:text-sm"
                           disabled={!order.profiles?.email && !order.email}
                           title={order.profiles?.email || order.email ? `Skicka e-postbekräftelse till ${order.profiles?.email || order.email}` : 'Ingen e-postadress tillgänglig'}
                         >
-                          <span className="h-4 w-4 mr-2">📧</span>
+                          <span className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2">📧</span>
                           <span className="hidden sm:inline">
                             {order.profiles?.email || order.email ? '📧 E-post' : '❌ Ingen e-post'}
                           </span>
@@ -2014,7 +2014,7 @@ Utvecklad av Skaply
                           size="sm" 
                           variant="outline"
                           onClick={() => setSelectedOrder(order)}
-                          className="border-blue-500/50 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500 shadow-lg"
+                          className="border-blue-500/50 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500 shadow-lg text-xs sm:text-sm"
                         >
                           <span className="hidden sm:inline">👁️ Detaljer</span>
                           <span className="sm:hidden">👁️</span>
@@ -2028,21 +2028,21 @@ Utvecklad av Skaply
           </div>
 
           {/* Notifications Sidebar */}
-          <div>
-            <h3 className="text-lg font-medium mb-4">Senaste Notiser</h3>
+          <div className="lg:block">
+            <h3 className="text-base sm:text-lg font-medium mb-4 text-white">Senaste Notiser</h3>
             <div className="space-y-3">
               {notifications.slice(0, 5).map(notification => (
                 <Card key={notification.id} className="border border-[#e4d699]/30 bg-black/30">
                   <CardContent className="p-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h5 className="text-sm font-medium">{notification.title}</h5>
-                        <p className="text-xs text-white/60 mt-1">{notification.message}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <h5 className="text-xs sm:text-sm font-medium text-white break-words">{notification.title}</h5>
+                        <p className="text-xs text-white/60 mt-1 break-words">{notification.message}</p>
                         <p className="text-xs text-white/40 mt-2">
                           {new Date(notification.created_at).toLocaleString('sv-SE')}
                         </p>
                       </div>
-                      <span className="text-lg">
+                      <span className="text-sm sm:text-lg flex-shrink-0">
                         {notification.type === 'order' && '🍱'}
                         {notification.type === 'system' && 'ℹ️'}
                         {notification.type === 'booking' && '📅'}
@@ -2174,24 +2174,24 @@ Utvecklad av Skaply
 
         {/* Printer Settings Modal */}
         <Dialog open={showPrinterSettings} onOpenChange={setShowPrinterSettings}>
-          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="text-[#e4d699] text-xl flex items-center gap-2">
-                <Printer className="h-6 w-6" />
+              <DialogTitle className="text-[#e4d699] text-lg sm:text-xl flex items-center gap-2">
+                <Printer className="h-5 w-5 sm:h-6 sm:w-6" />
                 🖨️ Skrivarinställningar & Debug
               </DialogTitle>
             </DialogHeader>
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               {/* Printer Configuration */}
               <Card className="border border-[#e4d699]/30 bg-black/30">
                 <CardHeader>
-                  <CardTitle className="text-lg text-[#e4d699]">⚙️ Skrivarkonfiguration</CardTitle>
+                  <CardTitle className="text-base sm:text-lg text-[#e4d699]">⚙️ Skrivarkonfiguration</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-white font-medium">Aktivera ePOS-utskrift</Label>
-                      <p className="text-white/60 text-sm">Slå på/av termisk kvittoutskrift</p>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
+                    <div className="flex-1">
+                      <Label className="text-white font-medium text-sm sm:text-base">Aktivera ePOS-utskrift</Label>
+                      <p className="text-white/60 text-xs sm:text-sm">Slå på/av termisk kvittoutskrift</p>
                     </div>
                     <Switch
                       checked={printerSettings.enabled}
@@ -2202,10 +2202,10 @@ Utvecklad av Skaply
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-white font-medium">Automatisk utskrift</Label>
-                      <p className="text-white/60 text-sm">Skriv ut kvitton automatiskt för nya beställningar</p>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
+                    <div className="flex-1">
+                      <Label className="text-white font-medium text-sm sm:text-base">Automatisk utskrift</Label>
+                      <p className="text-white/60 text-xs sm:text-sm">Skriv ut kvitton automatiskt för nya beställningar</p>
                     </div>
                     <Switch
                       checked={printerSettings.autoprintEnabled}
@@ -2217,10 +2217,10 @@ Utvecklad av Skaply
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-white font-medium">Automatisk e-postutskick</Label>
-                      <p className="text-white/60 text-sm">Skicka orderbekräftelser automatiskt via e-post för nya beställningar</p>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
+                    <div className="flex-1">
+                      <Label className="text-white font-medium text-sm sm:text-base">Automatisk e-postutskick</Label>
+                      <p className="text-white/60 text-xs sm:text-sm">Skicka orderbekräftelser automatiskt via e-post för nya beställningar</p>
                     </div>
                     <Switch
                       checked={printerSettings.autoemailEnabled}
@@ -2231,10 +2231,10 @@ Utvecklad av Skaply
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-white font-medium">Debug-läge (Simulator)</Label>
-                      <p className="text-white/60 text-sm">Använd simulator istället för riktig skrivare</p>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
+                    <div className="flex-1">
+                      <Label className="text-white font-medium text-sm sm:text-base">Debug-läge (Simulator)</Label>
+                      <p className="text-white/60 text-xs sm:text-sm">Använd simulator istället för riktig skrivare</p>
                     </div>
                     <Switch
                       checked={printerSettings.debugMode}
@@ -2245,9 +2245,9 @@ Utvecklad av Skaply
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-white font-medium">Skrivare IP-adress</Label>
+                      <Label className="text-white font-medium text-sm sm:text-base">Skrivare IP-adress</Label>
                       <Input
                         value={printerSettings.printerIP}
                         onChange={(e) => {
@@ -2255,12 +2255,12 @@ Utvecklad av Skaply
                           addDebugLog(`Skrivare IP uppdaterad: ${e.target.value}`, 'info')
                         }}
                         placeholder="192.168.1.100"
-                        className="bg-black/50 border-[#e4d699]/30 text-white"
+                        className="bg-black/50 border-[#e4d699]/30 text-white text-sm"
                         disabled={printerSettings.debugMode}
                       />
                     </div>
                     <div>
-                      <Label className="text-white font-medium">Port</Label>
+                      <Label className="text-white font-medium text-sm sm:text-base">Port</Label>
                       <Input
                         value={printerSettings.printerPort}
                         onChange={(e) => {
@@ -2268,21 +2268,23 @@ Utvecklad av Skaply
                           addDebugLog(`Skrivare port uppdaterad: ${e.target.value}`, 'info')
                         }}
                         placeholder="8008"
-                        className="bg-black/50 border-[#e4d699]/30 text-white"
+                        className="bg-black/50 border-[#e4d699]/30 text-white text-sm"
                         disabled={printerSettings.debugMode}
                       />
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <Button
                       onClick={testPrinterConnection}
                       variant="outline"
-                      className="border-blue-500/40 text-blue-400 hover:bg-blue-500/10"
+                      className="border-blue-500/40 text-blue-400 hover:bg-blue-500/10 text-xs sm:text-sm"
                       disabled={!printerSettings.enabled}
+                      size="sm"
                     >
-                      <Wifi className="h-4 w-4 mr-2" />
-                      Testa anslutning
+                      <Wifi className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                      <span className="hidden sm:inline">Testa anslutning</span>
+                      <span className="sm:hidden">Test</span>
                     </Button>
                     
                     <Button
@@ -2302,11 +2304,13 @@ Utvecklad av Skaply
                         printEPOSReceipt(testOrder)
                       }}
                       variant="outline"
-                      className="border-green-500/40 text-green-400 hover:bg-green-500/10"
+                      className="border-green-500/40 text-green-400 hover:bg-green-500/10 text-xs sm:text-sm"
                       disabled={!printerSettings.enabled}
+                      size="sm"
                     >
-                      <Printer className="h-4 w-4 mr-2" />
-                      Testa utskrift
+                      <Printer className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                      <span className="hidden sm:inline">Testa utskrift</span>
+                      <span className="sm:hidden">Print</span>
                     </Button>
 
                     <Button
@@ -2329,10 +2333,12 @@ Utvecklad av Skaply
                         sendEmailConfirmation(testOrder)
                       }}
                       variant="outline"
-                      className="border-purple-500/40 text-purple-400 hover:bg-purple-500/10"
+                      className="border-purple-500/40 text-purple-400 hover:bg-purple-500/10 text-xs sm:text-sm"
+                      size="sm"
                     >
-                      <span className="h-4 w-4 mr-2">📧</span>
-                      Testa e-post
+                      <span className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2">📧</span>
+                      <span className="hidden sm:inline">Testa e-post</span>
+                      <span className="sm:hidden">Email</span>
                     </Button>
 
                     <Button
@@ -2341,9 +2347,11 @@ Utvecklad av Skaply
                         addDebugLog('Debug-logg rensad', 'info')
                       }}
                       variant="outline"
-                      className="border-red-500/40 text-red-400 hover:bg-red-500/10"
+                      className="border-red-500/40 text-red-400 hover:bg-red-500/10 text-xs sm:text-sm"
+                      size="sm"
                     >
-                      🗑️ Rensa logg
+                      <span className="hidden sm:inline">🗑️ Rensa logg</span>
+                      <span className="sm:hidden">🗑️</span>
                     </Button>
                   </div>
                 </CardContent>
@@ -2477,189 +2485,192 @@ Utvecklad av Skaply
 
         {/* Order Details Modal */}
         {selectedOrder && (
-          <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-            <Card className="border border-[#e4d699]/30 bg-black max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Order #{selectedOrder.order_number}</CardTitle>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => setSelectedOrder(null)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="font-medium mb-2">Kundinfo:</h4>
-                                            <p>Namn: {selectedOrder.profiles?.name || selectedOrder.customer_name || 'Gäst'}</p>
-                    <p>Email: {selectedOrder.profiles?.email || selectedOrder.email}</p>
-                    <p>Telefon: {selectedOrder.profiles?.phone || selectedOrder.phone}</p>
+          <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
+            <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-black border-[#e4d699]/30 text-white">
+              <DialogHeader>
+                <DialogTitle className="text-[#e4d699] text-lg sm:text-xl">
+                  Order #{selectedOrder.order_number}
+                </DialogTitle>
+              </DialogHeader>
+              
+              <div className="space-y-4 text-sm sm:text-base">
+                {/* Kundinfo */}
+                <div className="bg-black/30 rounded-lg p-3 sm:p-4 border border-[#e4d699]/20">
+                  <h4 className="font-medium mb-2 text-[#e4d699] text-sm sm:text-base">👤 Kundinfo:</h4>
+                  <div className="space-y-1 text-xs sm:text-sm">
+                    <p><span className="text-white/70">Namn:</span> {selectedOrder.profiles?.name || selectedOrder.customer_name || 'Gäst'}</p>
+                    <p><span className="text-white/70">Email:</span> {selectedOrder.profiles?.email || selectedOrder.email || 'Ej angiven'}</p>
+                    <p><span className="text-white/70">Telefon:</span> {selectedOrder.profiles?.phone || selectedOrder.phone || 'Ej angiven'}</p>
                   </div>
-                  
-                  <div>
-                    <h4 className="font-medium mb-2">Leveransinfo:</h4>
-                    <p>Typ: {selectedOrder.delivery_type === 'delivery' ? 'Leverans' : 'Avhämtning'}</p>
-                    <p>Plats: {getLocationName(selectedOrder.location)}</p>
+                </div>
+                
+                {/* Leveransinfo */}
+                <div className="bg-black/30 rounded-lg p-3 sm:p-4 border border-[#e4d699]/20">
+                  <h4 className="font-medium mb-2 text-[#e4d699] text-sm sm:text-base">🚚 Leveransinfo:</h4>
+                  <div className="space-y-1 text-xs sm:text-sm">
+                    <p><span className="text-white/70">Typ:</span> {selectedOrder.delivery_type === 'delivery' ? 'Leverans' : 'Avhämtning'}</p>
+                    <p><span className="text-white/70">Plats:</span> {getLocationName(selectedOrder.location)}</p>
                     {selectedOrder.delivery_address && (
-                      <p>Adress: {selectedOrder.delivery_address}</p>
+                      <p><span className="text-white/70">Adress:</span> <span className="break-words">{selectedOrder.delivery_address}</span></p>
                     )}
                     {selectedOrder.delivery_time && (
-                      <p>Tid: {selectedOrder.delivery_time}</p>
+                      <p><span className="text-white/70">Tid:</span> {selectedOrder.delivery_time}</p>
                     )}
                   </div>
+                </div>
 
-                  <div>
-                    <h4 className="font-medium mb-3 text-[#e4d699]">🍱 Detaljerad beställning:</h4>
-                    {(() => {
-                      // Hantera både 'items' och 'cart_items' kolumner
-                      let orderItems = []
-                      
-                      if (selectedOrder.items) {
-                        try {
-                          orderItems = typeof selectedOrder.items === 'string' ? JSON.parse(selectedOrder.items) : selectedOrder.items
-                        } catch (e) {
-                          console.error('Error parsing selectedOrder.items:', e)
-                        }
-                      } else if (selectedOrder.cart_items) {
-                        try {
-                          orderItems = typeof selectedOrder.cart_items === 'string' ? JSON.parse(selectedOrder.cart_items) : selectedOrder.cart_items
-                        } catch (e) {
-                          console.error('Error parsing selectedOrder.cart_items:', e)
-                        }
+                {/* Detaljerad beställning */}
+                <div className="bg-black/30 rounded-lg p-3 sm:p-4 border border-[#e4d699]/20">
+                  <h4 className="font-medium mb-3 text-[#e4d699] text-sm sm:text-base">🍱 Detaljerad beställning:</h4>
+                  {(() => {
+                    // Hantera både 'items' och 'cart_items' kolumner
+                    let orderItems = []
+                    
+                    if (selectedOrder.items) {
+                      try {
+                        orderItems = typeof selectedOrder.items === 'string' ? JSON.parse(selectedOrder.items) : selectedOrder.items
+                      } catch (e) {
+                        console.error('Error parsing selectedOrder.items:', e)
                       }
-
-                      if (!orderItems || orderItems.length === 0) {
-                        return (
-                          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-                            <p className="text-red-400 text-sm">⚠️ Ingen detaljerad beställningsinformation tillgänglig</p>
-                            <p className="text-red-300/80 text-xs mt-1">Detta kan bero på att beställningen gjordes innan det nya systemet implementerades.</p>
-                          </div>
-                        )
+                    } else if (selectedOrder.cart_items) {
+                      try {
+                        orderItems = typeof selectedOrder.cart_items === 'string' ? JSON.parse(selectedOrder.cart_items) : selectedOrder.cart_items
+                      } catch (e) {
+                        console.error('Error parsing selectedOrder.cart_items:', e)
                       }
+                    }
 
+                    if (!orderItems || orderItems.length === 0) {
                       return (
-                        <div className="bg-black/30 rounded-lg p-4 border border-[#e4d699]/20">
-                          <div className="space-y-3">
-                            {orderItems.map((item, index) => (
-                              <div key={index} className="border-l-4 border-[#e4d699]/50 pl-4 py-2 bg-black/20 rounded-r-lg">
-                                <div className="flex justify-between items-start mb-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className="bg-[#e4d699] text-black px-2 py-1 rounded text-sm font-bold">
-                                      {item.quantity}x
-                                    </span>
-                                    <span className="text-white font-medium text-lg">{item.name}</span>
-                                  </div>
-                                  <div className="text-[#e4d699] font-bold text-lg">
-                                    {(item.price * item.quantity)} kr
-                                  </div>
-                                </div>
-                                
-                                {/* Visa alternativ om de finns */}
-                                {item.options && (
-                                  <div className="mb-2">
-                                    <h6 className="text-white/70 text-sm font-medium mb-1">Alternativ:</h6>
-                                    <div className="flex flex-wrap gap-2">
-                                      {item.options.flamberad !== undefined && (
-                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                          item.options.flamberad 
-                                            ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' 
-                                            : 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
-                                        }`}>
-                                          {item.options.flamberad ? '🔥 Flamberad' : '❄️ Inte flamberad'}
-                                        </span>
-                                      )}
-                                      {item.options.glutenFritt && (
-                                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/40">
-                                          🌾 Glutenfritt
-                                        </span>
-                                      )}
-                                      {item.options.laktosFritt && (
-                                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/40">
-                                          🥛 Laktosfritt
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                                
-                                {/* Visa extras om de finns */}
-                                {item.extras && item.extras.length > 0 && (
-                                  <div>
-                                    <h6 className="text-white/70 text-sm font-medium mb-1">Tillägg:</h6>
-                                    <div className="space-y-1">
-                                      {item.extras.map((extra, extraIndex) => (
-                                        <div key={extraIndex} className="flex justify-between text-sm">
-                                          <span className="text-orange-300">+ {extra.name}</span>
-                                          <span className="text-orange-400 font-medium">+{extra.price} kr</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                                
-                                <div className="text-white/60 text-xs mt-2">
-                                  Enhetspris: {item.price} kr
-                                </div>
-                              </div>
-                            ))}
-                            
-                            <div className="flex justify-between items-center pt-3 border-t-2 border-[#e4d699]/40 font-bold text-lg">
-                              <span className="text-white">Totalt att betala:</span>
-                              <span className="text-[#e4d699] text-2xl">{selectedOrder.total_price || selectedOrder.amount} kr</span>
-                            </div>
-                          </div>
+                        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                          <p className="text-red-400 text-xs sm:text-sm">⚠️ Ingen detaljerad beställningsinformation tillgänglig</p>
+                          <p className="text-red-300/80 text-xs mt-1">Detta kan bero på att beställningen gjordes innan det nya systemet implementerades.</p>
                         </div>
                       )
-                    })()}
-                  </div>
+                    }
 
-                  {(selectedOrder.notes || selectedOrder.special_instructions) && (
-                    <div>
-                      <h4 className="font-medium mb-2 text-orange-400">📝 Speciella önskemål & kommentarer:</h4>
-                      <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3">
-                        <p className="text-orange-300">{selectedOrder.notes || selectedOrder.special_instructions}</p>
+                    return (
+                      <div className="space-y-3">
+                        {orderItems.map((item, index) => (
+                          <div key={index} className="border-l-4 border-[#e4d699]/50 pl-3 py-2 bg-black/20 rounded-r-lg">
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <span className="bg-[#e4d699] text-black px-2 py-1 rounded text-xs font-bold flex-shrink-0">
+                                  {item.quantity}x
+                                </span>
+                                <span className="text-white font-medium text-sm sm:text-base break-words">{item.name}</span>
+                              </div>
+                              <div className="text-[#e4d699] font-bold text-sm sm:text-base flex-shrink-0">
+                                {(item.price * item.quantity)} kr
+                              </div>
+                            </div>
+                            
+                            {/* Visa alternativ om de finns */}
+                            {item.options && (
+                              <div className="mb-2">
+                                <h6 className="text-white/70 text-xs font-medium mb-1">Alternativ:</h6>
+                                <div className="flex flex-wrap gap-1">
+                                  {item.options.flamberad !== undefined && (
+                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                      item.options.flamberad 
+                                        ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' 
+                                        : 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
+                                    }`}>
+                                      {item.options.flamberad ? '🔥 Flamberad' : '❄️ Inte flamberad'}
+                                    </span>
+                                  )}
+                                  {item.options.glutenFritt && (
+                                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/40">
+                                      🌾 Glutenfritt
+                                    </span>
+                                  )}
+                                  {item.options.laktosFritt && (
+                                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/40">
+                                      🥛 Laktosfritt
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Visa extras om de finns */}
+                            {item.extras && item.extras.length > 0 && (
+                              <div>
+                                <h6 className="text-white/70 text-xs font-medium mb-1">Tillägg:</h6>
+                                <div className="space-y-1">
+                                  {item.extras.map((extra, extraIndex) => (
+                                    <div key={extraIndex} className="flex justify-between text-xs">
+                                      <span className="text-orange-300 break-words flex-1 min-w-0 pr-2">+ {extra.name}</span>
+                                      <span className="text-orange-400 font-medium flex-shrink-0">+{extra.price} kr</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            
+                            <div className="text-white/60 text-xs mt-2">
+                              Enhetspris: {item.price} kr
+                            </div>
+                          </div>
+                        ))}
+                        
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 pt-3 border-t-2 border-[#e4d699]/40 font-bold">
+                          <span className="text-white text-sm sm:text-base">Totalt att betala:</span>
+                          <span className="text-[#e4d699] text-lg sm:text-2xl">{selectedOrder.total_price || selectedOrder.amount} kr</span>
+                        </div>
                       </div>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2 pt-4">
-                    <Button onClick={() => printReceipt(selectedOrder)} className="bg-[#e4d699] text-black">
-                      <Printer className="h-4 w-4 mr-2" />
-                      📄 PDF-kvitto
-                    </Button>
-                    <Button 
-                      onClick={() => printEPOSReceipt(selectedOrder)}
-                      className={`${
-                        printerSettings.enabled && printerStatus.connected
-                          ? 'bg-green-600 hover:bg-green-700 text-white'
-                          : 'bg-orange-600 hover:bg-orange-700 text-white'
-                      }`}
-                    >
-                      <Printer className="h-4 w-4 mr-2" />
-                      {printerSettings.enabled ? '🖨️ ePOS' : '🎭 Sim'}
-                    </Button>
-                    <Button 
-                      onClick={() => sendEmailConfirmation(selectedOrder)} 
-                      variant="outline"
-                      disabled={!selectedOrder.profiles?.email && !selectedOrder.email}
-                      className={`${
-                        selectedOrder.profiles?.email || selectedOrder.email
-                          ? 'border-blue-500/50 text-blue-400 hover:bg-blue-500/10'
-                          : 'border-gray-500/50 text-gray-500 cursor-not-allowed'
-                      }`}
-                    >
-                      <span className="h-4 w-4 mr-2">📧</span>
-                      {selectedOrder.profiles?.email || selectedOrder.email ? '📧 Skicka e-post' : '❌ Ingen e-post'}
-                    </Button>
-                  </div>
+                    )
+                  })()}
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+
+                {/* Speciella önskemål */}
+                {(selectedOrder.notes || selectedOrder.special_instructions) && (
+                  <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3">
+                    <h4 className="font-medium mb-2 text-orange-400 text-sm sm:text-base">📝 Speciella önskemål & kommentarer:</h4>
+                    <p className="text-orange-300 text-xs sm:text-sm break-words">{selectedOrder.notes || selectedOrder.special_instructions}</p>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex flex-col sm:flex-row gap-2 pt-4">
+                  <Button 
+                    onClick={() => printReceipt(selectedOrder)} 
+                    className="bg-[#e4d699] text-black hover:bg-[#e4d699]/90 text-sm"
+                    size="sm"
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    📄 PDF-kvitto
+                  </Button>
+                  <Button 
+                    onClick={() => printEPOSReceipt(selectedOrder)}
+                    className={`text-sm ${
+                      printerSettings.enabled && printerStatus.connected
+                        ? 'bg-green-600 hover:bg-green-700 text-white'
+                        : 'bg-orange-600 hover:bg-orange-700 text-white'
+                    }`}
+                    size="sm"
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    {printerSettings.enabled ? '🖨️ ePOS' : '🎭 Sim'}
+                  </Button>
+                  <Button 
+                    onClick={() => sendEmailConfirmation(selectedOrder)} 
+                    variant="outline"
+                    disabled={!selectedOrder.profiles?.email && !selectedOrder.email}
+                    className={`text-sm ${
+                      selectedOrder.profiles?.email || selectedOrder.email
+                        ? 'border-blue-500/50 text-blue-400 hover:bg-blue-500/10'
+                        : 'border-gray-500/50 text-gray-500 cursor-not-allowed'
+                    }`}
+                    size="sm"
+                  >
+                    <span className="h-4 w-4 mr-2">📧</span>
+                    {selectedOrder.profiles?.email || selectedOrder.email ? '📧 Skicka e-post' : '❌ Ingen e-post'}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         )}
       </div>
     </div>
