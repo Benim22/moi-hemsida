@@ -6,9 +6,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
-import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle, RefreshCw } from "lucide-react"
+import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle, RefreshCw, Settings, Wifi, Bluetooth, Mail } from "lucide-react"
 import jsPDF from 'jspdf'
+
+// ePOS-Print API Declaration (since we'll load it dynamically)
+declare global {
+  interface Window {
+    epos: any;
+  }
+}
 
 export default function RestaurantTerminal() {
   const { user, profile, setUser, setProfile, updateLocation } = useSimpleAuth()
@@ -29,6 +40,91 @@ export default function RestaurantTerminal() {
   const [selectedUserId, setSelectedUserId] = useState('')
   const [assignLocation, setAssignLocation] = useState('malmo')
   const [assigningUser, setAssigningUser] = useState(false)
+
+  // ePOS Printer Settings
+  const [showPrinterSettings, setShowPrinterSettings] = useState(false)
+  const [printerSettings, setPrinterSettings] = useState({
+    enabled: false,
+    autoprintEnabled: true,
+    autoemailEnabled: true, // Automatisk e-postutskick
+    printerIP: '192.168.1.100',
+    printerPort: '8008',
+    connectionType: 'wifi', // 'wifi' or 'bluetooth'
+    debugMode: true // För utveckling
+  })
+  const [printerStatus, setPrinterStatus] = useState({
+    connected: false,
+    lastTest: null,
+    error: null
+  })
+  const [debugLogs, setDebugLogs] = useState([])
+  const [eposLoaded, setEposLoaded] = useState(false)
+
+  // Debug logging function
+  const addDebugLog = (message, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString('sv-SE')
+    const logEntry = {
+      timestamp,
+      message,
+      type, // 'info', 'success', 'error', 'warning'
+      id: Date.now()
+    }
+    
+    setDebugLogs(prev => [logEntry, ...prev.slice(0, 49)]) // Keep last 50 logs
+    
+    // Also log to console with appropriate level
+    const consoleMessage = `[${timestamp}] 🖨️ ${message}`
+    switch (type) {
+      case 'error':
+        console.error(consoleMessage)
+        break
+      case 'warning':
+        console.warn(consoleMessage)
+        break
+      case 'success':
+        console.log(`✅ ${consoleMessage}`)
+        break
+      default:
+        console.log(consoleMessage)
+    }
+  }
+
+  // Load ePOS-Print API dynamically
+  useEffect(() => {
+    const loadEPOSAPI = () => {
+      // Skip if already loaded or in simulator mode
+      if (eposLoaded || !printerSettings.enabled) return
+
+      addDebugLog('Laddar ePOS-Print API...', 'info')
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/epos-print@1.0.0/epos-print.min.js'
+      script.async = true
+      
+      script.onload = () => {
+        addDebugLog('ePOS-Print API laddad framgångsrikt', 'success')
+        setEposLoaded(true)
+      }
+      
+      script.onerror = () => {
+        addDebugLog('Kunde inte ladda ePOS-Print API - kör i simulatorläge', 'warning')
+        setEposLoaded(false)
+      }
+      
+      document.head.appendChild(script)
+
+      // Cleanup
+      return () => {
+        if (document.head.contains(script)) {
+          document.head.removeChild(script)
+        }
+      }
+    }
+
+    if (printerSettings.enabled) {
+      loadEPOSAPI()
+    }
+  }, [printerSettings.enabled, eposLoaded])
 
   // Update selectedLocation when profile loads
   useEffect(() => {
@@ -90,6 +186,22 @@ export default function RestaurantTerminal() {
       })
       showBrowserNotification(notificationTitle, notificationBody, true) // true för ordernotifikation
       playNotificationSound()
+
+      // AUTOMATISK UTSKRIFT för nya beställningar
+      if (printerSettings.enabled && printerSettings.autoprintEnabled) {
+        addDebugLog(`Automatisk utskrift aktiverad för order #${payload.new.order_number}`, 'info')
+        setTimeout(() => {
+          printEPOSReceipt(payload.new)
+        }, 1500) // Kort fördröjning för att säkerställa att data är redo
+      }
+
+      // AUTOMATISK E-POSTUTSKICK för nya beställningar
+      if (printerSettings.autoemailEnabled) {
+        addDebugLog(`Automatisk e-postutskick aktiverad för order #${payload.new.order_number}`, 'info')
+        setTimeout(() => {
+          sendEmailConfirmation(payload.new)
+        }, 2000) // Lite längre fördröjning för e-post
+      }
     }
 
     const handleOrderUpdate = (payload) => {
@@ -895,6 +1007,358 @@ export default function RestaurantTerminal() {
     doc.save(`kvitto-${order.order_number}.pdf`)
   }
 
+  // ePOS Receipt Generation
+  const generateEPOSReceipt = (order) => {
+    addDebugLog(`Genererar ePOS-kvitto för order #${order.order_number}`, 'info')
+    
+    // Simulator mode - return mock receipt data
+    if (!eposLoaded || printerSettings.debugMode) {
+      return generateMockEPOSReceipt(order)
+    }
+
+    try {
+      // Real ePOS implementation
+      const builder = new window.epos.ePOSBuilder()
+      
+      // Header
+      builder
+        .addTextAlign(builder.ALIGN_CENTER)
+        .addTextSize(2, 1)
+        .addText('Moi Sushi & Poké Bowl\n')
+        .addTextSize(1, 1)
+        .addText('================================\n')
+        .addTextAlign(builder.ALIGN_LEFT)
+        .addText(`Order: #${order.order_number}\n`)
+        .addText(`Datum: ${new Date(order.created_at).toLocaleString('sv-SE')}\n`)
+        .addText(`Kund: ${order.profiles?.name || order.customer_name || 'Gäst'}\n`)
+      
+      const phone = order.profiles?.phone || order.phone
+      if (phone) {
+        builder.addText(`Telefon: ${phone}\n`)
+      }
+      
+      builder.addText('--------------------------------\n')
+
+      // Items
+      const items = order.cart_items || order.items
+      if (items) {
+        const itemsArray = typeof items === 'string' ? JSON.parse(items) : items
+        let totalAmount = 0
+        
+        itemsArray.forEach(item => {
+          const itemTotal = (item.price || 0) * (item.quantity || 1)
+          totalAmount += itemTotal
+          
+          builder
+            .addText(`${item.quantity}x ${item.name}\n`)
+            .addTextAlign(builder.ALIGN_RIGHT)
+            .addText(`${itemTotal.toFixed(2)} kr\n`)
+            .addTextAlign(builder.ALIGN_LEFT)
+          
+          // Extras
+          if (item.extras?.length) {
+            item.extras.forEach(extra => {
+              const extraTotal = (extra.price || 0) * (item.quantity || 1)
+              totalAmount += extraTotal
+              builder.addText(`  + ${extra.name} +${extraTotal.toFixed(2)} kr\n`)
+            })
+          }
+        })
+      }
+      
+      // Total
+      const finalTotal = order.total_price || order.amount
+      builder
+        .addText('================================\n')
+        .addTextAlign(builder.ALIGN_RIGHT)
+        .addTextSize(2, 2)
+        .addText(`TOTALT: ${finalTotal} kr\n`)
+        .addTextSize(1, 1)
+        .addTextAlign(builder.ALIGN_CENTER)
+        .addText('\n')
+        .addText('Leveransmetod: ')
+      
+      if (order.delivery_type === 'delivery') {
+        builder.addText('Leverans\n')
+      } else {
+        builder.addText('Avhämtning\n')
+      }
+      
+      builder
+        .addText('\nTack för ditt köp!\n')
+        .addText('Utvecklad av Skaply\n')
+        .addText('\n')
+        .addCut(builder.CUT_FEED)
+      
+      addDebugLog('ePOS-kvitto genererat framgångsrikt', 'success')
+      return builder
+      
+    } catch (error) {
+      addDebugLog(`Fel vid generering av ePOS-kvitto: ${error.message}`, 'error')
+      return generateMockEPOSReceipt(order)
+    }
+  }
+
+  // Mock receipt for simulator/debug mode
+  const generateMockEPOSReceipt = (order) => {
+    const mockReceipt = {
+      header: 'Moi Sushi & Poké Bowl',
+      orderNumber: order.order_number,
+      customer: order.profiles?.name || order.customer_name || 'Gäst',
+      phone: order.profiles?.phone || order.phone || 'Ej angivet',
+      items: order.cart_items || order.items,
+      total: order.total_price || order.amount,
+      deliveryType: order.delivery_type === 'delivery' ? 'Leverans' : 'Avhämtning',
+      timestamp: new Date().toLocaleString('sv-SE')
+    }
+    
+    addDebugLog('Mock ePOS-kvitto genererat (simulatorläge)', 'info')
+    return mockReceipt
+  }
+
+  // Print ePOS Receipt
+  const printEPOSReceipt = async (order) => {
+    addDebugLog(`Försöker skriva ut kvitto för order #${order.order_number}`, 'info')
+    
+    try {
+      const receipt = generateEPOSReceipt(order)
+      
+      // Simulator mode
+      if (!eposLoaded || printerSettings.debugMode) {
+        simulatePrintReceipt(receipt, order)
+        return
+      }
+
+      // Real ePOS printing
+      const epos = new window.epos.ePOSDevice()
+      const printerAddress = `http://${printerSettings.printerIP}:${printerSettings.printerPort}/cgi-bin/epos/service.cgi`
+      
+      addDebugLog(`Ansluter till skrivare på ${printerAddress}`, 'info')
+      
+      epos.connect(printerSettings.printerIP, parseInt(printerSettings.printerPort), (data) => {
+        if (data === 'OK') {
+          addDebugLog('Ansluten till skrivare', 'success')
+          setPrinterStatus(prev => ({ ...prev, connected: true, error: null }))
+          
+          const printer = epos.createDevice('local_printer', epos.DEVICE_TYPE_PRINTER)
+          
+          printer.addCommand(receipt.toString())
+          
+          printer.send((result) => {
+            if (result.success) {
+              addDebugLog(`Kvitto utskrivet framgångsrikt för order #${order.order_number}`, 'success')
+              setPrinterStatus(prev => ({ ...prev, lastTest: new Date() }))
+            } else {
+              addDebugLog(`Utskriftsfel: ${result.code} - ${result.status}`, 'error')
+              setPrinterStatus(prev => ({ ...prev, error: `Utskriftsfel: ${result.code}` }))
+            }
+          })
+        } else {
+          addDebugLog(`Kunde inte ansluta till skrivare: ${data}`, 'error')
+          setPrinterStatus(prev => ({ ...prev, connected: false, error: data }))
+          
+          // Fallback to simulator
+          simulatePrintReceipt(receipt, order)
+        }
+      })
+      
+    } catch (error) {
+      addDebugLog(`Fel vid utskrift: ${error.message}`, 'error')
+      setPrinterStatus(prev => ({ ...prev, error: error.message }))
+      
+      // Fallback to simulator
+      const receipt = generateMockEPOSReceipt(order)
+      simulatePrintReceipt(receipt, order)
+    }
+  }
+
+  // Simulate printing for development
+  const simulatePrintReceipt = (receipt, order) => {
+    addDebugLog('🎭 SIMULATOR: Skriver ut kvitto...', 'warning')
+    
+    // Create visual receipt preview
+    const receiptText = typeof receipt === 'object' ? 
+      `
+═══════════════════════════════════
+        ${receipt.header}
+═══════════════════════════════════
+Order: #${receipt.orderNumber}
+Datum: ${receipt.timestamp}
+Kund: ${receipt.customer}
+Telefon: ${receipt.phone}
+───────────────────────────────────
+${Array.isArray(receipt.items) ? 
+  (typeof receipt.items === 'string' ? JSON.parse(receipt.items) : receipt.items)
+    .map(item => `${item.quantity}x ${item.name} - ${(item.price * item.quantity)} kr`)
+    .join('\n') : 'Inga artiklar'}
+───────────────────────────────────
+TOTALT: ${receipt.total} kr
+Leveransmetod: ${receipt.deliveryType}
+
+Tack för ditt köp!
+Utvecklad av Skaply
+═══════════════════════════════════
+      `.trim() : 'Mock receipt data'
+    
+    // Show in console with nice formatting
+    console.log('%c🖨️ SIMULATOR KVITTO 🖨️', 'background: #e4d699; color: black; padding: 10px; font-size: 16px; font-weight: bold;')
+    console.log(receiptText)
+    
+    // Add to debug log
+    addDebugLog(`🎭 SIMULATOR: Kvitto "utskrivet" för order #${order.order_number}`, 'success')
+    
+    // Show notification
+    showBrowserNotification(
+      '🎭 Simulator: Kvitto utskrivet!', 
+      `Order #${order.order_number} - Se konsolen för kvittodetaljer`,
+      false
+    )
+    
+    // Update printer status
+    setPrinterStatus(prev => ({ 
+      ...prev, 
+      connected: true, 
+      lastTest: new Date(),
+      error: null 
+    }))
+  }
+
+  // Send email confirmation to customer
+  const sendEmailConfirmation = async (order) => {
+    addDebugLog(`Skickar e-postbekräftelse för order #${order.order_number}`, 'info')
+    
+    try {
+      // Check if customer has email
+      const customerEmail = order.profiles?.email || order.email
+      if (!customerEmail) {
+        addDebugLog('Ingen e-postadress tillgänglig för kunden', 'warning')
+        showBrowserNotification(
+          'Ingen e-postadress', 
+          `Kunden för order #${order.order_number} har ingen registrerad e-postadress`,
+          false
+        )
+        return
+      }
+
+      // Prepare order data for email
+      const orderData = {
+        customerName: order.profiles?.name || order.customer_name || 'Gäst',
+        customerEmail: customerEmail,
+        orderNumber: order.order_number,
+        items: (() => {
+          try {
+            const items = order.cart_items || order.items
+            if (typeof items === 'string') {
+              return JSON.parse(items)
+            }
+            return Array.isArray(items) ? items : []
+          } catch (e) {
+            console.error('Error parsing order items:', e)
+            return []
+          }
+        })(),
+        totalPrice: order.total_price || order.amount,
+        location: order.location,
+        orderType: order.delivery_type === 'delivery' ? 'delivery' : 'pickup',
+        phone: order.profiles?.phone || order.phone || 'Ej angivet',
+        deliveryAddress: order.delivery_address,
+        pickupTime: order.pickup_time,
+        notes: order.notes,
+        specialInstructions: order.special_instructions
+      }
+
+      addDebugLog(`Skickar e-post till ${customerEmail}`, 'info')
+
+      // Send email via API
+      const response = await fetch('/api/send-order-confirmation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(orderData),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        addDebugLog(`E-postbekräftelse skickad framgångsrikt till ${customerEmail}`, 'success')
+        showBrowserNotification(
+          '📧 E-post skickad!', 
+          `Orderbekräftelse skickad till ${customerEmail}`,
+          false
+        )
+      } else {
+        addDebugLog(`Fel vid e-postutskick: ${result.error}`, 'error')
+        showBrowserNotification(
+          '❌ E-postfel', 
+          `Kunde inte skicka e-post: ${result.error}`,
+          false
+        )
+      }
+    } catch (error) {
+      addDebugLog(`Fel vid e-postutskick: ${error.message}`, 'error')
+      showBrowserNotification(
+        '❌ E-postfel', 
+        `Kunde inte skicka orderbekräftelse: ${error.message}`,
+        false
+      )
+    }
+  }
+
+  // Test printer connection
+  const testPrinterConnection = async () => {
+    addDebugLog('Testar skrivaranslutning...', 'info')
+    
+    if (!printerSettings.enabled) {
+      addDebugLog('Skrivare inte aktiverad', 'warning')
+      return
+    }
+
+    if (printerSettings.debugMode || !eposLoaded) {
+      addDebugLog('🎭 SIMULATOR: Testar anslutning...', 'warning')
+      setTimeout(() => {
+        addDebugLog('🎭 SIMULATOR: Anslutning OK!', 'success')
+        setPrinterStatus(prev => ({ 
+          ...prev, 
+          connected: true, 
+          lastTest: new Date(),
+          error: null 
+        }))
+      }, 1000)
+      return
+    }
+
+    try {
+      const epos = new window.epos.ePOSDevice()
+      
+      epos.connect(printerSettings.printerIP, parseInt(printerSettings.printerPort), (data) => {
+        if (data === 'OK') {
+          addDebugLog('Skrivaranslutning framgångsrik', 'success')
+          setPrinterStatus(prev => ({ 
+            ...prev, 
+            connected: true, 
+            lastTest: new Date(),
+            error: null 
+          }))
+        } else {
+          addDebugLog(`Skrivaranslutning misslyckades: ${data}`, 'error')
+          setPrinterStatus(prev => ({ 
+            ...prev, 
+            connected: false, 
+            error: data 
+          }))
+        }
+      })
+    } catch (error) {
+      addDebugLog(`Fel vid test av skrivaranslutning: ${error.message}`, 'error')
+      setPrinterStatus(prev => ({ 
+        ...prev, 
+        connected: false, 
+        error: error.message 
+      }))
+    }
+  }
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'pending': return 'bg-yellow-500'
@@ -1120,6 +1584,35 @@ export default function RestaurantTerminal() {
                     </span>
                   </Button>
                   
+                  {/* Printer Settings Button */}
+                  <Button 
+                    onClick={() => setShowPrinterSettings(true)}
+                    variant="outline" 
+                    className={`flex-1 sm:flex-none transition-all duration-200 ${
+                      printerSettings.enabled 
+                        ? printerStatus.connected 
+                          ? 'border-green-500/40 text-green-400 hover:bg-green-500/10'
+                          : 'border-orange-500/40 text-orange-400 hover:bg-orange-500/10'
+                        : 'border-gray-500/40 text-gray-400 hover:bg-gray-500/10'
+                    }`}
+                    size="sm"
+                    title="Skrivarinställningar"
+                  >
+                    <Printer className="h-4 w-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">
+                      {printerSettings.enabled 
+                        ? printerStatus.connected ? 'Skrivare OK' : 'Skrivare Fel'
+                        : 'Skrivare Av'
+                      } • {printerSettings.autoemailEnabled ? 'E-post På' : 'E-post Av'}
+                    </span>
+                    <span className="sm:hidden">
+                      {printerSettings.enabled 
+                        ? printerStatus.connected ? '🖨️' : '❌'
+                        : '🖨️'
+                      }{printerSettings.autoemailEnabled ? '📧' : ''}
+                    </span>
+                  </Button>
+
                   {/* Test Notifications Button */}
                   <Button 
                     onClick={() => {
@@ -1472,26 +1965,49 @@ export default function RestaurantTerminal() {
                       )}
                       
                       {/* Action Buttons */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                         <Button 
                           size="sm" 
                           onClick={() => printReceipt(order)}
                           className="bg-gradient-to-r from-[#e4d699] to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-black font-medium shadow-lg"
                         >
                           <Printer className="h-4 w-4 mr-2" />
-                          <span className="hidden sm:inline">🖨️ Skriv ut</span>
-                          <span className="sm:hidden">🖨️</span>
+                          <span className="hidden sm:inline">📄 PDF</span>
+                          <span className="sm:hidden">📄</span>
+                        </Button>
+
+                        <Button 
+                          size="sm" 
+                          onClick={() => printEPOSReceipt(order)}
+                          className={`font-medium shadow-lg ${
+                            printerSettings.enabled && printerStatus.connected
+                              ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white'
+                              : 'bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white'
+                          }`}
+                          title={printerSettings.enabled ? 'Skriv ut på termisk skrivare' : 'Simulator-utskrift (skrivare inte aktiverad)'}
+                        >
+                          <Printer className="h-4 w-4 mr-2" />
+                          <span className="hidden sm:inline">
+                            {printerSettings.enabled ? '🖨️ ePOS' : '🎭 Sim'}
+                          </span>
+                          <span className="sm:hidden">
+                            {printerSettings.enabled ? '🖨️' : '🎭'}
+                          </span>
                         </Button>
                         
                         <Button 
                           size="sm" 
                           variant="outline"
-                          onClick={() => downloadReceipt(order)}
-                          className="border-[#e4d699]/50 text-[#e4d699] hover:bg-[#e4d699]/10 hover:border-[#e4d699] shadow-lg"
+                          onClick={() => sendEmailConfirmation(order)}
+                          className="border-blue-500/50 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500 shadow-lg"
+                          disabled={!order.profiles?.email && !order.email}
+                          title={order.profiles?.email || order.email ? `Skicka e-postbekräftelse till ${order.profiles?.email || order.email}` : 'Ingen e-postadress tillgänglig'}
                         >
-                          <Download className="h-4 w-4 mr-2" />
-                          <span className="hidden sm:inline">📄 Ladda ner</span>
-                          <span className="sm:hidden">📄</span>
+                          <span className="h-4 w-4 mr-2">📧</span>
+                          <span className="hidden sm:inline">
+                            {order.profiles?.email || order.email ? '📧 E-post' : '❌ Ingen e-post'}
+                          </span>
+                          <span className="sm:hidden">📧</span>
                         </Button>
                         
                         <Button 
@@ -1656,6 +2172,309 @@ export default function RestaurantTerminal() {
           </DialogContent>
         </Dialog>
 
+        {/* Printer Settings Modal */}
+        <Dialog open={showPrinterSettings} onOpenChange={setShowPrinterSettings}>
+          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-[#e4d699] text-xl flex items-center gap-2">
+                <Printer className="h-6 w-6" />
+                🖨️ Skrivarinställningar & Debug
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-6">
+              {/* Printer Configuration */}
+              <Card className="border border-[#e4d699]/30 bg-black/30">
+                <CardHeader>
+                  <CardTitle className="text-lg text-[#e4d699]">⚙️ Skrivarkonfiguration</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-white font-medium">Aktivera ePOS-utskrift</Label>
+                      <p className="text-white/60 text-sm">Slå på/av termisk kvittoutskrift</p>
+                    </div>
+                    <Switch
+                      checked={printerSettings.enabled}
+                      onCheckedChange={(checked) => {
+                        setPrinterSettings(prev => ({ ...prev, enabled: checked }))
+                        addDebugLog(`ePOS-utskrift ${checked ? 'aktiverad' : 'avaktiverad'}`, checked ? 'success' : 'warning')
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-white font-medium">Automatisk utskrift</Label>
+                      <p className="text-white/60 text-sm">Skriv ut kvitton automatiskt för nya beställningar</p>
+                    </div>
+                    <Switch
+                      checked={printerSettings.autoprintEnabled}
+                      onCheckedChange={(checked) => {
+                        setPrinterSettings(prev => ({ ...prev, autoprintEnabled: checked }))
+                        addDebugLog(`Automatisk utskrift ${checked ? 'aktiverad' : 'avaktiverad'}`, checked ? 'success' : 'warning')
+                      }}
+                      disabled={!printerSettings.enabled}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-white font-medium">Automatisk e-postutskick</Label>
+                      <p className="text-white/60 text-sm">Skicka orderbekräftelser automatiskt via e-post för nya beställningar</p>
+                    </div>
+                    <Switch
+                      checked={printerSettings.autoemailEnabled}
+                      onCheckedChange={(checked) => {
+                        setPrinterSettings(prev => ({ ...prev, autoemailEnabled: checked }))
+                        addDebugLog(`Automatisk e-postutskick ${checked ? 'aktiverad' : 'avaktiverad'}`, checked ? 'success' : 'warning')
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-white font-medium">Debug-läge (Simulator)</Label>
+                      <p className="text-white/60 text-sm">Använd simulator istället för riktig skrivare</p>
+                    </div>
+                    <Switch
+                      checked={printerSettings.debugMode}
+                      onCheckedChange={(checked) => {
+                        setPrinterSettings(prev => ({ ...prev, debugMode: checked }))
+                        addDebugLog(`Debug-läge ${checked ? 'aktiverat' : 'avaktiverat'}`, checked ? 'warning' : 'info')
+                      }}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-white font-medium">Skrivare IP-adress</Label>
+                      <Input
+                        value={printerSettings.printerIP}
+                        onChange={(e) => {
+                          setPrinterSettings(prev => ({ ...prev, printerIP: e.target.value }))
+                          addDebugLog(`Skrivare IP uppdaterad: ${e.target.value}`, 'info')
+                        }}
+                        placeholder="192.168.1.100"
+                        className="bg-black/50 border-[#e4d699]/30 text-white"
+                        disabled={printerSettings.debugMode}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-white font-medium">Port</Label>
+                      <Input
+                        value={printerSettings.printerPort}
+                        onChange={(e) => {
+                          setPrinterSettings(prev => ({ ...prev, printerPort: e.target.value }))
+                          addDebugLog(`Skrivare port uppdaterad: ${e.target.value}`, 'info')
+                        }}
+                        placeholder="8008"
+                        className="bg-black/50 border-[#e4d699]/30 text-white"
+                        disabled={printerSettings.debugMode}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={testPrinterConnection}
+                      variant="outline"
+                      className="border-blue-500/40 text-blue-400 hover:bg-blue-500/10"
+                      disabled={!printerSettings.enabled}
+                    >
+                      <Wifi className="h-4 w-4 mr-2" />
+                      Testa anslutning
+                    </Button>
+                    
+                    <Button
+                      onClick={() => {
+                        const testOrder = {
+                          order_number: 'TEST-' + Date.now(),
+                          customer_name: 'Test Kund',
+                          phone: '070-123 45 67',
+                          cart_items: [
+                            { name: 'Test Sushi', quantity: 2, price: 89, extras: [{ name: 'Extra wasabi', price: 10 }] },
+                            { name: 'Test Pokébowl', quantity: 1, price: 129 }
+                          ],
+                          total_price: 317,
+                          delivery_type: 'delivery',
+                          created_at: new Date().toISOString()
+                        }
+                        printEPOSReceipt(testOrder)
+                      }}
+                      variant="outline"
+                      className="border-green-500/40 text-green-400 hover:bg-green-500/10"
+                      disabled={!printerSettings.enabled}
+                    >
+                      <Printer className="h-4 w-4 mr-2" />
+                      Testa utskrift
+                    </Button>
+
+                    <Button
+                      onClick={() => {
+                        const testOrder = {
+                          order_number: 'TEST-EMAIL-' + Date.now(),
+                          customer_name: 'Test Kund',
+                          phone: '070-123 45 67',
+                          email: 'test@example.com', // Test email
+                          profiles: { email: 'test@example.com', name: 'Test Kund' },
+                          cart_items: [
+                            { name: 'Test Sushi', quantity: 2, price: 89 },
+                            { name: 'Test Pokébowl', quantity: 1, price: 129 }
+                          ],
+                          total_price: 307,
+                          delivery_type: 'delivery',
+                          location: 'malmo',
+                          created_at: new Date().toISOString()
+                        }
+                        sendEmailConfirmation(testOrder)
+                      }}
+                      variant="outline"
+                      className="border-purple-500/40 text-purple-400 hover:bg-purple-500/10"
+                    >
+                      <span className="h-4 w-4 mr-2">📧</span>
+                      Testa e-post
+                    </Button>
+
+                    <Button
+                      onClick={() => {
+                        setDebugLogs([])
+                        addDebugLog('Debug-logg rensad', 'info')
+                      }}
+                      variant="outline"
+                      className="border-red-500/40 text-red-400 hover:bg-red-500/10"
+                    >
+                      🗑️ Rensa logg
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Printer Status */}
+              <Card className="border border-[#e4d699]/30 bg-black/30">
+                <CardHeader>
+                  <CardTitle className="text-lg text-[#e4d699]">📊 Skriverstatus</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-3 h-3 rounded-full ${printerStatus.connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                      <span className="text-white">
+                        {printerStatus.connected ? 'Ansluten' : 'Inte ansluten'}
+                      </span>
+                    </div>
+                    <div className="text-white/60">
+                      <span className="text-white/80">Senaste test:</span><br />
+                      {printerStatus.lastTest ? new Date(printerStatus.lastTest).toLocaleString('sv-SE') : 'Aldrig'}
+                    </div>
+                    <div className="text-white/60">
+                      <span className="text-white/80">Status:</span><br />
+                      {printerStatus.error ? (
+                        <span className="text-red-400">{printerStatus.error}</span>
+                      ) : (
+                        <span className="text-green-400">OK</span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {printerSettings.debugMode && (
+                    <div className="mt-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg">
+                      <p className="text-orange-300 text-sm">
+                        🎭 <strong>Simulator-läge aktivt:</strong> Alla utskrifter kommer att simuleras och visas i konsolen. 
+                        Perfekt för utveckling när du inte har tillgång till skrivaren.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Debug Log */}
+              <Card className="border border-[#e4d699]/30 bg-black/30">
+                <CardHeader>
+                  <CardTitle className="text-lg text-[#e4d699]">🐛 Debug-logg</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-black/50 border border-[#e4d699]/20 rounded-lg p-4 max-h-60 overflow-y-auto">
+                    {debugLogs.length === 0 ? (
+                      <p className="text-white/50 text-sm">Ingen debug-information än...</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {debugLogs.map((log) => (
+                          <div key={log.id} className="flex items-start gap-3 text-sm">
+                            <span className="text-white/50 text-xs whitespace-nowrap">
+                              {log.timestamp}
+                            </span>
+                            <span className={`text-xs px-2 py-1 rounded whitespace-nowrap ${
+                              log.type === 'error' ? 'bg-red-500/20 text-red-400' :
+                              log.type === 'warning' ? 'bg-orange-500/20 text-orange-400' :
+                              log.type === 'success' ? 'bg-green-500/20 text-green-400' :
+                              'bg-blue-500/20 text-blue-400'
+                            }`}>
+                              {log.type.toUpperCase()}
+                            </span>
+                            <span className="text-white/80 flex-1">
+                              {log.message}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Instructions */}
+              <Card className="border border-[#e4d699]/30 bg-black/30">
+                <CardHeader>
+                  <CardTitle className="text-lg text-[#e4d699]">📖 Instruktioner</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm text-white/70">
+                  <div>
+                    <h4 className="text-white font-medium mb-2">🔧 Setup för riktig skrivare:</h4>
+                    <ol className="list-decimal list-inside space-y-1 ml-4">
+                      <li>Anslut TM-M30III till WiFi-nätverket</li>
+                      <li>Hitta skrivarens IP-adress (tryck Feed-knappen vid uppstart)</li>
+                      <li>Ange IP-adressen ovan (standard port: 8008)</li>
+                      <li>Stäng av Debug-läge</li>
+                      <li>Aktivera ePOS-utskrift</li>
+                      <li>Testa anslutningen</li>
+                    </ol>
+                  </div>
+                  
+                  <div>
+                    <h4 className="text-white font-medium mb-2">🎭 Utvecklingsläge:</h4>
+                    <ul className="list-disc list-inside space-y-1 ml-4">
+                      <li>Håll Debug-läge aktiverat för att simulera utskrifter</li>
+                      <li>Kvitton visas i webbläsarkonsolen istället för att skrivas ut</li>
+                      <li>Automatisk utskrift fungerar även i simulatorläge</li>
+                      <li>Perfekt för att testa utan fysisk skrivare</li>
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 className="text-white font-medium mb-2">📧 E-postbekräftelser:</h4>
+                    <ul className="list-disc list-inside space-y-1 ml-4">
+                      <li>Skicka orderbekräftelser direkt till kunder via e-post</li>
+                      <li>Automatisk kontroll om kunden har registrerad e-postadress</li>
+                      <li>Professionella HTML-mallar med orderdetaljer</li>
+                      <li>Använd "Testa e-post"-knappen för att testa systemet</li>
+                      <li>E-postaktivitet visas i debug-loggen</li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="flex gap-3">
+                <Button 
+                  onClick={() => setShowPrinterSettings(false)}
+                  className="flex-1 bg-[#e4d699] text-black hover:bg-[#e4d699]/90"
+                >
+                  Stäng inställningar
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* Order Details Modal */}
         {selectedOrder && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
@@ -1810,11 +2629,31 @@ export default function RestaurantTerminal() {
                   <div className="flex gap-2 pt-4">
                     <Button onClick={() => printReceipt(selectedOrder)} className="bg-[#e4d699] text-black">
                       <Printer className="h-4 w-4 mr-2" />
-                      Skriv ut kvitto
+                      📄 PDF-kvitto
                     </Button>
-                    <Button onClick={() => downloadReceipt(selectedOrder)} variant="outline">
-                      <Download className="h-4 w-4 mr-2" />
-                      Ladda ner PDF
+                    <Button 
+                      onClick={() => printEPOSReceipt(selectedOrder)}
+                      className={`${
+                        printerSettings.enabled && printerStatus.connected
+                          ? 'bg-green-600 hover:bg-green-700 text-white'
+                          : 'bg-orange-600 hover:bg-orange-700 text-white'
+                      }`}
+                    >
+                      <Printer className="h-4 w-4 mr-2" />
+                      {printerSettings.enabled ? '🖨️ ePOS' : '🎭 Sim'}
+                    </Button>
+                    <Button 
+                      onClick={() => sendEmailConfirmation(selectedOrder)} 
+                      variant="outline"
+                      disabled={!selectedOrder.profiles?.email && !selectedOrder.email}
+                      className={`${
+                        selectedOrder.profiles?.email || selectedOrder.email
+                          ? 'border-blue-500/50 text-blue-400 hover:bg-blue-500/10'
+                          : 'border-gray-500/50 text-gray-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <span className="h-4 w-4 mr-2">📧</span>
+                      {selectedOrder.profiles?.email || selectedOrder.email ? '📧 Skicka e-post' : '❌ Ingen e-post'}
                     </Button>
                   </div>
                 </div>
