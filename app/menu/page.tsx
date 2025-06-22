@@ -10,7 +10,7 @@ import { FloatingDock } from "@/components/floating-dock"
 import { motion, AnimatePresence } from "framer-motion"
 import { AddToCartButton } from "@/components/add-to-cart-button"
 import { FoodItemModal, type FoodItemDetails } from "@/components/food-item-modal"
-import { Info, MapPin, Loader2 } from "lucide-react"
+import { Info, MapPin, Loader2, Grid3X3, List, Eye } from "lucide-react"
 import { useLocation } from "@/contexts/LocationContext"
 import { trackMenuInteraction, trackEvent } from "@/lib/analytics"
 import { supabase } from "@/lib/supabase"
@@ -949,6 +949,9 @@ export default function MenuPage() {
   const [menuItems, setMenuItems] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [categories, setCategories] = useState([])
+  const [viewMode, setViewMode] = useState<'category' | 'all'>('category')
+  const [visibleItems, setVisibleItems] = useState(12) // For infinite scroll
+  const [allMenuItems, setAllMenuItems] = useState([])
 
   // Define which categories are available for Ystad (food truck)
   const ystadAvailableCategories = ["Pokébowls", "Drycker", "Såser"]
@@ -971,6 +974,7 @@ export default function MenuPage() {
         }
 
         setMenuItems(data || [])
+        setAllMenuItems(data || [])
         
         // Extract unique categories and sort them in preferred order
         const uniqueCategories = [...new Set(data?.map(item => item.category) || [])]
@@ -1111,6 +1115,78 @@ export default function MenuPage() {
     })
   }
 
+  // Get filtered items for "all" view mode
+  const getFilteredItemsForAllView = () => {
+    let items = allMenuItems
+    
+    // Filter by location if needed
+    if (selectedLocation?.id === 'ystad') {
+      items = items.filter(item => {
+        // Include all categories that are available for Ystad
+        if (!ystadAvailableCategories.includes(item.category)) {
+          return false
+        }
+        
+        // For Pokébowls, only include available items
+        if (item.category === 'Pokébowls') {
+          return ystadAvailableItems.includes(item.name)
+        }
+        
+        return true
+      })
+    }
+    
+    return items
+  }
+
+  // Get visible items for infinite scroll
+  const getVisibleItems = () => {
+    return getFilteredItemsForAllView().slice(0, visibleItems)
+  }
+
+  // Handle infinite scroll
+  useEffect(() => {
+    if (viewMode !== 'all') return
+
+    const handleScroll = () => {
+      const scrollTop = window.scrollY
+      const windowHeight = window.innerHeight
+      const documentHeight = document.documentElement.scrollHeight
+      
+      // Load more when user is near bottom (200px from bottom)
+      if (scrollTop + windowHeight >= documentHeight - 200) {
+        setVisibleItems(prev => prev + 8)
+      }
+    }
+
+    const throttledScroll = () => {
+      clearTimeout(window.scrollTimeout)
+      window.scrollTimeout = setTimeout(handleScroll, 150)
+    }
+
+    window.addEventListener('scroll', throttledScroll)
+    return () => {
+      window.removeEventListener('scroll', throttledScroll)
+      clearTimeout(window.scrollTimeout)
+    }
+  }, [viewMode, visibleItems])
+
+  // Reset visible items when switching to "all" view
+  useEffect(() => {
+    if (viewMode === 'all') {
+      setVisibleItems(12)
+    }
+  }, [viewMode])
+
+  // Handle view mode change
+  const handleViewModeChange = (mode: 'category' | 'all') => {
+    setViewMode(mode)
+    trackEvent('menu_navigation', 'view_mode_change', {
+      view_mode: mode,
+      location: selectedLocation?.name || 'unknown'
+    })
+  }
+
   return (
     <div className="pt-20 md:pt-24 pb-24 min-h-screen bg-gradient-to-b from-black via-black to-gray-900">
       <div className="container mx-auto px-4">
@@ -1145,18 +1221,69 @@ export default function MenuPage() {
           </motion.div>
         )}
 
-        {/* Floating Dock Navigation */}
+        {/* View Mode Toggle */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
-          animate={{
-            opacity: isFloatingDockVisible ? 1 : 0,
-            y: isFloatingDockVisible ? 0 : 20,
-          }}
-          transition={{ duration: 0.3 }}
-          className="sticky top-16 md:top-24 z-40 px-1"
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="mb-8 max-w-4xl mx-auto"
         >
-          <FloatingDock items={dockItems} activeItem={activeTab} onItemClick={handleCategoryChange} />
+          <div className="flex justify-center">
+            <div className="bg-black/50 backdrop-blur-sm border border-[#e4d699]/20 rounded-lg p-1 flex gap-1">
+              <Button
+                variant={viewMode === 'category' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => handleViewModeChange('category')}
+                className={`flex items-center gap-2 transition-all ${
+                  viewMode === 'category' 
+                    ? 'bg-[#e4d699] text-black hover:bg-[#e4d699]/90' 
+                    : 'text-white/70 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <Grid3X3 className="h-4 w-4" />
+                <span className="hidden sm:inline">Kategorier</span>
+              </Button>
+              <Button
+                variant={viewMode === 'all' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => handleViewModeChange('all')}
+                className={`flex items-center gap-2 transition-all ${
+                  viewMode === 'all' 
+                    ? 'bg-[#e4d699] text-black hover:bg-[#e4d699]/90' 
+                    : 'text-white/70 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <List className="h-4 w-4" />
+                <span className="hidden sm:inline">Alla rätter</span>
+              </Button>
+            </div>
+          </div>
+          
+          {/* View Mode Description */}
+          <div className="text-center mt-3">
+            <p className="text-white/60 text-sm">
+              {viewMode === 'category' 
+                ? 'Bläddra genom kategorier med navigeringen nedan'
+                : 'Scrolla genom alla rätter - nya laddas automatiskt'
+              }
+            </p>
+          </div>
         </motion.div>
+
+        {/* Floating Dock Navigation - Only shown in category view */}
+        {viewMode === 'category' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{
+              opacity: isFloatingDockVisible ? 1 : 0,
+              y: isFloatingDockVisible ? 0 : 20,
+            }}
+            transition={{ duration: 0.3 }}
+            className="sticky top-16 md:top-24 z-40 px-1"
+          >
+            <FloatingDock items={dockItems} activeItem={activeTab} onItemClick={handleCategoryChange} />
+          </motion.div>
+        )}
 
         {/* Menu Content */}
         <div className="mt-8">
@@ -1165,7 +1292,8 @@ export default function MenuPage() {
               <Loader2 className="h-8 w-8 animate-spin text-[#e4d699]" />
               <span className="ml-2 text-white/60">Laddar meny...</span>
             </div>
-          ) : (
+          ) : viewMode === 'category' ? (
+            // Category View - Existing functionality
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}
@@ -1194,16 +1322,16 @@ export default function MenuPage() {
                            ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] !== item.price && (
                             <Badge className="absolute top-2 left-2 bg-green-600 text-white">Food Truck Pris</Badge>
                           )}
-                                                     {item.spicy_level > 0 && (
-                              <Badge className={`absolute top-2 bg-red-500 text-white ${
-                                selectedLocation?.id === 'ystad' && 
-                                ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] && 
-                                ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] !== item.price 
-                                  ? 'left-2 top-10' : 'left-2'
-                              }`}>
-                                {"🌶️".repeat(item.spicy_level)}
-                              </Badge>
-                            )}
+                          {item.spicy_level > 0 && (
+                            <Badge className={`absolute top-2 bg-red-500 text-white ${
+                              selectedLocation?.id === 'ystad' && 
+                              ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] && 
+                              ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] !== item.price 
+                                ? 'left-2 top-10' : 'left-2'
+                            }`}>
+                              {"🌶️".repeat(item.spicy_level)}
+                            </Badge>
+                          )}
                         </div>
                         <CardContent className="p-5 flex flex-col flex-grow">
                           <div className="flex justify-between items-start mb-2">
@@ -1270,6 +1398,154 @@ export default function MenuPage() {
                 )}
               </motion.div>
             </AnimatePresence>
+          ) : (
+            // All Items View - Infinite scroll
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+            >
+              {/* Category headers with items */}
+              {getAvailableCategories().map((category, categoryIndex) => {
+                const categoryItems = getItemsForCategory(category)
+                const filteredItems = getVisibleItems().filter(item => item.category === category)
+                
+                if (filteredItems.length === 0) return null
+                
+                return (
+                  <div key={category} className="mb-12">
+                    {/* Category Header */}
+                    <motion.div
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: categoryIndex * 0.1 }}
+                      className="mb-6"
+                    >
+                      <h2 className="text-2xl md:text-3xl font-bold text-[#e4d699] mb-2 flex items-center gap-3">
+                        <div className="h-1 w-8 bg-[#e4d699] rounded"></div>
+                        {category}
+                        <div className="h-1 flex-1 bg-gradient-to-r from-[#e4d699] to-transparent rounded"></div>
+                      </h2>
+                      <p className="text-white/60 text-sm">
+                        {filteredItems.length} {filteredItems.length === 1 ? 'rätt' : 'rätter'} tillgänglig{filteredItems.length === 1 ? '' : 'a'}
+                      </p>
+                    </motion.div>
+
+                    {/* Category Items */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {filteredItems.map((item, itemIndex) => (
+                        <AnimatedCard key={`${category}-${item.id}`} delay={(categoryIndex * 0.1) + (itemIndex * 0.05)} className="h-full">
+                          <Card className="overflow-hidden h-full flex flex-col border border-[#e4d699]/20">
+                            <div className="relative h-48 overflow-hidden">
+                              <img
+                                src={item.image_url || "/placeholder.svg?height=300&width=400"}
+                                loading="lazy"
+                                decoding="async"
+                                alt={item.name}
+                                className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
+                              />
+                              {item.popular && (
+                                <Badge className="absolute top-2 right-2 bg-[#e4d699] text-black">Populär</Badge>
+                              )}
+                              {selectedLocation?.id === 'ystad' && 
+                               ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] && 
+                               ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] !== item.price && (
+                                <Badge className="absolute top-2 left-2 bg-green-600 text-white">Food Truck Pris</Badge>
+                              )}
+                              {item.spicy_level > 0 && (
+                                <Badge className={`absolute top-2 bg-red-500 text-white ${
+                                  selectedLocation?.id === 'ystad' && 
+                                  ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] && 
+                                  ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] !== item.price 
+                                    ? 'left-2 top-10' : 'left-2'
+                                }`}>
+                                  {"🌶️".repeat(item.spicy_level)}
+                                </Badge>
+                              )}
+                              {/* Category badge for all view */}
+                              <Badge className="absolute bottom-2 left-2 bg-black/70 text-white text-xs">
+                                {category}
+                              </Badge>
+                            </div>
+                            <CardContent className="p-5 flex flex-col flex-grow">
+                              <div className="flex justify-between items-start mb-2">
+                                <h3 className="text-xl font-semibold">{item.name}</h3>
+                                <div className="flex flex-col items-end">
+                                  <div className="text-lg font-medium text-[#e4d699]">
+                                    {getLocationPrice(item.name, item.price, selectedLocation)} kr
+                                  </div>
+                                  {selectedLocation?.id === 'ystad' && 
+                                   ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] && 
+                                   ystadPokeBowlPrices[item.name as keyof typeof ystadPokeBowlPrices] !== item.price && (
+                                    <div className="text-xs text-white/50 line-through">
+                                      {item.price} kr
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-white/70 text-sm mb-4 flex-grow">{item.description}</p>
+                              <div className="mt-auto flex justify-between items-center">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                                  onClick={() => handleOpenItemDetails({
+                                    id: item.id,
+                                    name: item.name,
+                                    description: item.description,
+                                    price: getLocationPrice(item.name, item.price, selectedLocation),
+                                    image: item.image_url,
+                                    category: item.category,
+                                    popular: item.popular,
+                                    spicyLevel: item.spicy_level,
+                                    allergens: item.allergens || [],
+                                    nutritionalInfo: item.nutritional_info || {},
+                                    ingredients: [], // Not stored in DB currently
+                                    preparationTime: "15-20 min" // Default value
+                                  })}
+                                >
+                                  <Info className="mr-2 h-4 w-4" />
+                                  Mer info
+                                </Button>
+                                <AddToCartButton
+                                  product={{
+                                    id: item.id,
+                                    name: item.name,
+                                    price: getLocationPrice(item.name, item.price, selectedLocation),
+                                    image: item.image_url,
+                                    category: item.category,
+                                  }}
+                                />
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </AnimatedCard>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {/* Loading indicator for infinite scroll */}
+              {visibleItems < getFilteredItemsForAllView().length && (
+                <div className="flex justify-center items-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-[#e4d699] mr-2" />
+                  <span className="text-white/60">Laddar fler rätter...</span>
+                </div>
+              )}
+
+              {/* End message */}
+              {visibleItems >= getFilteredItemsForAllView().length && getFilteredItemsForAllView().length > 12 && (
+                <div className="text-center py-8">
+                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#e4d699]/10 border border-[#e4d699]/30 rounded-lg">
+                    <Eye className="h-4 w-4 text-[#e4d699]" />
+                    <span className="text-white/80 text-sm">
+                      Du har sett alla {getFilteredItemsForAllView().length} rätter
+                    </span>
+                  </div>
+                </div>
+              )}
+            </motion.div>
           )}
         </div>
       </div>
