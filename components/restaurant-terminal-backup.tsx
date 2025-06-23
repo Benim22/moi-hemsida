@@ -44,15 +44,23 @@ export default function RestaurantTerminal() {
       console.log('🔔 User_id:', payload.new.user_id)
       console.log('🔔 Customer_name:', payload.new.customer_name)
       
-      // Kontrollera om denna order ska visas för denna location
-      const shouldShow = selectedLocation === 'all' || payload.new.location === selectedLocation
+      // VIKTIGT: Notiser ska baseras på användarens egen plats, inte filtret i terminalen
+      // Endast användare med location "all" ska få notiser från alla platser
+      const shouldShowNotification = profile.location === 'all' || payload.new.location === profile.location
       
-      if (!shouldShow) {
-        console.log('🔔 Order inte för denna location, hoppar över notifikation')
+      if (!shouldShowNotification) {
+        console.log('🔔 Order inte för användarens location, hoppar över notifikation')
+        console.log('🔔 Debug: user location =', profile.location, ', order location =', payload.new.location)
         return
       }
       
-      setOrders(prev => [payload.new, ...prev])
+      // Visa i listan baserat på det valda filtret (selectedLocation)
+      const shouldShowInList = selectedLocation === 'all' || payload.new.location === selectedLocation
+      
+      // Lägg endast till i listan om den matchar filtret
+      if (shouldShowInList) {
+        setOrders(prev => [payload.new, ...prev])
+      }
       
       // Hantera både inloggade och anonyma användare
       const customerName = payload.new.profiles?.name || payload.new.customer_name || 'Gäst'

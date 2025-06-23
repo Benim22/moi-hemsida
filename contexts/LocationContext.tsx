@@ -271,10 +271,18 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const setSelectedLocation = (location: Location) => {
+    // Kontrollera om detta är en platsbyte (inte första gång välj)
+    const isLocationChange = selectedLocation && selectedLocation.id !== location.id
+    
     setSelectedLocationState(location)
     localStorage.setItem('moi-sushi-location', location.id)
     setHasSelectedLocation(true)
     setShowLocationSelector(false)
+    
+    // Sätt flag för att cart ska rensas vid platsbyte
+    if (isLocationChange) {
+      localStorage.setItem('moi-location-changed', 'true')
+    }
   }
 
   return (

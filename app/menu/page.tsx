@@ -950,7 +950,6 @@ export default function MenuPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [categories, setCategories] = useState([])
   const [viewMode, setViewMode] = useState<'category' | 'all'>('category')
-  const [visibleItems, setVisibleItems] = useState(12) // For infinite scroll
   const [allMenuItems, setAllMenuItems] = useState([])
 
   // Define which categories are available for Ystad (food truck)
@@ -1139,45 +1138,6 @@ export default function MenuPage() {
     return items
   }
 
-  // Get visible items for infinite scroll
-  const getVisibleItems = () => {
-    return getFilteredItemsForAllView().slice(0, visibleItems)
-  }
-
-  // Handle infinite scroll
-  useEffect(() => {
-    if (viewMode !== 'all') return
-
-    const handleScroll = () => {
-      const scrollTop = window.scrollY
-      const windowHeight = window.innerHeight
-      const documentHeight = document.documentElement.scrollHeight
-      
-      // Load more when user is near bottom (200px from bottom)
-      if (scrollTop + windowHeight >= documentHeight - 200) {
-        setVisibleItems(prev => prev + 8)
-      }
-    }
-
-    const throttledScroll = () => {
-      clearTimeout(window.scrollTimeout)
-      window.scrollTimeout = setTimeout(handleScroll, 150)
-    }
-
-    window.addEventListener('scroll', throttledScroll)
-    return () => {
-      window.removeEventListener('scroll', throttledScroll)
-      clearTimeout(window.scrollTimeout)
-    }
-  }, [viewMode, visibleItems])
-
-  // Reset visible items when switching to "all" view
-  useEffect(() => {
-    if (viewMode === 'all') {
-      setVisibleItems(12)
-    }
-  }, [viewMode])
-
   // Handle view mode change
   const handleViewModeChange = (mode: 'category' | 'all') => {
     setViewMode(mode)
@@ -1264,7 +1224,7 @@ export default function MenuPage() {
             <p className="text-white/60 text-sm">
               {viewMode === 'category' 
                 ? 'Bläddra genom kategorier med navigeringen nedan'
-                : 'Scrolla genom alla rätter - nya laddas automatiskt'
+                : 'Se alla rätter organiserade per kategori på en sida'
               }
             </p>
           </div>
@@ -1408,9 +1368,8 @@ export default function MenuPage() {
               {/* Category headers with items */}
               {getAvailableCategories().map((category, categoryIndex) => {
                 const categoryItems = getItemsForCategory(category)
-                const filteredItems = getVisibleItems().filter(item => item.category === category)
                 
-                if (filteredItems.length === 0) return null
+                if (categoryItems.length === 0) return null
                 
                 return (
                   <div key={category} className="mb-12">
@@ -1427,13 +1386,13 @@ export default function MenuPage() {
                         <div className="h-1 flex-1 bg-gradient-to-r from-[#e4d699] to-transparent rounded"></div>
                       </h2>
                       <p className="text-white/60 text-sm">
-                        {filteredItems.length} {filteredItems.length === 1 ? 'rätt' : 'rätter'} tillgänglig{filteredItems.length === 1 ? '' : 'a'}
+                        {categoryItems.length} {categoryItems.length === 1 ? 'rätt' : 'rätter'} tillgänglig{categoryItems.length === 1 ? '' : 'a'}
                       </p>
                     </motion.div>
 
                     {/* Category Items */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {filteredItems.map((item, itemIndex) => (
+                      {categoryItems.map((item, itemIndex) => (
                         <AnimatedCard key={`${category}-${item.id}`} delay={(categoryIndex * 0.1) + (itemIndex * 0.05)} className="h-full">
                           <Card className="overflow-hidden h-full flex flex-col border border-[#e4d699]/20">
                             <div className="relative h-48 overflow-hidden">
@@ -1526,25 +1485,15 @@ export default function MenuPage() {
                 )
               })}
 
-              {/* Loading indicator for infinite scroll */}
-              {visibleItems < getFilteredItemsForAllView().length && (
-                <div className="flex justify-center items-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-[#e4d699] mr-2" />
-                  <span className="text-white/60">Laddar fler rätter...</span>
+              {/* Summary message */}
+              <div className="text-center py-8">
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#e4d699]/10 border border-[#e4d699]/30 rounded-lg">
+                  <Eye className="h-4 w-4 text-[#e4d699]" />
+                  <span className="text-white/80 text-sm">
+                    Visar alla {getFilteredItemsForAllView().length} tillgängliga rätter
+                  </span>
                 </div>
-              )}
-
-              {/* End message */}
-              {visibleItems >= getFilteredItemsForAllView().length && getFilteredItemsForAllView().length > 12 && (
-                <div className="text-center py-8">
-                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#e4d699]/10 border border-[#e4d699]/30 rounded-lg">
-                    <Eye className="h-4 w-4 text-[#e4d699]" />
-                    <span className="text-white/80 text-sm">
-                      Du har sett alla {getFilteredItemsForAllView().length} rätter
-                    </span>
-                  </div>
-                </div>
-              )}
+              </div>
             </motion.div>
           )}
         </div>
