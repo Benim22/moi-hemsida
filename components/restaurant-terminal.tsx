@@ -40,6 +40,8 @@ export default function RestaurantTerminal() {
   const [selectedUserId, setSelectedUserId] = useState('')
   const [assignLocation, setAssignLocation] = useState('malmo')
   const [assigningUser, setAssigningUser] = useState(false)
+  const [showLocationModal, setShowLocationModal] = useState(false)
+  const [pendingLocation, setPendingLocation] = useState('')
 
   // ePOS Printer Settings
   const [showPrinterSettings, setShowPrinterSettings] = useState(false)
@@ -140,7 +142,7 @@ export default function RestaurantTerminal() {
     }
   }, [profile?.location, selectedLocation])
 
-  // Real-time subscriptions
+  // Real-time subscriptions - ENDAST baserat på profile.location, INTE selectedLocation
   useEffect(() => {
     if (!user || !profile?.location) return
 
@@ -148,8 +150,11 @@ export default function RestaurantTerminal() {
       userId: user.id,
       userLocation: profile.location,
       userRole: profile.role,
-      selectedLocation: selectedLocation
+      filterLocation: selectedLocation
     })
+    
+    console.log('📡 VIKTIGT: Prenumerationer baseras på profile.location =', profile.location)
+    console.log('📡 VIKTIGT: selectedLocation är bara för att VISA orders =', selectedLocation)
 
     // Subscribe to new orders
     const handleOrderInsert = (payload) => {
@@ -160,10 +165,12 @@ export default function RestaurantTerminal() {
       console.log('🔔 Customer_name:', payload.new.customer_name)
       
       // Kontrollera om denna order ska visas för denna location
-      const shouldShow = selectedLocation === 'all' || payload.new.location === selectedLocation
+      // Använd profile.location (användarens faktiska location) istället för selectedLocation (filter)
+      const shouldShow = profile.location === 'all' || payload.new.location === profile.location
       
       if (!shouldShow) {
         console.log('🔔 Order inte för denna location, hoppar över notifikation')
+        console.log('🔔 Debug: profile.location =', profile.location, ', order.location =', payload.new.location)
         return
       }
       
@@ -217,8 +224,8 @@ export default function RestaurantTerminal() {
     console.log('📡 Skapar unik kanal:', channelName)
     
     let ordersSubscription
-    if (selectedLocation === 'all') {
-      console.log('📡 Prenumererar på ALLA orders (location: all)')
+    if (profile.location === 'all') {
+      console.log('📡 Prenumererar på ALLA orders (user location: all)')
       // För "all" location, lyssna på alla orders utan filter
       ordersSubscription = supabase
         .channel(channelName)
@@ -241,21 +248,21 @@ export default function RestaurantTerminal() {
           }
         })
     } else {
-      console.log('📡 Prenumererar på orders för location:', selectedLocation)
-      // För specifik location, filtrera på location
+      console.log('📡 Prenumererar på orders för user location:', profile.location)
+      // För specifik location, filtrera på location (använd profile.location)
       ordersSubscription = supabase
         .channel(channelName)
         .on('postgres_changes', {
           event: 'INSERT',
           schema: 'public',
           table: 'orders',
-          filter: `location=eq.${selectedLocation}`
+          filter: `location=eq.${profile.location}`
         }, handleOrderInsert)
         .on('postgres_changes', {
           event: 'UPDATE',
           schema: 'public',
           table: 'orders',
-          filter: `location=eq.${selectedLocation}`
+          filter: `location=eq.${profile.location}`
         }, handleOrderUpdate)
         .subscribe((status) => {
           console.log('📡 Orders prenumeration status:', status)
@@ -283,24 +290,43 @@ export default function RestaurantTerminal() {
         
         // Visa notifikation om det är en admin-notifikation
         if (payload.new.user_role === 'admin') {
+          // Blockera den fula notifikationen med UUID-format - FLERA FILTER
+          const isBadNotification = payload.new.message && (
+            payload.new.message.includes('har mottagits') ||
+            payload.new.message.includes('98262253-4bf5-47c2-b66e-be1203ce24ba') ||
+            /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/.test(payload.new.message) ||
+            (payload.new.title === 'Ny beställning!' && !payload.new.message.includes('Ordersnummer'))
+          )
+          
+          if (isBadNotification) {
+            console.log('🚫 BLOCKERAR FUL NOTIFIKATION med UUID:', {
+              title: payload.new.title,
+              message: payload.new.message,
+              location: payload.new.metadata?.location,
+              reason: 'Innehåller UUID eller är felformaterad'
+            })
+            return // Hoppa över denna helt
+          }
+          
           // Användare med "all" location ska se ALLA admin-notifikationer
-          // Användare med specifik location ska bara se notifikationer för sin location
+          // Användare med specifik location ska bara se notifikationer för sin exakta location
           const shouldShowNotification = profile.location === 'all' || 
-                                       payload.new.metadata?.location === profile.location ||
-                                       !payload.new.metadata?.location // Fallback för notifikationer utan location
+                                       (payload.new.metadata?.location && payload.new.metadata.location === profile.location)
 
           if (shouldShowNotification) {
             console.log('✅ Notifikation matchar - visar den')
+            console.log('✅ Profile location:', profile.location, '| Notification location:', payload.new.metadata?.location)
             setNotifications(prev => [payload.new, ...prev])
             showBrowserNotification(payload.new.title, payload.new.message, true) // true för ordernotifikation
             playNotificationSound()
           } else {
             console.log('❌ Notifikation matchar inte - hoppar över')
-            console.log('Debug info:', {
+            console.log('❌ Debug info:', {
               userRole: payload.new.user_role,
               userLocation: profile.location,
               notificationLocation: payload.new.metadata?.location,
-              shouldShow: shouldShowNotification
+              shouldShow: shouldShowNotification,
+              hasLocation: !!payload.new.metadata?.location
             })
           }
         }
@@ -318,7 +344,7 @@ export default function RestaurantTerminal() {
       ordersSubscription.unsubscribe()
       notificationsSubscription.unsubscribe()
     }
-  }, [user, selectedLocation, profile?.location])
+  }, [user, profile?.location])
 
   // Fetch initial data
   useEffect(() => {
@@ -435,15 +461,14 @@ export default function RestaurantTerminal() {
 
       if (error) throw error
       
-      // Filtrera notifikationer baserat på location
+      // Filtrera notifikationer baserat på location (strikt filtrering)
       const filteredNotifications = data?.filter(notification => {
         if (profile.location === 'all') {
           // Användare med "all" location ser alla admin-notifikationer
           return true
         } else {
-          // Användare med specifik location ser endast notifikationer för sin location
-          return notification.metadata?.location === profile.location || 
-                 !notification.metadata?.location // Fallback för notifikationer utan location
+          // Användare med specifik location ser endast notifikationer för sin exakta location
+          return notification.metadata?.location && notification.metadata.location === profile.location
         }
       }) || []
       
@@ -1407,6 +1432,31 @@ Utvecklad av Skaply
   }
 
   // Assign user to location
+  const handleLocationChange = async () => {
+    try {
+      console.log('🏢 Ändrar plats från', profile?.location, 'till', pendingLocation)
+      
+      const result = await updateLocation(pendingLocation)
+      if (result.error) {
+        console.error("❌ Kunde inte uppdatera användarens location:", result.error)
+        alert("Kunde inte ändra din plats. Försök igen.")
+      } else {
+        console.log("✅ Användarens location uppdaterad till:", pendingLocation)
+        setSelectedLocation(pendingLocation)
+        setShowLocationModal(false)
+        setPendingLocation('')
+        
+        // Starta om för att ladda rätt prenumerationer
+        setTimeout(() => {
+          window.location.reload()
+        }, 1000)
+      }
+    } catch (error) {
+      console.error("❌ Fel vid location-ändring:", error)
+      alert("Ett fel uppstod. Försök igen.")
+    }
+  }
+
   const assignUserToLocation = async () => {
     try {
       setAssigningUser(true)
@@ -1515,7 +1565,7 @@ Utvecklad av Skaply
                     Restaurang Terminal
                   </CardTitle>
                   <p className="text-white/70 text-sm lg:text-lg">
-                    📍 {getLocationName(selectedLocation)} • 👤 {profile?.name} • {notificationsEnabled ? '🔔' : '🔕'} {notificationsEnabled ? 'Notiser På' : 'Notiser Av'}
+                    👤 {profile?.name} • 🏢 Min plats: {getLocationName(profile?.location)} • 📱 Visar: {getLocationName(selectedLocation)} • {notificationsEnabled ? '🔔' : '🔕'} {notificationsEnabled ? 'Notiser På' : 'Notiser Av'}
                   </p>
                   <p className="text-white/50 text-xs lg:text-sm">
                     {new Date().toLocaleString('sv-SE', { 
@@ -1655,21 +1705,23 @@ Utvecklad av Skaply
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 {/* Location Filter */}
                 <div className="flex flex-col gap-2">
-                  <label className="text-white/70 text-xs sm:text-sm font-medium">📍 Plats:</label>
+                  <label className="text-white/70 text-xs sm:text-sm font-medium">
+                    🏢 Min plats (påverkar notiser):
+                    <span className="text-[#e4d699] ml-1">{getLocationName(profile?.location)}</span>
+                  </label>
                   <select 
                     value={selectedLocation}
-                    onChange={async (e) => {
+                    onChange={(e) => {
                       const newLocation = e.target.value
-                      setSelectedLocation(newLocation)
+                      console.log('🏢 Väljer plats:', newLocation)
                       
-                      // Uppdatera profilen i databasen
-                      if (updateLocation) {
-                        const result = await updateLocation(newLocation)
-                        if (result.error) {
-                          console.error("❌ Kunde inte uppdatera plats:", result.error)
-                        } else {
-                          console.log("✅ Plats uppdaterad till:", newLocation)
-                        }
+                      // Om det är en riktig location-ändring (inte bara filter)
+                      if (newLocation !== 'all' && newLocation !== profile?.location) {
+                        setPendingLocation(newLocation)
+                        setShowLocationModal(true)
+                      } else {
+                        // Bara filtrera visningen
+                        setSelectedLocation(newLocation)
                       }
                     }}
                     className="bg-black/50 border border-[#e4d699]/30 rounded-md px-3 py-2 text-white text-sm w-full"
@@ -2672,6 +2724,55 @@ Utvecklad av Skaply
             </DialogContent>
           </Dialog>
         )}
+
+        {/* Location Change Modal */}
+        <Dialog open={showLocationModal} onOpenChange={setShowLocationModal}>
+          <DialogContent className="max-w-md bg-black border-[#e4d699]/30 text-white">
+            <DialogHeader>
+              <DialogTitle className="text-[#e4d699] text-xl">
+                🏢 Ändra din arbeitsplats
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div className="bg-black/30 rounded-lg p-4 border border-[#e4d699]/20">
+                <p className="text-white/80 mb-3">
+                  Du håller på att ändra din arbeitsplats. Detta påverkar vilka notifikationer du får.
+                </p>
+                
+                <div className="space-y-2 text-sm">
+                  <p><span className="text-white/70">Nuvarande plats:</span> <span className="text-[#e4d699]">{getLocationName(profile?.location)}</span></p>
+                  <p><span className="text-white/70">Ny plats:</span> <span className="text-green-400">{getLocationName(pendingLocation)}</span></p>
+                </div>
+              </div>
+
+              <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3">
+                <p className="text-orange-400 text-sm">
+                  ⚠️ Efter ändringen kommer terminalen att starta om för att ladda rätt notifikationsinställningar.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <Button 
+                  onClick={() => {
+                    setShowLocationModal(false)
+                    setPendingLocation('')
+                  }}
+                  variant="outline" 
+                  className="flex-1 border-gray-500/50 text-gray-400"
+                >
+                  Avbryt
+                </Button>
+                <Button 
+                  onClick={handleLocationChange}
+                  className="flex-1 bg-[#e4d699] text-black hover:bg-[#e4d699]/90"
+                >
+                  🏢 Ändra plats
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )
