@@ -159,23 +159,15 @@ export default function RestaurantTerminal() {
       console.log('🔔 User_id:', payload.new.user_id)
       console.log('🔔 Customer_name:', payload.new.customer_name)
       
-      // VIKTIGT: Notiser ska baseras på användarens egen plats, inte filtret i terminalen
-      // Endast användare med location "all" ska få notiser från alla platser
-      const shouldShowNotification = profile.location === 'all' || payload.new.location === profile.location
+      // Kontrollera om denna order ska visas för denna location
+      const shouldShow = selectedLocation === 'all' || payload.new.location === selectedLocation
       
-      if (!shouldShowNotification) {
-        console.log('🔔 Order inte för användarens location, hoppar över notifikation')
-        console.log('🔔 Debug: user location =', profile.location, ', order location =', payload.new.location)
+      if (!shouldShow) {
+        console.log('🔔 Order inte för denna location, hoppar över notifikation')
         return
       }
       
-      // Visa i listan baserat på det valda filtret (selectedLocation)
-      const shouldShowInList = selectedLocation === 'all' || payload.new.location === selectedLocation
-      
-      // Lägg endast till i listan om den matchar filtret
-      if (shouldShowInList) {
-        setOrders(prev => [payload.new, ...prev])
-      }
+      setOrders(prev => [payload.new, ...prev])
       
       // Hantera både inloggade och anonyma användare
       const customerName = payload.new.profiles?.name || payload.new.customer_name || 'Gäst'
@@ -225,8 +217,8 @@ export default function RestaurantTerminal() {
     console.log('📡 Skapar unik kanal:', channelName)
     
     let ordersSubscription
-    if (profile.location === 'all') {
-      console.log('📡 Prenumererar på ALLA orders (user location: all)')
+    if (selectedLocation === 'all') {
+      console.log('📡 Prenumererar på ALLA orders (location: all)')
       // För "all" location, lyssna på alla orders utan filter
       ordersSubscription = supabase
         .channel(channelName)
@@ -249,21 +241,21 @@ export default function RestaurantTerminal() {
           }
         })
     } else {
-      console.log('📡 Prenumererar på orders för användarens location:', profile.location)
-      // För specifik location, filtrera på användarens egen location
+      console.log('📡 Prenumererar på orders för location:', selectedLocation)
+      // För specifik location, filtrera på location
       ordersSubscription = supabase
         .channel(channelName)
         .on('postgres_changes', {
           event: 'INSERT',
           schema: 'public',
           table: 'orders',
-          filter: `location=eq.${profile.location}`
+          filter: `location=eq.${selectedLocation}`
         }, handleOrderInsert)
         .on('postgres_changes', {
           event: 'UPDATE',
           schema: 'public',
           table: 'orders',
-          filter: `location=eq.${profile.location}`
+          filter: `location=eq.${selectedLocation}`
         }, handleOrderUpdate)
         .subscribe((status) => {
           console.log('📡 Orders prenumeration status:', status)
@@ -326,7 +318,7 @@ export default function RestaurantTerminal() {
       ordersSubscription.unsubscribe()
       notificationsSubscription.unsubscribe()
     }
-  }, [user, profile?.location])
+  }, [user, selectedLocation, profile?.location])
 
   // Fetch initial data
   useEffect(() => {

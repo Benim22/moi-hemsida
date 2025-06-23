@@ -47,28 +47,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setMounted(true)
     const storedCart = localStorage.getItem("cart")
     const storedLastActivity = localStorage.getItem("cartLastActivity")
-    const locationChanged = localStorage.getItem("moi-location-changed")
-    
-    // Kontrollera om platsen har ändrats
-    if (locationChanged === 'true') {
-      console.log('🔄 Plats ändrades - rensar kundvagn')
-      setItems([])
-      localStorage.removeItem("cart")
-      localStorage.removeItem("cartLastActivity")
-      localStorage.removeItem("moi-location-changed")
-      
-      // Visa notifikation om cart rensades på grund av platsbyte
-      if (storedCart && JSON.parse(storedCart).length > 0) {
-        setTimeout(() => {
-          toast({
-            title: "Kundvagn rensad",
-            description: "Din kundvagn har rensats eftersom du bytte plats. Varor kan skilja sig mellan våra restauranger.",
-            variant: "default",
-          })
-        }, 1000)
-      }
-      return
-    }
     
     if (storedCart) {
       try {
@@ -148,39 +126,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     return () => clearInterval(interval)
   }, [mounted, items.length, lastActivity])
-
-  // Lyssna på platsbyten i realtid
-  useEffect(() => {
-    if (!mounted) return
-
-    const handleLocationChange = () => {
-      const locationChanged = localStorage.getItem("moi-location-changed")
-      if (locationChanged === 'true' && items.length > 0) {
-        console.log('🔄 Platsbyte upptäckt - rensar kundvagn')
-        setItems([])
-        localStorage.removeItem("cart")
-        localStorage.removeItem("cartLastActivity")
-        localStorage.removeItem("moi-location-changed")
-        
-        toast({
-          title: "Kundvagn rensad",
-          description: "Din kundvagn har rensats eftersom du bytte plats. Varor kan skilja sig mellan våra restauranger.",
-          variant: "default",
-        })
-      }
-    }
-
-    // Lyssna på localStorage-ändringar
-    window.addEventListener('storage', handleLocationChange)
-    
-    // Kontrollera även med ett kort intervall för säkerhets skull
-    const locationCheckInterval = setInterval(handleLocationChange, 500)
-
-    return () => {
-      window.removeEventListener('storage', handleLocationChange)
-      clearInterval(locationCheckInterval)
-    }
-  }, [mounted, items.length])
 
   const addItem = useCallback((newItem: Omit<CartItem, "quantity">) => {
     // Förhindra samtidiga addItem-anrop
