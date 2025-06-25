@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sendBookingConfirmationFromTemplate } from '@/lib/email-template-service'
+import { sendBookingConfirmation } from '@/lib/nodemailer-one'
 
 export async function POST(request: NextRequest) {
   try {
@@ -7,8 +7,8 @@ export async function POST(request: NextRequest) {
     
     // Validate required fields
     const requiredFields = [
-      'customerName', 'customerEmail', 'customerPhone', 
-      'date', 'time', 'guests', 'location'
+      'customerName', 'customerEmail', 'bookingDate', 'bookingTime', 
+      'partySize', 'location'
     ]
     
     for (const field of requiredFields) {
@@ -20,19 +20,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(bookingData.customerEmail)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid email format' },
-        { status: 400 }
-      )
+    // Konvertera data till format som nodemailer-one förväntar sig
+    const emailData = {
+      customer_name: bookingData.customerName,
+      customer_email: bookingData.customerEmail,
+      booking_date: bookingData.bookingDate,
+      booking_time: bookingData.bookingTime,
+      party_size: bookingData.partySize,
+      location: bookingData.location,
+      special_requests: bookingData.specialRequests || ''
     }
 
-    const result = await sendBookingConfirmationFromTemplate(bookingData)
+    const result = await sendBookingConfirmation(emailData)
     
     if (result.success) {
-      return NextResponse.json({ success: true, message: 'Booking confirmation sent successfully' })
+      return NextResponse.json({ 
+        success: true, 
+        message: 'Booking confirmation sent successfully via One.com SMTP',
+        messageId: result.messageId 
+      })
     } else {
       return NextResponse.json(
         { success: false, error: result.error },

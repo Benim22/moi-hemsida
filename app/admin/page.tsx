@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
-import { Loader2, Users, FileText, Settings, Gift, Plus, Edit, Trash2, AlertTriangle, Bell, BarChart3, Globe, Eye, Clock, Search, Target, TrendingUp, MapPin, Phone, Mail, Star, Save, X, Send, PauseCircle, PlayCircle, ShoppingCart, Package, Truck, CheckCircle, XCircle, AlertCircle, Filter, Download, Calendar, DollarSign, RefreshCw, ChevronDown, Menu, Monitor, Check, Upload } from "lucide-react"
+import { Loader2, Users, FileText, Settings, Gift, Plus, Edit, Trash2, AlertTriangle, Bell, BarChart3, Globe, Eye, Clock, Search, Target, TrendingUp, MapPin, Phone, Mail, Star, Save, X, Send, PauseCircle, PlayCircle, ShoppingCart, Package, Truck, CheckCircle, XCircle, AlertCircle, Filter, Download, Calendar, DollarSign, RefreshCw, ChevronDown, Menu, Monitor, Check, Upload, MessageSquare } from "lucide-react"
 
 export default function AdminPage() {
   const { user, profile, isAdmin, loading } = useSimpleAuth()
@@ -125,6 +125,7 @@ export default function AdminPage() {
                       <option value="emails">📧 E-post</option>
                       <option value="analytics">📈 Analytics</option>
                       <option value="seo">🔍 SEO</option>
+                      <option value="feedback">💬 Feedback & Buggrapporter</option>
                       <option value="notifications">🔔 Notiser</option>
                       <option value="rewards">🎁 Belöningar</option>
                       <option value="settings">⚙️ Inställningar</option>
@@ -152,6 +153,7 @@ export default function AdminPage() {
           {activeTab === 'emails' && <EmailManagement />}
           {activeTab === 'analytics' && <AnalyticsManagement />}
           {activeTab === 'seo' && <SEOManagement />}
+          {activeTab === 'feedback' && <FeedbackManagement />}
           {activeTab === 'notifications' && <NotificationManagement />}
           {activeTab === 'rewards' && <RewardManagement />}
           {activeTab === 'settings' && <SiteSettings />}
@@ -210,7 +212,7 @@ function AdminOverview() {
         const { count: activeRewardsCount } = await supabase
           .from("reward_programs")
           .select("*", { count: "exact", head: true })
-          .eq("isActive", true)
+          .eq("is_active", true)
 
         setStats({
           totalUsers: usersCount || 0,
@@ -6738,6 +6740,13 @@ function EmailManagement() {
   const [resendSettings, setResendSettings] = useState([])
   const [localResendSettings, setLocalResendSettings] = useState({})
   
+  // One.com SMTP states
+  const [oneComConnectionStatus, setOneComConnectionStatus] = useState(null)
+  const [testingOneCom, setTestingOneCom] = useState(false)
+  const [oneComDialogOpen, setOneComDialogOpen] = useState(false)
+  const [oneComTestEmail, setOneComTestEmail] = useState('')
+  const [emailStats, setEmailStats] = useState({ total: 0, sent: 0, failed: 0, today: 0, success_rate: 0 })
+  
   const { toast } = useToast()
 
   const [templateForm, setTemplateForm] = useState({
@@ -6758,7 +6767,106 @@ function EmailManagement() {
     fetchEmailSettings()
     fetchResendSettings()
     checkResendConnection()
+    checkOneComConnection()
+    fetchEmailLogs()
+    fetchEmailStats()
   }, [])
+
+  // One.com SMTP funktioner
+  const checkOneComConnection = async () => {
+    try {
+      const response = await fetch('/api/admin/email-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'test_connection' })
+      })
+      const result = await response.json()
+      
+      if (result.success) {
+        setOneComConnectionStatus('connected')
+      } else {
+        setOneComConnectionStatus('error')
+      }
+    } catch (error) {
+      console.error('Error checking One.com connection:', error)
+      setOneComConnectionStatus('error')
+    }
+  }
+
+  const handleSendOneComTestEmail = async () => {
+    if (!oneComTestEmail.trim()) {
+      toast({
+        title: "❌ E-postadress saknas",
+        description: "Ange en giltig e-postadress",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      setTestingOneCom(true)
+      const response = await fetch('/api/admin/email-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'send_test',
+          email: oneComTestEmail
+        })
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        toast({
+          title: "✅ One.com test-e-post skickad!",
+          description: `Test-email skickades via One.com SMTP (ID: ${result.messageId})`
+        })
+        setOneComDialogOpen(false)
+        setOneComTestEmail('')
+        fetchEmailLogs()
+        fetchEmailStats()
+      } else {
+        throw new Error(result.error || 'Okänt fel')
+      }
+    } catch (error) {
+      console.error('Error sending One.com test email:', error)
+      toast({
+        title: "❌ Fel vid One.com e-posttest",
+        description: error instanceof Error ? error.message : 'Kunde inte skicka test-e-post via One.com',
+        variant: "destructive"
+      })
+    } finally {
+      setTestingOneCom(false)
+    }
+  }
+
+  const fetchEmailLogs = async () => {
+    try {
+      const response = await fetch('/api/admin/email-logs?limit=20')
+      const data = await response.json()
+      if (response.ok) {
+        setEmailLogs(data.logs || [])
+      }
+    } catch (error) {
+      console.error('Error fetching email logs:', error)
+    }
+  }
+
+  const fetchEmailStats = async () => {
+    try {
+      const response = await fetch('/api/admin/email-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_stats' })
+      })
+      const data = await response.json()
+      if (response.ok) {
+        setEmailStats(data.stats)
+      }
+    } catch (error) {
+      console.error('Error fetching email stats:', error)
+    }
+  }
 
   const fetchResendSettings = async () => {
     try {
@@ -7506,11 +7614,12 @@ function EmailManagement() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="templates">Mallar</TabsTrigger>
           <TabsTrigger value="logs">Loggar</TabsTrigger>
           <TabsTrigger value="settings">NodeMailer</TabsTrigger>
           <TabsTrigger value="resend">Resend</TabsTrigger>
+          <TabsTrigger value="onecom">One.com SMTP</TabsTrigger>
         </TabsList>
 
         <TabsContent value="templates" className="space-y-4">
@@ -7907,6 +8016,220 @@ function EmailManagement() {
               )}
 
 
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="onecom" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-lg font-medium">One.com SMTP-server</h4>
+            <div className="flex gap-2">
+              <Button
+                onClick={checkOneComConnection}
+                disabled={testingOneCom}
+                variant="outline"
+                className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+              >
+                {testingOneCom ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Testar...
+                  </>
+                ) : (
+                  <>
+                    <Check className="mr-2 h-4 w-4" />
+                    Testa anslutning
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={() => setOneComDialogOpen(true)}
+                disabled={testingOneCom}
+                variant="outline"
+                className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+              >
+                <Send className="mr-2 h-4 w-4" />
+                Skicka test-e-post
+              </Button>
+            </div>
+          </div>
+          
+          {/* One.com Info */}
+          <Card className="border border-orange-500/30 bg-orange-900/20">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-orange-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+                  <Mail className="h-4 w-4 text-orange-400" />
+                </div>
+                <div>
+                  <h5 className="font-medium text-orange-400 mb-1">One.com SMTP-integration</h5>
+                  <p className="text-sm text-orange-300/80 mb-2">
+                    Integrerad med din One.com SMTP-server för direkt e-postleverans från applikationen.
+                  </p>
+                  <div className="space-y-1 text-xs text-orange-300/70">
+                    <p><strong>Konfiguration i .env.local:</strong></p>
+                    <ul className="list-disc list-inside ml-2 space-y-1">
+                      <li>SMTP_HOST=mailout.one.com</li>
+                      <li>SMTP_PORT=587 (rekommenderas)</li>
+                      <li>SMTP_USER=din-email@dindomän.com</li>
+                      <li>SMTP_PASS=ditt-lösenord</li>
+                      <li>SMTP_FROM_NAME=Moi Sushi & Poké Bowl</li>
+                      <li>SMTP_FROM_EMAIL=din-email@dindomän.com</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Email Statistics */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <Card className="border border-[#e4d699]/30 bg-black/30">
+              <CardContent className="p-4 text-center">
+                <div className="text-2xl font-bold text-[#e4d699]">{emailStats.total}</div>
+                <div className="text-xs text-white/60">Totalt skickade</div>
+              </CardContent>
+            </Card>
+            <Card className="border border-green-500/30 bg-green-900/20">
+              <CardContent className="p-4 text-center">
+                <div className="text-2xl font-bold text-green-400">{emailStats.sent}</div>
+                <div className="text-xs text-green-300/70">Levererade</div>
+              </CardContent>
+            </Card>
+            <Card className="border border-red-500/30 bg-red-900/20">
+              <CardContent className="p-4 text-center">
+                <div className="text-2xl font-bold text-red-400">{emailStats.failed}</div>
+                <div className="text-xs text-red-300/70">Misslyckade</div>
+              </CardContent>
+            </Card>
+            <Card className="border border-blue-500/30 bg-blue-900/20">
+              <CardContent className="p-4 text-center">
+                <div className="text-2xl font-bold text-blue-400">{emailStats.today}</div>
+                <div className="text-xs text-blue-300/70">Idag</div>
+              </CardContent>
+            </Card>
+            <Card className="border border-purple-500/30 bg-purple-900/20">
+              <CardContent className="p-4 text-center">
+                <div className="text-2xl font-bold text-purple-400">{emailStats.success_rate}%</div>
+                <div className="text-xs text-purple-300/70">Framgång</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Connection Status */}
+          <Card className="border border-[#e4d699]/30 bg-black/30">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">One.com SMTP Status</CardTitle>
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${
+                    oneComConnectionStatus === 'connected' ? 'bg-green-400' : 
+                    oneComConnectionStatus === 'error' ? 'bg-red-400' : 'bg-yellow-400'
+                  }`} />
+                  <span className="text-xs text-white/60">
+                    {oneComConnectionStatus === 'connected' ? 'Ansluten' : 
+                     oneComConnectionStatus === 'error' ? 'Anslutningsfel' : 'Ej testad'}
+                  </span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <h6 className="font-medium text-[#e4d699] mb-2">SMTP-inställningar</h6>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-white/60">Server:</span>
+                      <span>mailout.one.com</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-white/60">Port:</span>
+                      <span>587 (STARTTLS)</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-white/60">Säkerhet:</span>
+                      <span>STARTTLS</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-white/60">Autentisering:</span>
+                      <span>E-post & lösenord</span>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h6 className="font-medium text-[#e4d699] mb-2">Funktioner</h6>
+                  <div className="space-y-1 text-sm text-white/70">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-400" />
+                      <span>Automatisk orderbekräftelse</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-400" />
+                      <span>Bokningsbekräftelse</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-400" />
+                      <span>Anpassade e-postmallar</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-400" />
+                      <span>E-postlogging</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Recent Email Logs */}
+          <Card className="border border-[#e4d699]/30 bg-black/30">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Senaste e-postleveranser</CardTitle>
+                <Button
+                  onClick={fetchEmailLogs}
+                  variant="ghost"
+                  size="sm"
+                  className="text-[#e4d699] hover:text-[#e4d699]/80"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {emailLogs.length === 0 ? (
+                <div className="text-center py-4 text-white/60">
+                  Inga e-postleveranser än
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {emailLogs.map(log => (
+                    <div key={log.id} className="flex items-center justify-between p-3 bg-black/30 rounded border border-[#e4d699]/20">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${
+                            log.status === 'sent' ? 'bg-green-400' : 
+                            log.status === 'failed' ? 'bg-red-400' : 'bg-yellow-400'
+                          }`} />
+                          <span className="font-medium">{log.recipient}</span>
+                        </div>
+                        <div className="text-sm text-white/60 mt-1">
+                          {log.template_type} | {log.subject}
+                        </div>
+                        {log.error_message && (
+                          <div className="text-xs text-red-400 mt-1">
+                            {log.error_message}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-xs text-white/60 text-right">
+                        <div>{new Date(log.sent_at).toLocaleDateString('sv-SE')}</div>
+                        <div>{new Date(log.sent_at).toLocaleTimeString('sv-SE')}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -8609,6 +8932,65 @@ function EmailManagement() {
                 <>
                   <Send className="h-4 w-4 mr-2" />
                   Skicka via Resend
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* One.com Test Dialog */}
+      <Dialog open={oneComDialogOpen} onOpenChange={setOneComDialogOpen}>
+        <DialogContent className="bg-black border border-[#e4d699]/30 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-[#e4d699]">Skicka One.com test-e-post</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Ange e-postadress för att skicka test-e-post via One.com SMTP
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="onecom-test-email" className="text-white">E-postadress</Label>
+              <Input
+                id="onecom-test-email"
+                type="email"
+                value={oneComTestEmail}
+                onChange={(e) => setOneComTestEmail(e.target.value)}
+                placeholder="test@example.com"
+                className="border-[#e4d699]/30 bg-black/50"
+              />
+            </div>
+            
+            <div className="bg-orange-900/20 border border-orange-500/30 rounded-lg p-3">
+              <p className="text-sm text-orange-300/80">
+                <strong>OBS:</strong> Detta skickar en riktig test-e-post via One.com SMTP-servern till den angivna adressen.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setOneComDialogOpen(false)}
+              className="border-[#e4d699]/30"
+            >
+              Avbryt
+            </Button>
+            <Button
+              onClick={handleSendOneComTestEmail}
+              disabled={testingOneCom || !oneComTestEmail.trim()}
+              className="bg-orange-600 text-white hover:bg-orange-700"
+            >
+              {testingOneCom ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Skickar...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Skicka via One.com
                 </>
               )}
             </Button>
@@ -9944,6 +10326,481 @@ function RestaurantTerminalAdmin() {
           </div>
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+function FeedbackManagement() {
+  const [feedbacks, setFeedbacks] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [filterType, setFilterType] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('all')
+  const [selectedFeedback, setSelectedFeedback] = useState(null)
+  const [showDetailModal, setShowDetailModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [feedbackToDelete, setFeedbackToDelete] = useState(null)
+  const { toast } = useToast()
+
+  useEffect(() => {
+    fetchFeedbacks()
+  }, [])
+
+  const fetchFeedbacks = async () => {
+    setIsLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('feedback')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching feedback:', error)
+        toast({
+          title: "Fel",
+          description: "Kunde inte hämta feedback",
+          variant: "destructive",
+        })
+        return
+      }
+
+      setFeedbacks(data || [])
+    } catch (error) {
+      console.error('Error:', error)
+      toast({
+        title: "Fel",
+        description: "Något gick fel vid hämtning av feedback",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const updateFeedbackStatus = async (feedbackId, newStatus) => {
+    try {
+      const { error } = await supabase
+        .from('feedback')
+        .update({ 
+          status: newStatus,
+          resolved_at: newStatus === 'resolved' ? new Date().toISOString() : null
+        })
+        .eq('id', feedbackId)
+
+      if (error) {
+        throw error
+      }
+
+      setFeedbacks(prev => prev.map(feedback => 
+        feedback.id === feedbackId 
+          ? { ...feedback, status: newStatus, resolved_at: newStatus === 'resolved' ? new Date().toISOString() : null }
+          : feedback
+      ))
+
+      toast({
+        title: "Status uppdaterad",
+        description: `Feedback markerad som ${getStatusText(newStatus)}`,
+      })
+    } catch (error) {
+      console.error('Error updating status:', error)
+      toast({
+        title: "Fel",
+        description: "Kunde inte uppdatera status",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const deleteFeedback = async (feedbackId) => {
+    try {
+      const { error } = await supabase
+        .from('feedback')
+        .delete()
+        .eq('id', feedbackId)
+
+      if (error) {
+        throw error
+      }
+
+      setFeedbacks(prev => prev.filter(feedback => feedback.id !== feedbackId))
+      setShowDeleteModal(false)
+      setFeedbackToDelete(null)
+
+      toast({
+        title: "Feedback borttagen",
+        description: "Feedback har tagits bort permanent",
+      })
+    } catch (error) {
+      console.error('Error deleting feedback:', error)
+      toast({
+        title: "Fel",
+        description: "Kunde inte ta bort feedback",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const getTypeIcon = (type) => {
+    switch (type) {
+      case 'bug': return <AlertTriangle className="h-4 w-4 text-red-500" />
+      case 'suggestion': return <Star className="h-4 w-4 text-yellow-500" />
+      default: return <MessageSquare className="h-4 w-4 text-blue-500" />
+    }
+  }
+
+  const getTypeColor = (type) => {
+    switch (type) {
+      case 'bug': return 'bg-red-500/20 text-red-400 border-red-500/30'
+      case 'suggestion': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+      default: return 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+    }
+  }
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'new': return 'bg-green-500/20 text-green-400 border-green-500/30'
+      case 'in_progress': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+      case 'resolved': return 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+      case 'closed': return 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+    }
+  }
+
+  const getStatusText = (status) => {
+    switch (status) {
+      case 'new': return 'Ny'
+      case 'in_progress': return 'Pågående'
+      case 'resolved': return 'Löst'
+      case 'closed': return 'Stängd'
+      default: return 'Okänd'
+    }
+  }
+
+  const getTypeText = (type) => {
+    switch (type) {
+      case 'bug': return 'Buggrapport'
+      case 'suggestion': return 'Förslag'
+      case 'feedback': return 'Feedback'
+      default: return 'Okänd'
+    }
+  }
+
+  const getFilteredFeedbacks = () => {
+    return feedbacks.filter(feedback => {
+      const typeMatch = filterType === 'all' || feedback.type === filterType
+      const statusMatch = filterStatus === 'all' || feedback.status === filterStatus
+      return typeMatch && statusMatch
+    })
+  }
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleString('sv-SE', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  if (isLoading) {
+    return (
+      <Card className="border border-[#e4d699]/30 bg-black/30">
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-[#e4d699]" />
+          <span className="ml-2">Laddar feedback...</span>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card className="border border-[#e4d699]/30 bg-black/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MessageSquare className="h-5 w-5" />
+            Feedback & Buggrapporter
+          </CardTitle>
+          <CardDescription>
+            Hantera användarfeedback, buggrapporter och förslag
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/* Filters */}
+          <div className="flex flex-wrap gap-4 mb-6">
+            <div className="space-y-2">
+              <Label>Filtrera efter typ:</Label>
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                className="px-3 py-2 rounded-md border border-[#e4d699]/30 bg-black/50 text-white"
+              >
+                <option value="all">Alla typer</option>
+                <option value="feedback">Feedback</option>
+                <option value="bug">Buggrapporter</option>
+                <option value="suggestion">Förslag</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Filtrera efter status:</Label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-3 py-2 rounded-md border border-[#e4d699]/30 bg-black/50 text-white"
+              >
+                <option value="all">Alla statusar</option>
+                <option value="new">Ny</option>
+                <option value="in_progress">Pågående</option>
+                <option value="resolved">Löst</option>
+                <option value="closed">Stängd</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <Button 
+                onClick={fetchFeedbacks}
+                variant="outline" 
+                size="sm"
+                className="border-[#e4d699]/30"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Uppdatera
+              </Button>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-blue-400 text-sm">Total Feedback</p>
+                  <p className="text-2xl font-bold text-white">{feedbacks.length}</p>
+                </div>
+                <MessageSquare className="h-8 w-8 text-blue-400" />
+              </div>
+            </div>
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-red-400 text-sm">Buggrapporter</p>
+                  <p className="text-2xl font-bold text-white">
+                    {feedbacks.filter(f => f.type === 'bug').length}
+                  </p>
+                </div>
+                <AlertTriangle className="h-8 w-8 text-red-400" />
+              </div>
+            </div>
+            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-green-400 text-sm">Nya</p>
+                  <p className="text-2xl font-bold text-white">
+                    {feedbacks.filter(f => f.status === 'new').length}
+                  </p>
+                </div>
+                <Bell className="h-8 w-8 text-green-400" />
+              </div>
+            </div>
+            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-yellow-400 text-sm">Förslag</p>
+                  <p className="text-2xl font-bold text-white">
+                    {feedbacks.filter(f => f.type === 'suggestion').length}
+                  </p>
+                </div>
+                <Star className="h-8 w-8 text-yellow-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Feedback List */}
+          <div className="space-y-4">
+            {getFilteredFeedbacks().length === 0 ? (
+              <div className="text-center py-8 text-white/60">
+                {filterType !== 'all' || filterStatus !== 'all' 
+                  ? 'Ingen feedback matchar dina filter'
+                  : 'Ingen feedback att visa ännu'
+                }
+              </div>
+            ) : (
+              getFilteredFeedbacks().map((feedback) => (
+                <Card key={feedback.id} className="border border-gray-700 bg-gray-900/50">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          {getTypeIcon(feedback.type)}
+                          <Badge className={getTypeColor(feedback.type)}>
+                            {getTypeText(feedback.type)}
+                          </Badge>
+                          <Badge className={getStatusColor(feedback.status)}>
+                            {getStatusText(feedback.status)}
+                          </Badge>
+                          <span className="text-sm text-white/60">
+                            {formatDate(feedback.created_at)}
+                          </span>
+                        </div>
+                        
+                        <div className="mb-2">
+                          {feedback.name && (
+                            <p className="text-sm text-white/80">
+                              <strong>Från:</strong> {feedback.name}
+                              {feedback.email && <span className="ml-2">({feedback.email})</span>}
+                            </p>
+                          )}
+                        </div>
+
+                        <p className="text-white/90 line-clamp-3">
+                          {feedback.message}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 ml-4">
+                        <Button
+                          onClick={() => {
+                            setSelectedFeedback(feedback)
+                            setShowDetailModal(true)
+                          }}
+                          variant="outline"
+                          size="sm"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        
+                        {feedback.status !== 'resolved' && (
+                          <Button
+                            onClick={() => updateFeedbackStatus(feedback.id, 'resolved')}
+                            variant="outline"
+                            size="sm"
+                            className="border-green-500/50 text-green-400 hover:bg-green-500/20"
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                          </Button>
+                        )}
+
+                        <Button
+                          onClick={() => {
+                            setFeedbackToDelete(feedback)
+                            setShowDeleteModal(true)
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="border-red-500/50 text-red-400 hover:bg-red-500/20"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Detail Modal */}
+      <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedFeedback && getTypeIcon(selectedFeedback.type)}
+              Feedback Detaljer
+            </DialogTitle>
+          </DialogHeader>
+          {selectedFeedback && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Badge className={getTypeColor(selectedFeedback.type)}>
+                  {getTypeText(selectedFeedback.type)}
+                </Badge>
+                <Badge className={getStatusColor(selectedFeedback.status)}>
+                  {getStatusText(selectedFeedback.status)}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Skickat:</Label>
+                  <p className="text-sm text-white/80">{formatDate(selectedFeedback.created_at)}</p>
+                </div>
+                {selectedFeedback.resolved_at && (
+                  <div>
+                    <Label>Löst:</Label>
+                    <p className="text-sm text-white/80">{formatDate(selectedFeedback.resolved_at)}</p>
+                  </div>
+                )}
+              </div>
+
+              {selectedFeedback.name && (
+                <div>
+                  <Label>Namn:</Label>
+                  <p className="text-sm text-white/80">{selectedFeedback.name}</p>
+                </div>
+              )}
+
+              {selectedFeedback.email && (
+                <div>
+                  <Label>E-post:</Label>
+                  <p className="text-sm text-white/80">{selectedFeedback.email}</p>
+                </div>
+              )}
+
+              <div>
+                <Label>Meddelande:</Label>
+                <div className="mt-2 p-3 bg-gray-900/50 rounded-lg">
+                  <p className="text-white/90 whitespace-pre-wrap">{selectedFeedback.message}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Label>Ändra status:</Label>
+                <select
+                  value={selectedFeedback.status}
+                  onChange={(e) => {
+                    updateFeedbackStatus(selectedFeedback.id, e.target.value)
+                    setSelectedFeedback(prev => ({ ...prev, status: e.target.value }))
+                  }}
+                  className="px-3 py-1 rounded-md border border-[#e4d699]/30 bg-black/50 text-white"
+                >
+                  <option value="new">Ny</option>
+                  <option value="in_progress">Pågående</option>
+                  <option value="resolved">Löst</option>
+                  <option value="closed">Stängd</option>
+                </select>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Bekräfta borttagning</DialogTitle>
+            <DialogDescription>
+              Är du säker på att du vill ta bort denna feedback permanent? 
+              Detta kan inte ångras.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteModal(false)}
+            >
+              Avbryt
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => feedbackToDelete && deleteFeedback(feedbackToDelete.id)}
+            >
+              Ta bort
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

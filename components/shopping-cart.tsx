@@ -662,32 +662,25 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
       console.log("Totalt:", totalPrice, "kr")
       console.log("========================")
 
-      // Send location-based notification to admins
+      // Send location-specific notification to admins using the new function
       try {
-        const { error: notificationError } = await supabase
-          .from('notifications')
-          .insert({
-            type: 'order',
-            title: `Ny beställning i ${selectedLocation.name}`,
-            message: `Ordersnummer: #${orderNumber} - ${customerName} - ${totalPrice} kr`,
-            user_role: 'admin',
-            metadata: {
-              location: selectedLocation.id.toLowerCase(),
-              order_id: data.id,
-              order_number: orderNumber,
-              customer_name: customerName,
-              total_amount: totalPrice,
-              created_by: 'system'
-            }
+        const { data: notificationResult, error: notificationError } = await supabase
+          .rpc('send_location_order_notification', {
+            p_order_id: data.id,
+            p_location_id: selectedLocation.id.toLowerCase(),
+            p_order_number: orderNumber,
+            p_customer_name: customerName,
+            p_total_amount: totalPrice,
+            p_location_display_name: selectedLocation.name
           })
 
         if (notificationError) {
-          console.error('Error sending notification:', notificationError)
+          console.error('Error sending location-specific notification:', notificationError)
         } else {
-          console.log('Admin notification sent for location:', selectedLocation.id)
+          console.log(`Location-specific notifications sent: ${notificationResult} admins notified for ${selectedLocation.name}`)
         }
       } catch (notificationError) {
-        console.error('Error sending notification:', notificationError)
+        console.error('Error sending location-specific notification:', notificationError)
         // Don't fail the order if notification fails
       }
 

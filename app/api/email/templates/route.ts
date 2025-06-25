@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (type) {
-      query = query.eq('type', type)
+      query = query.eq('template_key', type)
     }
 
     if (location) {
@@ -80,7 +80,8 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabaseAdmin
       .from('email_templates')
       .insert({
-        type,
+        template_key: type, // Required field
+        type: type, // Optional field (för kompatibilitet)
         name,
         subject,
         html_content,

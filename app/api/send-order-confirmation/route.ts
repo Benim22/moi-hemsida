@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sendOrderConfirmationFromTemplate } from '@/lib/email-template-service'
+import { sendOrderConfirmation } from '@/lib/nodemailer-one'
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,10 +38,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const result = await sendOrderConfirmationFromTemplate(orderData)
+    // Konvertera data till format som nodemailer-one förväntar sig
+    const emailData = {
+      customer_name: orderData.customerName,
+      customer_email: orderData.customerEmail,
+      order_number: orderData.orderNumber,
+      items: orderData.items,
+      total_price: orderData.totalPrice,
+      delivery_method: orderData.orderType,
+      location: orderData.location,
+      special_instructions: orderData.specialInstructions || '',
+      estimated_ready_time: orderData.pickupTime || '30-45 minuter'
+    }
+
+    const result = await sendOrderConfirmation(emailData)
     
     if (result.success) {
-      return NextResponse.json({ success: true, message: 'Order confirmation sent successfully' })
+      return NextResponse.json({ 
+        success: true, 
+        message: 'Order confirmation sent successfully via One.com SMTP',
+        messageId: result.messageId 
+      })
     } else {
       return NextResponse.json(
         { success: false, error: result.error },

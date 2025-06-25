@@ -8,7 +8,7 @@ import { CartProvider } from "@/context/cart-context"
 // import { AuthProvider } from "@/context/auth-context"
 import { SimpleAuthProvider } from "@/context/simple-auth-context"
 import { ShoppingCart } from "@/components/shopping-cart"
-import { MoiSushiChat } from "@/components/moi-sushi-chat"
+import { BugReportFeedback } from "@/components/bug-report-feedback"
 import { LocationProvider } from "@/contexts/LocationContext"
 import { LocationSelector } from "@/components/LocationSelector"
 import { CookieBanner } from "@/components/CookieBanner"
@@ -288,7 +288,7 @@ export default function RootLayout({
                 <Footer />
                 <Navigation />
                 <ShoppingCart />
-                <MoiSushiChat />
+                <BugReportFeedback />
                 <LocationSelector />
                 <CookieBanner />
                 <AnalyticsProvider />

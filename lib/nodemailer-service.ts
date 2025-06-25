@@ -50,7 +50,7 @@ const createTransporter = async () => {
     user: emailConfig.auth.user
   })
 
-  return nodemailer.createTransporter(emailConfig)
+  return nodemailer.createTransport(emailConfig)
 }
 
 // Verify connection configuration
