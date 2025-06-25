@@ -730,6 +730,9 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         // Don't fail the order if email fails
       }
 
+      // Clear cart immediately after successful order
+      clearCart()
+      
       // Show success message and navigate
       setShowSuccessModal(true)
 
@@ -752,7 +755,6 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
       specialInstructions={specialInstructions}
       isLoggedIn={!!user}
       onClose={() => {
-        clearCart()
         setShowSuccessModal(false)
         setIsCartOpen(false) // Stäng cart sidebaren
         // Skicka inloggade användare till sina beställningar, anonyma till startsidan

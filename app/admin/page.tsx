@@ -7619,7 +7619,7 @@ function EmailManagement() {
           <TabsTrigger value="logs">Loggar</TabsTrigger>
           <TabsTrigger value="settings">NodeMailer</TabsTrigger>
           <TabsTrigger value="resend">Resend</TabsTrigger>
-          <TabsTrigger value="onecom">One.com SMTP</TabsTrigger>
+          <TabsTrigger value="onecom">One.com</TabsTrigger>
         </TabsList>
 
         <TabsContent value="templates" className="space-y-4">
