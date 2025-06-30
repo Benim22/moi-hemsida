@@ -1,8 +1,28 @@
+"use client"
+
 import React from 'react'
 import Link from 'next/link'
 import { MapPin, Phone, Mail, Clock, Instagram, Facebook } from 'lucide-react'
+import { useLocation } from '@/contexts/LocationContext'
 
 export function Footer() {
+  const { selectedLocation } = useLocation()
+
+  // Fallback till Trelleborg om ingen location är vald
+  const currentLocation = selectedLocation || {
+    id: "trelleborg",
+    name: "Trelleborg",
+    displayName: "Moi Sushi Trelleborg", 
+    address: "Corfitz-Beck-Friisgatan 5B, 231 43 Trelleborg",
+    phone: "0410-281 10",
+    email: "trelleborg@moisushi.se",
+    hours: {
+      weekdays: "11.00 – 21.00",
+      saturday: "12.00 – 21.00",
+      sunday: "15.00 – 21.00"
+    },
+    coordinates: { lat: 55.3758, lng: 13.1568 }
+  }
   return (
     <footer className="bg-black/95 border-t border-[#e4d699]/20 mt-auto">
       <div className="max-w-7xl mx-auto px-4 py-12">
@@ -37,22 +57,63 @@ export function Footer() {
           <div className="space-y-4">
             <h4 className="text-lg font-semibold text-[#e4d699]">Våra Platser</h4>
             <div className="space-y-3">
-              <div>
-                <h5 className="font-medium text-white">Trelleborg</h5>
+              <div className={`p-2 rounded-lg transition-colors ${
+                currentLocation.id === 'trelleborg' 
+                  ? 'bg-[#e4d699]/10 border border-[#e4d699]/30' 
+                  : 'hover:bg-white/5'
+              }`}>
+                <h5 className={`font-medium ${
+                  currentLocation.id === 'trelleborg' ? 'text-[#e4d699]' : 'text-white'
+                }`}>
+                  Trelleborg
+                  {currentLocation.id === 'trelleborg' && (
+                    <span className="ml-2 text-xs bg-[#e4d699]/20 px-2 py-1 rounded-full">
+                      Vald
+                    </span>
+                  )}
+                </h5>
                 <div className="flex items-start space-x-2 text-sm text-white/70">
                   <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                  <span>Storgatan 12, 231 30 Trelleborg</span>
+                  <span>Corfitz-Beck-Friisgatan 5B, 231 43 Trelleborg</span>
                 </div>
               </div>
-              <div>
-                <h5 className="font-medium text-white">Malmö</h5>
+              
+              <div className={`p-2 rounded-lg transition-colors ${
+                currentLocation.id === 'malmo' 
+                  ? 'bg-[#e4d699]/10 border border-[#e4d699]/30' 
+                  : 'hover:bg-white/5'
+              }`}>
+                <h5 className={`font-medium ${
+                  currentLocation.id === 'malmo' ? 'text-[#e4d699]' : 'text-white'
+                }`}>
+                  Malmö
+                  {currentLocation.id === 'malmo' && (
+                    <span className="ml-2 text-xs bg-[#e4d699]/20 px-2 py-1 rounded-full">
+                      Vald
+                    </span>
+                  )}
+                </h5>
                 <div className="flex items-start space-x-2 text-sm text-white/70">
                   <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
                   <span>Södergatan 45, 211 34 Malmö</span>
                 </div>
               </div>
-              <div>
-                <h5 className="font-medium text-white">Ystad (Food Truck)</h5>
+              
+              <div className={`p-2 rounded-lg transition-colors ${
+                currentLocation.id === 'ystad' 
+                  ? 'bg-[#e4d699]/10 border border-[#e4d699]/30' 
+                  : 'hover:bg-white/5'
+              }`}>
+                <h5 className={`font-medium ${
+                  currentLocation.id === 'ystad' ? 'text-[#e4d699]' : 'text-white'
+                }`}>
+                  Ystad (Food Truck)
+                  {currentLocation.id === 'ystad' && (
+                    <span className="ml-2 text-xs bg-[#e4d699]/20 px-2 py-1 rounded-full">
+                      Vald
+                    </span>
+                  )}
+                </h5>
                 <div className="flex items-start space-x-2 text-sm text-white/70">
                   <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
                   <span>Österportstorg, 271 41 Ystad</span>
@@ -63,23 +124,43 @@ export function Footer() {
 
           {/* Contact & Hours */}
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-[#e4d699]">Kontakt</h4>
+            <h4 className="text-lg font-semibold text-[#e4d699]">
+              Kontakt - {currentLocation.name}
+            </h4>
             <div className="space-y-3">
               <div className="flex items-center space-x-2 text-sm text-white/70">
                 <Phone className="h-4 w-4" />
-                <span>040-123 45 67</span>
+                <a 
+                  href={`tel:${currentLocation.phone}`} 
+                  className="hover:text-[#e4d699] transition-colors"
+                >
+                  {currentLocation.phone}
+                </a>
               </div>
               <div className="flex items-center space-x-2 text-sm text-white/70">
                 <Mail className="h-4 w-4" />
-                <span>info@moisushi.se</span>
+                <a 
+                  href={`mailto:${currentLocation.email}`}
+                  className="hover:text-[#e4d699] transition-colors"
+                >
+                  {currentLocation.email}
+                </a>
               </div>
               <div className="flex items-start space-x-2 text-sm text-white/70">
                 <Clock className="h-4 w-4 mt-0.5" />
                 <div>
-                  <div>Mån-Tor: 11:00-21:00</div>
-                  <div>Fre-Lör: 11:00-22:00</div>
-                  <div>Sön: 12:00-20:00</div>
+                  <div>Vardagar: {currentLocation.hours.weekdays}</div>
+                  <div>Lördag: {currentLocation.hours.saturday}</div>
+                  <div>Söndag: {currentLocation.hours.sunday}</div>
                 </div>
+              </div>
+            </div>
+            
+            {/* Indikator för vald plats */}
+            <div className="pt-2 border-t border-[#e4d699]/10">
+              <div className="flex items-center space-x-2 text-xs text-[#e4d699]/80">
+                <MapPin className="h-3 w-3" />
+                <span>Visar info för vald plats</span>
               </div>
             </div>
           </div>
