@@ -50,7 +50,7 @@ export default function RestaurantTerminal() {
     autoprintEnabled: true,
     autoemailEnabled: true, // Automatisk e-postutskick
     printerIP: '192.168.1.100',
-    printerPort: '8008',
+    printerPort: '80', // Standard HTTP port för Epson TM-T20III
     connectionType: 'wifi', // 'wifi' or 'bluetooth'
     debugMode: true // För utveckling
   })
@@ -88,6 +88,257 @@ export default function RestaurantTerminal() {
         break
       default:
         console.log(consoleMessage)
+    }
+  }
+
+  // Clear debug logs function
+  const clearDebugLogs = () => {
+    setDebugLogs([])
+    addDebugLog('Debug-logg rensad', 'info')
+  }
+
+  // Real network connection test using modern web APIs
+  const testNetworkConnection = async (ip, port, timeout = 5000) => {
+    return new Promise((resolve) => {
+      const startTime = performance.now()
+      
+      // Method 1: Try WebSocket connection (most reliable for port testing)
+      const testWebSocket = () => {
+        return new Promise((wsResolve) => {
+          try {
+            const ws = new WebSocket(`ws://${ip}:${port}/`)
+            const wsTimeout = setTimeout(() => {
+              ws.close()
+              wsResolve({ method: 'websocket', success: false, error: 'timeout', time: performance.now() - startTime })
+            }, timeout)
+
+            ws.onopen = () => {
+              clearTimeout(wsTimeout)
+              ws.close()
+              wsResolve({ method: 'websocket', success: true, time: performance.now() - startTime })
+            }
+
+            ws.onerror = () => {
+              clearTimeout(wsTimeout)
+              const elapsed = performance.now() - startTime
+              // Quick failure usually means connection refused (port closed)
+              // Slow failure usually means timeout (host unreachable)
+              const isQuickFailure = elapsed < 1000
+              wsResolve({ 
+                method: 'websocket', 
+                success: false, 
+                error: isQuickFailure ? 'connection_refused' : 'timeout',
+                time: elapsed 
+              })
+            }
+
+            ws.onclose = (event) => {
+              clearTimeout(wsTimeout)
+              const elapsed = performance.now() - startTime
+              // If we get a close event quickly, it might mean the port is open but doesn't speak WebSocket
+              const isQuickClose = elapsed < 1000
+              wsResolve({ 
+                method: 'websocket', 
+                success: isQuickClose, // Quick close often means port is open
+                error: isQuickClose ? null : 'timeout',
+                time: elapsed 
+              })
+            }
+          } catch (error) {
+            wsResolve({ method: 'websocket', success: false, error: error.message, time: performance.now() - startTime })
+          }
+        })
+      }
+
+      // Method 2: Try HTTP fetch with no-cors (fallback)
+      const testHTTP = () => {
+        return new Promise((httpResolve) => {
+          const controller = new AbortController()
+          const fetchTimeout = setTimeout(() => {
+            controller.abort()
+            httpResolve({ method: 'http', success: false, error: 'timeout', time: performance.now() - startTime })
+          }, timeout)
+
+          fetch(`http://${ip}:${port}/`, {
+            method: 'GET',
+            mode: 'no-cors',
+            signal: controller.signal
+          })
+          .then(() => {
+            clearTimeout(fetchTimeout)
+            httpResolve({ method: 'http', success: true, time: performance.now() - startTime })
+          })
+          .catch((error) => {
+            clearTimeout(fetchTimeout)
+            const elapsed = performance.now() - startTime
+            const isQuickFailure = elapsed < 1000
+            httpResolve({ 
+              method: 'http', 
+              success: false, 
+              error: isQuickFailure ? 'connection_refused' : 'timeout',
+              time: elapsed 
+            })
+          })
+        })
+      }
+
+      // Run both tests in parallel
+      Promise.all([testWebSocket(), testHTTP()])
+        .then((results) => {
+          const [wsResult, httpResult] = results
+          
+          // Determine overall result
+          const isConnected = wsResult.success || httpResult.success
+          const avgTime = (wsResult.time + httpResult.time) / 2
+          
+          resolve({
+            connected: isConnected,
+            time: avgTime,
+            details: { websocket: wsResult, http: httpResult },
+            confidence: isConnected ? (wsResult.success && httpResult.success ? 'high' : 'medium') : 'low'
+          })
+        })
+    })
+  }
+
+  // Test real printer connection using network detection
+  const testPrinterConnection = async () => {
+    addDebugLog('🔍 Startar verklig nätverkstest till Epson TM-T20III...', 'info')
+    
+    if (!printerSettings.enabled) {
+      addDebugLog('❌ Skrivare inte aktiverad i inställningar', 'warning')
+      setPrinterStatus(prev => ({ ...prev, connected: false, error: 'Skrivare inte aktiverad' }))
+      return
+    }
+
+    // Validate IP address format
+    const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
+    if (!ipRegex.test(printerSettings.printerIP)) {
+      addDebugLog(`❌ Ogiltig IP-adress: ${printerSettings.printerIP}`, 'error')
+      setPrinterStatus(prev => ({ 
+        ...prev, 
+        connected: false, 
+        error: `Ogiltig IP-adress: ${printerSettings.printerIP}` 
+      }))
+      return
+    }
+
+    // Validate port
+    const port = parseInt(printerSettings.printerPort)
+    if (isNaN(port) || port < 1 || port > 65535) {
+      addDebugLog(`❌ Ogiltig port: ${printerSettings.printerPort}`, 'error')
+      setPrinterStatus(prev => ({ 
+        ...prev, 
+        connected: false, 
+        error: `Ogiltig port: ${printerSettings.printerPort}` 
+      }))
+      return
+    }
+
+    try {
+      addDebugLog(`🌐 Testar nätverksanslutning till ${printerSettings.printerIP}:${port}...`, 'info')
+      
+      // Test network connectivity first
+      const networkResult = await testNetworkConnection(printerSettings.printerIP, port, 5000)
+      
+      addDebugLog(`📊 Nätverkstest resultat: ${networkResult.connected ? 'ANSLUTEN' : 'INTE ANSLUTEN'} (${networkResult.time.toFixed(0)}ms)`, 
+        networkResult.connected ? 'success' : 'error')
+      
+      if (networkResult.connected) {
+        addDebugLog(`✅ Nätverksanslutning OK - Konfidensgrad: ${networkResult.confidence}`, 'success')
+        addDebugLog(`📡 WebSocket: ${networkResult.details.websocket.success ? '✅' : '❌'} (${networkResult.details.websocket.time.toFixed(0)}ms)`, 'info')
+        addDebugLog(`🌐 HTTP: ${networkResult.details.http.success ? '✅' : '❌'} (${networkResult.details.http.time.toFixed(0)}ms)`, 'info')
+        
+        // If ePOS is loaded, try to connect with it
+        if (eposLoaded && window.epos) {
+          addDebugLog('🖨️ Testar ePOS-protokoll...', 'info')
+          
+          try {
+            const epos = new window.epos.ePOSDevice()
+            
+            const eposTimeout = setTimeout(() => {
+              addDebugLog('⏰ ePOS timeout - använder nätverksresultat istället', 'warning')
+              setPrinterStatus(prev => ({ 
+                ...prev, 
+                connected: true, 
+                lastTest: new Date(),
+                error: null 
+              }))
+            }, 10000) // 10 second timeout for ePOS
+            
+            epos.connect(printerSettings.printerIP, port, (data) => {
+              clearTimeout(eposTimeout)
+              
+              if (data === 'OK') {
+                addDebugLog('🎯 ePOS-anslutning framgångsrik!', 'success')
+                setPrinterStatus(prev => ({ 
+                  ...prev, 
+                  connected: true, 
+                  lastTest: new Date(),
+                  error: null 
+                }))
+                addDebugLog('✅ VERIFIERAD: Epson TM-T20III är ansluten och redo!', 'success')
+              } else {
+                addDebugLog(`⚠️ ePOS-fel: ${data} - men nätverksanslutning fungerar`, 'warning')
+                setPrinterStatus(prev => ({ 
+                  ...prev, 
+                  connected: true, // Network is working
+                  lastTest: new Date(),
+                  error: `ePOS-varning: ${data}` 
+                }))
+              }
+            })
+          } catch (eposError) {
+            addDebugLog(`⚠️ ePOS-fel: ${eposError.message} - men nätverksanslutning fungerar`, 'warning')
+            setPrinterStatus(prev => ({ 
+              ...prev, 
+              connected: true, // Network is working
+              lastTest: new Date(),
+              error: `ePOS-varning: ${eposError.message}` 
+            }))
+          }
+        } else {
+          // No ePOS available, but network connection works
+          addDebugLog('📡 Nätverksanslutning verifierad (ePOS ej tillgängligt)', 'success')
+          setPrinterStatus(prev => ({ 
+            ...prev, 
+            connected: true, 
+            lastTest: new Date(),
+            error: null 
+          }))
+        }
+        
+      } else {
+        // Network connection failed
+        const errorDetails = networkResult.details.websocket.error || networkResult.details.http.error
+        let errorMessage = 'Ingen anslutning'
+        
+        if (errorDetails === 'connection_refused') {
+          errorMessage = `Port ${port} stängd eller skrivare av`
+        } else if (errorDetails === 'timeout') {
+          errorMessage = `IP ${printerSettings.printerIP} svarar inte`
+        }
+        
+        addDebugLog(`❌ Nätverkstest misslyckades: ${errorMessage}`, 'error')
+        addDebugLog(`🔍 WebSocket: ${networkResult.details.websocket.error} (${networkResult.details.websocket.time.toFixed(0)}ms)`, 'error')
+        addDebugLog(`🔍 HTTP: ${networkResult.details.http.error} (${networkResult.details.http.time.toFixed(0)}ms)`, 'error')
+        
+        setPrinterStatus(prev => ({ 
+          ...prev, 
+          connected: false, 
+          lastTest: new Date(),
+          error: errorMessage 
+        }))
+      }
+      
+    } catch (error) {
+      addDebugLog(`❌ Kritiskt fel vid anslutningstest: ${error.message}`, 'error')
+      setPrinterStatus(prev => ({ 
+        ...prev, 
+        connected: false, 
+        lastTest: new Date(),
+        error: `Kritiskt fel: ${error.message}` 
+      }))
     }
   }
 
@@ -488,26 +739,20 @@ export default function RestaurantTerminal() {
     
     if (!isSecure) {
       console.log('❌ Notifikationer kräver HTTPS')
-      alert('Notifikationer kräver en säker anslutning (HTTPS). Denna webbplats använder inte HTTPS, så notifikationer är inte tillgängliga.')
+      addDebugLog('Notifikationer kräver HTTPS - inte tillgängligt', 'warning')
       setNotificationPermission('unsupported')
       return
     }
 
     if (!('Notification' in window)) {
       console.log('❌ Webbläsaren stöder inte notifikationer')
-      alert('Din webbläsare stöder inte notifikationer. Prova att uppdatera din webbläsare eller använd Chrome/Safari.')
+      addDebugLog('Webbläsaren stöder inte notifikationer', 'warning')
       setNotificationPermission('unsupported')
       return
     }
 
     console.log('Nuvarande notifikationsstatus:', Notification.permission)
     setNotificationPermission(Notification.permission)
-    
-    // Detektera enhet och webbläsare
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-    const isAndroid = /Android/.test(navigator.userAgent)
-    const isChrome = /Chrome/.test(navigator.userAgent)
     
     if (Notification.permission === 'default') {
       try {
@@ -517,54 +762,38 @@ export default function RestaurantTerminal() {
         
         if (permission === 'granted') {
           console.log('✅ Notifikationer aktiverade!')
-          // Visa en test-notifikation med förbättrat stöd
+          addDebugLog('Notifikationer aktiverade framgångsrikt', 'success')
+          
+          // Visa en test-notifikation
           const notification = new Notification('🔔 Notifikationer aktiverade!', {
             body: 'Du kommer nu få meddelanden om nya beställningar',
             icon: '/favicon.ico',
-            badge: '/favicon.ico',
             tag: 'permission-granted',
-            requireInteraction: true,
-            vibrate: isAndroid ? [200, 100, 200] : undefined // Vibration bara på Android
+            requireInteraction: false
           })
           
-          // Auto-close efter 5 sekunder
-          setTimeout(() => notification.close(), 5000)
+          // Auto-close efter 3 sekunder
+          setTimeout(() => notification.close(), 3000)
           
         } else if (permission === 'denied') {
           console.log('❌ Notifikationer nekade')
-          // Visa instruktioner baserat på enhet
-          if (isIOS && isSafari) {
-            alert('För iOS Safari:\n\n1. Gå till Inställningar > Safari > Webbplatser > Notifikationer\n2. Tillåt notifikationer för denna webbplats\n3. Ladda om sidan')
-          } else if (isAndroid && isChrome) {
-            alert('För Android Chrome:\n\n1. Tryck på lås-ikonen i adressfältet\n2. Välj "Tillåt" för notifikationer\n3. Ladda om sidan\n\nEller gå till Chrome-inställningar > Webbplatsinställningar > Notifikationer')
-          } else {
-            alert('Notifikationer är blockerade. För att aktivera:\n\n1. Klicka på lås-ikonen i adressfältet\n2. Välj "Tillåt" för notifikationer\n3. Ladda om sidan')
-          }
+          addDebugLog('Notifikationer nekade av användaren', 'warning')
         } else {
           console.log('⚠️ Notifikationspermission: default (inget beslut)')
-          alert('Notifikationer kunde inte aktiveras. Prova att ladda om sidan och försök igen.')
+          addDebugLog('Notifikationspermission oklar', 'warning')
         }
       } catch (error) {
         console.error('Fel vid begäran om notifikationspermission:', error)
-        alert('Fel vid aktivering av notifikationer. Kontrollera att din webbläsare stöder notifikationer.')
+        addDebugLog(`Fel vid notifikationspermission: ${error.message}`, 'error')
       }
     } else if (Notification.permission === 'granted') {
       console.log('✅ Notifikationer redan aktiverade')
       setNotificationPermission('granted')
-      // Visa bekräftelse
-      showBrowserNotification('Notifikationer är aktiverade', 'Du får meddelanden om nya beställningar')
+      addDebugLog('Notifikationer redan aktiverade', 'success')
     } else {
       console.log('❌ Notifikationer blockerade av användaren')
       setNotificationPermission('denied')
-      
-      // Visa instruktioner för att aktivera
-      if (isIOS && isSafari) {
-        alert('För iOS Safari:\n\n1. Gå till Inställningar > Safari > Webbplatser > Notifikationer\n2. Tillåt notifikationer för denna webbplats\n3. Ladda om sidan')
-      } else if (isAndroid && isChrome) {
-        alert('För Android Chrome:\n\n1. Tryck på lås-ikonen i adressfältet\n2. Välj "Tillåt" för notifikationer\n3. Ladda om sidan')
-      } else {
-        alert('Notifikationer är blockerade. Klicka på lås-ikonen i adressfältet och tillåt notifikationer.')
-      }
+      addDebugLog('Notifikationer blockerade - kan aktiveras i webbläsarinställningar', 'warning')
     }
   }
 
@@ -778,258 +1007,122 @@ export default function RestaurantTerminal() {
     }
   }
 
-  const generateReceipt = (order) => {
-    // Skapa termisk kvitto-format (58mm bredd)
-    const doc = new jsPDF({
-      unit: 'mm',
-      format: [58, 200], // 58mm bred, variabel höjd
-      orientation: 'portrait'
+
+
+
+
+  // Simple text-based receipt that works as fallback
+  const generateSimpleReceipt = (order) => {
+    const items = order.cart_items || order.items
+    const itemsArray = typeof items === 'string' ? JSON.parse(items) : items || []
+    
+    let receiptText = `
+═══════════════════════════════════
+      Moi Sushi & Poké Bowl
+═══════════════════════════════════
+Order: #${order.order_number}
+Datum: ${new Date(order.created_at).toLocaleString('sv-SE')}
+Kund: ${order.profiles?.name || order.customer_name || 'Gäst'}
+${order.profiles?.phone || order.phone ? `Telefon: ${order.profiles?.phone || order.phone}` : ''}
+Plats: ${getLocationName(order.location)}
+───────────────────────────────────
+
+BESTÄLLDA VAROR:
+${itemsArray.map(item => {
+  const itemTotal = (item.price || 0) * (item.quantity || 1)
+  let itemText = `${item.quantity}x ${item.name} - ${itemTotal} kr`
+  
+  if (item.extras?.length) {
+    item.extras.forEach(extra => {
+      const extraTotal = (extra.price || 0) * (item.quantity || 1)
+      itemText += `\n  + ${extra.name} +${extraTotal} kr`
     })
+  }
+  
+  return itemText
+}).join('\n')}
+
+───────────────────────────────────
+TOTALT: ${order.total_price || order.amount} kr
+Leveransmetod: ${order.delivery_type === 'delivery' ? 'Leverans' : 'Avhämtning'}
+
+${order.notes || order.special_instructions ? `Speciella önskemål:\n${order.notes || order.special_instructions}\n` : ''}
+Tack för ditt köp!
+Utvecklad av Skaply
+═══════════════════════════════════
+    `.trim()
     
-    // Enkla färger för termisk utskrift
-    const blackColor = [0, 0, 0]
-    const grayColor = [100, 100, 100]
-    
-    // Hjälpfunktion för att rensa text från problematiska tecken (behåller ÅÄÖ)
-    const cleanText = (text) => {
-      if (!text) return ''
-      return text.toString()
-        .replace(/[^\x00-\x7F\u00C0-\u017F]/g, '') // Ta bort icke-ASCII tecken (emojis etc) men behåll ÅÄÖ
-        .trim()
-    }
-    
-    let yPos = 5
-    
-    // Header - termisk kvittostil
-    doc.setTextColor(...blackColor)
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Moi Sushi & Poké Bowl', 29, yPos, { align: 'center' })
-    
-    yPos += 5
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'normal')
-    const locationText = `Moi Sushi & Poké Bowl - ${getLocationName(order.location)}`
-    doc.text(cleanText(locationText), 29, yPos, { align: 'center' })
-    
-    yPos += 8
-    // Separator linje
-    doc.setLineWidth(0.1)
-    doc.line(2, yPos, 56, yPos)
-    
-    yPos += 5
-    
-    // Order information - termisk stil
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'normal')
-    doc.text('Beställnings-ID:', 2, yPos)
-    doc.text(`#${order.order_number}`, 56, yPos, { align: 'right' })
-    
-    yPos += 4
-    doc.text('Mottagen kl:', 2, yPos)
-    const orderDate = new Date(order.created_at).toLocaleString('sv-SE', {
-      day: 'numeric',
-      month: 'long', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-    doc.text(cleanText(orderDate), 56, yPos, { align: 'right' })
-    
-    yPos += 8
-    
-    // Items lista
-    doc.setLineWidth(0.1)
-    doc.line(2, yPos, 56, yPos)
-    yPos += 3
-    
-    // Items sektion - termisk stil
-    doc.setTextColor(...blackColor)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
-    
-    let totalAmount = 0
-    
-    if (order.cart_items || order.items) {
-      const items = order.cart_items ? 
-        (typeof order.cart_items === 'string' ? JSON.parse(order.cart_items) : order.cart_items) :
-        (typeof order.items === 'string' ? JSON.parse(order.items) : order.items)
+    return receiptText
+  }
+
+  // Print simple text receipt - works without printer
+  const printSimpleReceipt = (order) => {
+    try {
+      const receiptText = generateSimpleReceipt(order)
       
-      items.forEach((item, index) => {
-        const itemTotal = (item.price || 0) * (item.quantity || 1)
-        totalAmount += itemTotal
-        
-        // Item namn och antal - termisk stil
-        const itemName = cleanText(item.name)
-        doc.setTextColor(...blackColor)
-        doc.setFont('helvetica', 'normal')
-        doc.setFontSize(8)
-        doc.text(`${item.quantity || 1} x`, 2, yPos)
-        doc.text(itemName, 8, yPos)
-        doc.text(`${itemTotal.toFixed(2)} kr`, 56, yPos, { align: 'right' })
-        yPos += 4
-        
-        // Visa alternativ om de finns - kompakt format
-        if (item.options) {
-          doc.setTextColor(...grayColor)
-          doc.setFontSize(6)
-          
-          if (item.options.flamberad !== undefined) {
-            const flamberadText = item.options.flamberad ? '- Flamberad' : '- Inte flamberad'
-            doc.text(cleanText(flamberadText), 8, yPos)
-            yPos += 3
-          }
-          
-          if (item.options.glutenFritt) {
-            doc.text('- Glutenfritt', 8, yPos)
-            yPos += 3
-          }
-          
-          if (item.options.laktosFritt) {
-            doc.text('- Laktosfritt', 8, yPos)
-            yPos += 3
-          }
-          
-          doc.setTextColor(...blackColor)
-          doc.setFontSize(8)
-        }
-        
-        // Extras/tillägg
-        if (item.extras?.length) {
-          item.extras.forEach(extra => {
-            const extraTotal = (extra.price || 0) * (item.quantity || 1)
-            totalAmount += extraTotal
-            doc.setTextColor(...grayColor)
-            doc.setFontSize(6)
-            const extraName = cleanText(extra.name)
-            doc.text(`+ ${extraName}`, 8, yPos)
-            doc.text(`+${extraTotal.toFixed(2)} kr`, 56, yPos, { align: 'right' })
-            yPos += 3
-          })
-        }
-        
-        yPos += 2 // Mellanrum mellan items
-      })
+      // Create a new window with the receipt
+      const printWindow = window.open('', '_blank', 'width=400,height=600')
+      
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Kvitto #${order.order_number}</title>
+          <style>
+            body {
+              font-family: 'Courier New', monospace;
+              font-size: 12px;
+              line-height: 1.4;
+              margin: 20px;
+              background: white;
+              color: black;
+            }
+            .receipt {
+              white-space: pre-wrap;
+              max-width: 300px;
+              margin: 0 auto;
+            }
+            @media print {
+              body { margin: 0; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">${receiptText}</div>
+          <div class="no-print" style="margin-top: 20px; text-align: center;">
+            <button onclick="window.print()" style="padding: 10px 20px; font-size: 14px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+              🖨️ Skriv ut
+            </button>
+            <button onclick="window.close()" style="padding: 10px 20px; font-size: 14px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">
+              ❌ Stäng
+            </button>
+          </div>
+        </body>
+        </html>
+      `)
+      
+      printWindow.document.close()
+      
+      // Auto-focus the print window
+      printWindow.focus()
+      
+      addDebugLog(`📄 Textkvitto öppnat för order #${order.order_number}`, 'success')
+      
+    } catch (error) {
+      addDebugLog(`❌ Fel vid öppning av textkvitto: ${error.message}`, 'error')
+      
+      // Fallback: show in console
+      const receiptText = generateSimpleReceipt(order)
+      console.log('%c📄 KVITTO 📄', 'background: #4CAF50; color: white; padding: 10px; font-size: 16px; font-weight: bold;')
+      console.log(receiptText)
+      
+      showBrowserNotification(
+        '📄 Kvitto genererat!', 
+        `Kvitto för order #${order.order_number} visas i konsolen`,
+        false
+      )
     }
-    
-    // Delsumma och total - termisk stil
-    yPos += 3
-    doc.setLineWidth(0.1)
-    doc.line(2, yPos, 56, yPos)
-    yPos += 3
-    
-    doc.setTextColor(...blackColor)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'normal')
-    doc.text('Delsumma', 2, yPos)
-    const finalTotal = order.total_price || order.amount || totalAmount
-    doc.text(`${finalTotal.toFixed(2)} kr`, 56, yPos, { align: 'right' })
-    
-    yPos += 4
-    doc.setFont('helvetica', 'bold')
-    doc.text('Total', 2, yPos)
-    doc.text(`${finalTotal.toFixed(2)} kr`, 56, yPos, { align: 'right' })
-    
-    // Separator och kundinfo
-    yPos += 8
-    doc.setLineWidth(0.1)
-    doc.line(2, yPos, 56, yPos)
-    yPos += 5
-    
-    // Kundinfo
-    const customerName = cleanText(order.profiles?.name || order.customer_name || 'Gäst')
-    doc.setTextColor(...blackColor)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'bold')
-    doc.text(customerName, 29, yPos, { align: 'center' })
-    
-    yPos += 5
-    doc.setFont('helvetica', 'normal')
-    doc.text('Leveransmetod:', 2, yPos)
-    
-    yPos += 4
-    if (order.delivery_type === 'delivery') {
-      doc.text('Leverans', 2, yPos)
-    } else {
-      doc.text('Avhämtning', 2, yPos)
-    }
-    
-    yPos += 4
-    doc.text('Leveranstid:', 2, yPos)
-    
-    yPos += 4
-    doc.text('ASAP', 2, yPos)
-    
-    yPos += 5
-    const phone = cleanText(order.profiles?.phone || order.phone || '')
-    if (phone) {
-      doc.text('Telefonnummer:', 2, yPos)
-      yPos += 4
-      doc.text(phone, 2, yPos)
-      yPos += 5
-    }
-    
-    const email = cleanText(order.profiles?.email || order.email || '')
-    if (email) {
-      doc.text('E-postadress:', 2, yPos)
-      yPos += 4
-      // Dela upp långa email-adresser
-      if (email.length > 20) {
-        const emailParts = email.match(/.{1,20}/g) || [email]
-        emailParts.forEach(part => {
-          doc.text(part, 2, yPos)
-          yPos += 3
-        })
-      } else {
-        doc.text(email, 2, yPos)
-        yPos += 4
-      }
-    }
-    
-    // Separator och betalningsinfo
-    yPos += 8
-    doc.setLineWidth(0.1)
-    doc.line(2, yPos, 56, yPos)
-    yPos += 5
-    
-    doc.setTextColor(...blackColor)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'normal')
-    doc.text('Betalar med:', 2, yPos)
-    
-    yPos += 4
-    doc.text('Manuell betalning', 2, yPos)
-    doc.text(`${finalTotal.toFixed(2)} kr`, 56, yPos, { align: 'right' })
-    
-    // Footer med restaurangnamn och utvecklarinfo - Kompaktare
-    yPos += 8
-    doc.setLineWidth(0.1)
-    doc.line(2, yPos, 56, yPos)
-    yPos += 4
-    
-    doc.setTextColor(...blackColor)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Moi Sushi & Pokébowl', 29, yPos, { align: 'center' })
-    
-    yPos += 3
-    doc.setFontSize(6)
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(...grayColor)
-    doc.text('Utvecklad av Skaply', 29, yPos, { align: 'center' })
-    
-    return doc
-  }
-
-  const printReceipt = (order) => {
-    const doc = generateReceipt(order)
-    doc.autoPrint()
-    window.open(doc.output('bloburl'))
-  }
-
-  const downloadReceipt = (order) => {
-    const doc = generateReceipt(order)
-    doc.save(`kvitto-${order.order_number}.pdf`)
   }
 
   // ePOS Receipt Generation
@@ -1141,54 +1234,210 @@ export default function RestaurantTerminal() {
     return mockReceipt
   }
 
-  // Print ePOS Receipt
+  // Generate plain text receipt for Epson TM-T20III
+  const generatePlainTextReceipt = (order) => {
+    addDebugLog(`Genererar textkvitto för order #${order.order_number}`, 'info')
+    
+    const items = order.cart_items || order.items
+    const itemsArray = typeof items === 'string' ? JSON.parse(items) : items || []
+    
+    let receiptText = ''
+    receiptText += '================================\n'
+    receiptText += '      Moi Sushi & Poke Bowl\n'
+    receiptText += '================================\n'
+    receiptText += `Order: #${order.order_number}\n`
+    receiptText += `Datum: ${new Date(order.created_at).toLocaleString('sv-SE')}\n`
+    receiptText += `Kund: ${order.profiles?.name || order.customer_name || 'Gast'}\n`
+    
+    const phone = order.profiles?.phone || order.phone
+    if (phone) {
+      receiptText += `Telefon: ${phone}\n`
+    }
+    
+    receiptText += '--------------------------------\n'
+    
+    // Items
+    itemsArray.forEach(item => {
+      const itemTotal = (item.price || 0) * (item.quantity || 1)
+      receiptText += `${item.quantity}x ${item.name}\n`
+      receiptText += `                    ${itemTotal.toFixed(2)} kr\n`
+      
+      // Extras
+      if (item.extras?.length) {
+        item.extras.forEach(extra => {
+          const extraTotal = (extra.price || 0) * (item.quantity || 1)
+          receiptText += `  + ${extra.name} +${extraTotal.toFixed(2)} kr\n`
+        })
+      }
+    })
+    
+    receiptText += '================================\n'
+    receiptText += `TOTALT: ${order.total_price || order.amount} kr\n`
+    receiptText += '================================\n'
+    receiptText += `Leveransmetod: ${order.delivery_type === 'delivery' ? 'Leverans' : 'Avhamtning'}\n`
+    receiptText += '\n'
+    receiptText += 'Tack for ditt kop!\n'
+    receiptText += 'Utvecklad av Skaply\n'
+    receiptText += '\n\n\n'
+    
+    return receiptText
+  }
+
+  // Print Receipt to Epson TM-T20III with ESC/POS commands
   const printEPOSReceipt = async (order) => {
-    addDebugLog(`Försöker skriva ut kvitto för order #${order.order_number}`, 'info')
+    addDebugLog(`🖨️ Skriver ut kvitto för order #${order.order_number}`, 'info')
     
     try {
-      const receipt = generateEPOSReceipt(order)
-      
       // Simulator mode
       if (!eposLoaded || printerSettings.debugMode) {
+        const receipt = generateMockEPOSReceipt(order)
         simulatePrintReceipt(receipt, order)
         return
       }
 
-      // Real ePOS printing
-      const epos = new window.epos.ePOSDevice()
-      const printerAddress = `http://${printerSettings.printerIP}:${printerSettings.printerPort}/cgi-bin/epos/service.cgi`
+      // Verify connection first
+      if (!printerStatus.connected) {
+        addDebugLog('❌ Skrivaren är inte ansluten - testar anslutning först', 'warning')
+        await testPrinterConnection()
+        
+        // If still not connected after test, use simulator
+        if (!printerStatus.connected) {
+          addDebugLog('⚠️ Kan inte ansluta till skrivare - använder simulator', 'warning')
+          const receipt = generateMockEPOSReceipt(order)
+          simulatePrintReceipt(receipt, order)
+          return
+        }
+      }
       
-      addDebugLog(`Ansluter till skrivare på ${printerAddress}`, 'info')
+      // Real ePOS printing to Epson TM-T20III
+      const epos = new window.epos.ePOSDevice()
+      
+      addDebugLog(`🔗 Ansluter till Epson TM-T20III på ${printerSettings.printerIP}:${printerSettings.printerPort}`, 'info')
+      
+      // Set connection timeout
+      const connectionTimeout = setTimeout(() => {
+        addDebugLog('❌ Utskrift timeout - skrivaren svarar inte', 'error')
+        setPrinterStatus(prev => ({ ...prev, connected: false, error: 'Timeout vid utskrift' }))
+        
+        // Fallback to simulator
+        const receipt = generateMockEPOSReceipt(order)
+        simulatePrintReceipt(receipt, order)
+      }, 15000) // 15 second timeout for printing
       
       epos.connect(printerSettings.printerIP, parseInt(printerSettings.printerPort), (data) => {
+        clearTimeout(connectionTimeout)
+        
         if (data === 'OK') {
-          addDebugLog('Ansluten till skrivare', 'success')
+          addDebugLog('✅ Verklig anslutning till Epson TM-T20III', 'success')
           setPrinterStatus(prev => ({ ...prev, connected: true, error: null }))
           
-          const printer = epos.createDevice('local_printer', epos.DEVICE_TYPE_PRINTER)
-          
-          printer.addCommand(receipt.toString())
-          
-          printer.send((result) => {
-            if (result.success) {
-              addDebugLog(`Kvitto utskrivet framgångsrikt för order #${order.order_number}`, 'success')
-              setPrinterStatus(prev => ({ ...prev, lastTest: new Date() }))
-            } else {
-              addDebugLog(`Utskriftsfel: ${result.code} - ${result.status}`, 'error')
-              setPrinterStatus(prev => ({ ...prev, error: `Utskriftsfel: ${result.code}` }))
+          try {
+            const printer = epos.createDevice('local_printer', epos.DEVICE_TYPE_PRINTER)
+            
+            // Generate text receipt for Epson TM-T20III
+            const textReceipt = generatePlainTextReceipt(order)
+            
+            // Use ePOS Builder for proper ESC/POS formatting
+            const builder = new window.epos.ePOSBuilder()
+            
+            // Initialize printer
+            builder.addTextAlign(builder.ALIGN_CENTER)
+            
+            // Add header
+            builder.addTextSize(2, 1)
+            builder.addText('Moi Sushi & Poke Bowl\n')
+            builder.addTextSize(1, 1)
+            builder.addText('================================\n')
+            
+            // Order details
+            builder.addTextAlign(builder.ALIGN_LEFT)
+            builder.addText(`Order: #${order.order_number}\n`)
+            builder.addText(`Datum: ${new Date(order.created_at).toLocaleString('sv-SE')}\n`)
+            builder.addText(`Kund: ${order.profiles?.name || order.customer_name || 'Gast'}\n`)
+            
+            const phone = order.profiles?.phone || order.phone
+            if (phone) {
+              builder.addText(`Telefon: ${phone}\n`)
             }
-          })
+            
+            builder.addText('--------------------------------\n')
+            
+            // Items
+            const items = order.cart_items || order.items
+            const itemsArray = typeof items === 'string' ? JSON.parse(items) : items || []
+            
+            itemsArray.forEach(item => {
+              const itemTotal = (item.price || 0) * (item.quantity || 1)
+              builder.addText(`${item.quantity}x ${item.name}\n`)
+              builder.addTextAlign(builder.ALIGN_RIGHT)
+              builder.addText(`${itemTotal.toFixed(0)} kr\n`)
+              builder.addTextAlign(builder.ALIGN_LEFT)
+              
+              // Extras
+              if (item.extras?.length) {
+                item.extras.forEach(extra => {
+                  const extraTotal = (extra.price || 0) * (item.quantity || 1)
+                  builder.addText(`  + ${extra.name} +${extraTotal.toFixed(0)} kr\n`)
+                })
+              }
+            })
+            
+            // Total
+            builder.addText('================================\n')
+            builder.addTextAlign(builder.ALIGN_RIGHT)
+            builder.addTextSize(2, 1)
+            builder.addText(`TOTALT: ${order.total_price || order.amount} kr\n`)
+            builder.addTextSize(1, 1)
+            builder.addTextAlign(builder.ALIGN_CENTER)
+            builder.addText('\n')
+            builder.addText(`Leveransmetod: ${order.delivery_type === 'delivery' ? 'Leverans' : 'Avhamtning'}\n`)
+            builder.addText('\nTack for ditt kop!\n')
+            builder.addText('Utvecklad av Skaply\n')
+            builder.addText('\n')
+            
+            // Cut paper
+            builder.addCut(builder.CUT_FEED)
+            
+            printer.addCommand(builder.toString())
+            
+            printer.send((result) => {
+              if (result.success) {
+                addDebugLog(`✅ Kvitto utskrivet på Epson TM-T20III för order #${order.order_number}`, 'success')
+                setPrinterStatus(prev => ({ ...prev, lastTest: new Date() }))
+                showBrowserNotification(
+                  '🖨️ Kvitto utskrivet!', 
+                  `Order #${order.order_number} utskrivet på Epson TM-T20III`,
+                  false
+                )
+              } else {
+                addDebugLog(`❌ Utskriftsfel på Epson: ${result.code} - ${result.status}`, 'error')
+                setPrinterStatus(prev => ({ ...prev, error: `Epson fel: ${result.code}` }))
+                
+                // Fallback to simulator
+                const receipt = generateMockEPOSReceipt(order)
+                simulatePrintReceipt(receipt, order)
+              }
+            })
+          } catch (printerError) {
+            addDebugLog(`❌ Fel vid skapande av printer device: ${printerError.message}`, 'error')
+            setPrinterStatus(prev => ({ ...prev, error: printerError.message }))
+            
+            // Fallback to simulator
+            const receipt = generateMockEPOSReceipt(order)
+            simulatePrintReceipt(receipt, order)
+          }
         } else {
-          addDebugLog(`Kunde inte ansluta till skrivare: ${data}`, 'error')
-          setPrinterStatus(prev => ({ ...prev, connected: false, error: data }))
+          addDebugLog(`❌ Kunde inte ansluta till Epson TM-T20III: ${data}`, 'error')
+          setPrinterStatus(prev => ({ ...prev, connected: false, error: `Anslutningsfel: ${data}` }))
           
           // Fallback to simulator
+          const receipt = generateMockEPOSReceipt(order)
           simulatePrintReceipt(receipt, order)
         }
       })
       
     } catch (error) {
-      addDebugLog(`Fel vid utskrift: ${error.message}`, 'error')
+      addDebugLog(`❌ Kritiskt fel vid utskrift: ${error.message}`, 'error')
       setPrinterStatus(prev => ({ ...prev, error: error.message }))
       
       // Fallback to simulator
@@ -1330,92 +1579,6 @@ Utvecklad av Skaply
     }
   }
 
-  // Test printer connection
-  const testPrinterConnection = async () => {
-    addDebugLog('Testar skrivaranslutning...', 'info')
-    
-    if (!printerSettings.enabled) {
-      addDebugLog('Skrivare inte aktiverad', 'warning')
-      return
-    }
-
-    if (printerSettings.debugMode || !eposLoaded) {
-      addDebugLog('🎭 SIMULATOR: Testar anslutning...', 'warning')
-      setTimeout(() => {
-        addDebugLog('🎭 SIMULATOR: Anslutning OK!', 'success')
-        setPrinterStatus(prev => ({ 
-          ...prev, 
-          connected: true, 
-          lastTest: new Date(),
-          error: null 
-        }))
-      }, 1000)
-      return
-    }
-
-    try {
-      const epos = new window.epos.ePOSDevice()
-      
-      epos.connect(printerSettings.printerIP, parseInt(printerSettings.printerPort), (data) => {
-        if (data === 'OK') {
-          addDebugLog('Skrivaranslutning framgångsrik', 'success')
-          setPrinterStatus(prev => ({ 
-            ...prev, 
-            connected: true, 
-            lastTest: new Date(),
-            error: null 
-          }))
-        } else {
-          addDebugLog(`Skrivaranslutning misslyckades: ${data}`, 'error')
-          setPrinterStatus(prev => ({ 
-            ...prev, 
-            connected: false, 
-            error: data 
-          }))
-        }
-      })
-    } catch (error) {
-      addDebugLog(`Fel vid test av skrivaranslutning: ${error.message}`, 'error')
-      setPrinterStatus(prev => ({ 
-        ...prev, 
-        connected: false, 
-        error: error.message 
-      }))
-    }
-  }
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-500'
-      case 'confirmed': return 'bg-blue-500'
-      case 'preparing': return 'bg-orange-500'
-      case 'ready': return 'bg-green-500'
-      default: return 'bg-gray-500'
-    }
-  }
-
-  const getStatusText = (status) => {
-    switch (status) {
-      case 'pending': return 'Väntande'
-      case 'confirmed': return 'Bekräftad'
-      case 'preparing': return 'Tillagas'
-      case 'ready': return 'Klar'
-      case 'delivered': return 'Levererad'
-      case 'cancelled': return 'Avbruten'
-      default: return status
-    }
-  }
-
-  const getLocationName = (location) => {
-    switch (location) {
-      case 'malmo': return 'Malmö'
-      case 'trelleborg': return 'Trelleborg'
-      case 'ystad': return 'Ystad'
-      case 'all': return 'Alla platser'
-      default: return location
-    }
-  }
-
   // Fetch available users from profiles table
   const fetchAvailableUsers = async () => {
     try {
@@ -1439,7 +1602,7 @@ Utvecklad av Skaply
       const result = await updateLocation(pendingLocation)
       if (result.error) {
         console.error("❌ Kunde inte uppdatera användarens location:", result.error)
-        alert("Kunde inte ändra din plats. Försök igen.")
+        addDebugLog("Kunde inte ändra plats", 'error')
       } else {
         console.log("✅ Användarens location uppdaterad till:", pendingLocation)
         setSelectedLocation(pendingLocation)
@@ -1453,7 +1616,7 @@ Utvecklad av Skaply
       }
     } catch (error) {
       console.error("❌ Fel vid location-ändring:", error)
-      alert("Ett fel uppstod. Försök igen.")
+      addDebugLog("Ett fel uppstod vid platsändring", 'error')
     }
   }
 
@@ -1461,14 +1624,14 @@ Utvecklad av Skaply
     try {
       setAssigningUser(true)
       
-      if (!selectedUserId) {
-        alert('Välj en användare')
-        return
-      }
+          if (!selectedUserId) {
+      addDebugLog('Ingen användare vald för tilldelning', 'warning')
+      return
+    }
 
       const selectedUser = availableUsers.find(u => u.id === selectedUserId)
       if (!selectedUser) {
-        alert('Användare hittades inte')
+        addDebugLog('Användare hittades inte för tilldelning', 'error')
         return
       }
 
@@ -1485,7 +1648,7 @@ Utvecklad av Skaply
 
       if (error) {
         console.error('Error assigning user:', error)
-        alert('Fel vid tilldelning: ' + error.message)
+        addDebugLog(`Fel vid tilldelning: ${error.message}`, 'error')
         return
       }
 
@@ -1508,7 +1671,7 @@ Utvecklad av Skaply
 
     } catch (error) {
       console.error('Error assigning user:', error)
-      alert('Ett fel uppstod vid tilldelning av användare')
+      addDebugLog('Ett fel uppstod vid tilldelning av användare', 'error')
     } finally {
       setAssigningUser(false)
     }
@@ -2020,11 +2183,12 @@ Utvecklad av Skaply
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         <Button 
                           size="sm" 
-                          onClick={() => printReceipt(order)}
-                          className="bg-gradient-to-r from-[#e4d699] to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-black font-medium shadow-lg text-xs sm:text-sm"
+                          onClick={() => printSimpleReceipt(order)}
+                          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium shadow-lg text-xs sm:text-sm"
+                          title="Skriv ut textkvitto (fungerar alltid)"
                         >
                           <Printer className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                          <span className="hidden sm:inline">📄 PDF</span>
+                          <span className="hidden sm:inline">📄 Textkvitto</span>
                           <span className="sm:hidden">📄</span>
                         </Button>
 
@@ -2036,14 +2200,14 @@ Utvecklad av Skaply
                               ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white'
                               : 'bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white'
                           }`}
-                          title={printerSettings.enabled ? 'Skriv ut på termisk skrivare' : 'Simulator-utskrift (skrivare inte aktiverad)'}
+                          title={printerSettings.enabled && printerStatus.connected ? 'Skriv ut på Epson TM-T20III' : 'Simulator-utskrift (skrivare inte aktiverad)'}
                         >
                           <Printer className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                           <span className="hidden sm:inline">
-                            {printerSettings.enabled ? '🖨️ ePOS' : '🎭 Sim'}
+                            {printerSettings.enabled && printerStatus.connected ? '🖨️ Epson' : '🎭 Simulator'}
                           </span>
                           <span className="sm:hidden">
-                            {printerSettings.enabled ? '🖨️' : '🎭'}
+                            {printerSettings.enabled && printerStatus.connected ? '🖨️' : '🎭'}
                           </span>
                         </Button>
                         
@@ -2393,11 +2557,8 @@ Utvecklad av Skaply
                       <span className="sm:hidden">Email</span>
                     </Button>
 
-                    <Button
-                      onClick={() => {
-                        setDebugLogs([])
-                        addDebugLog('Debug-logg rensad', 'info')
-                      }}
+                                          <Button
+                        onClick={clearDebugLogs}
                       variant="outline"
                       className="border-red-500/40 text-red-400 hover:bg-red-500/10 text-xs sm:text-sm"
                       size="sm"
@@ -2686,24 +2847,26 @@ Utvecklad av Skaply
                 {/* Action buttons */}
                 <div className="flex flex-col sm:flex-row gap-2 pt-4">
                   <Button 
-                    onClick={() => printReceipt(selectedOrder)} 
-                    className="bg-[#e4d699] text-black hover:bg-[#e4d699]/90 text-sm"
+                    onClick={() => printSimpleReceipt(selectedOrder)}
+                    className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-sm"
                     size="sm"
+                    title="Skriv ut textkvitto (fungerar alltid)"
                   >
                     <Printer className="h-4 w-4 mr-2" />
-                    📄 PDF-kvitto
+                    📄 Textkvitto
                   </Button>
                   <Button 
                     onClick={() => printEPOSReceipt(selectedOrder)}
                     className={`text-sm ${
                       printerSettings.enabled && printerStatus.connected
-                        ? 'bg-green-600 hover:bg-green-700 text-white'
-                        : 'bg-orange-600 hover:bg-orange-700 text-white'
+                        ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white'
+                        : 'bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white'
                     }`}
                     size="sm"
+                    title={printerSettings.enabled && printerStatus.connected ? 'Skriv ut på Epson TM-T20III' : 'Simulator-utskrift (skrivare inte aktiverad)'}
                   >
                     <Printer className="h-4 w-4 mr-2" />
-                    {printerSettings.enabled ? '🖨️ ePOS' : '🎭 Sim'}
+                    {printerSettings.enabled && printerStatus.connected ? '🖨️ Epson' : '🎭 Simulator'}
                   </Button>
                   <Button 
                     onClick={() => sendEmailConfirmation(selectedOrder)} 
@@ -2715,9 +2878,10 @@ Utvecklad av Skaply
                         : 'border-gray-500/50 text-gray-500 cursor-not-allowed'
                     }`}
                     size="sm"
+                    title={selectedOrder.profiles?.email || selectedOrder.email ? `Skicka e-postbekräftelse till ${selectedOrder.profiles?.email || selectedOrder.email}` : 'Ingen e-postadress tillgänglig'}
                   >
                     <span className="h-4 w-4 mr-2">📧</span>
-                    {selectedOrder.profiles?.email || selectedOrder.email ? '📧 Skicka e-post' : '❌ Ingen e-post'}
+                    {selectedOrder.profiles?.email || selectedOrder.email ? '📧 E-post' : '❌ Ingen e-post'}
                   </Button>
                 </div>
               </div>
@@ -2776,4 +2940,36 @@ Utvecklad av Skaply
       </div>
     </div>
   )
-} 
+}
+
+const getStatusColor = (status) => {
+  switch (status) {
+    case 'pending': return 'bg-yellow-500'
+    case 'confirmed': return 'bg-blue-500'
+    case 'preparing': return 'bg-orange-500'
+    case 'ready': return 'bg-green-500'
+    default: return 'bg-gray-500'
+  }
+}
+
+const getStatusText = (status) => {
+  switch (status) {
+    case 'pending': return 'Väntande'
+    case 'confirmed': return 'Bekräftad'
+    case 'preparing': return 'Tillagas'
+    case 'ready': return 'Klar'
+    case 'delivered': return 'Levererad'
+    case 'cancelled': return 'Avbruten'
+    default: return status
+  }
+}
+
+const getLocationName = (location) => {
+  switch (location) {
+    case 'malmo': return 'Malmö'
+    case 'trelleborg': return 'Trelleborg'
+    case 'ystad': return 'Ystad'
+    case 'all': return 'Alla platser'
+    default: return location
+  }
+}

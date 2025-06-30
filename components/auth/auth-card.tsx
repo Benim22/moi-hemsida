@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { useSimpleAuth as useAuth } from "@/context/simple-auth-context"
-import { Loader2, Chrome } from "lucide-react"
+import { Loader2 } from "lucide-react"
 
 // Update the AuthCard component to handle redirects
 // Add this to the props interface
@@ -35,7 +35,7 @@ export function AuthCard({ mode, onSuccess }: AuthCardProps) {
   const [registerPassword, setRegisterPassword] = useState("")
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState("")
 
-  const { signIn, signUp, signInWithGoogle } = useAuth()
+  const { signIn, signUp } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
 
@@ -116,20 +116,7 @@ export function AuthCard({ mode, onSuccess }: AuthCardProps) {
     }
   }
 
-  const handleGoogleSignIn = async () => {
-    try {
-      await signInWithGoogle()
-      if (onSuccess) {
-        onSuccess()
-      }
-    } catch (error) {
-      toast({
-        title: "Ett fel inträffade",
-        description: "Kunde inte logga in med Google. Försök igen senare.",
-        variant: "destructive",
-      })
-    }
-  }
+
 
   return (
     <Card className="w-full max-w-md mx-auto border border-[#e4d699]/20 bg-black/50">
@@ -263,23 +250,7 @@ export function AuthCard({ mode, onSuccess }: AuthCardProps) {
           </TabsContent>
         </Tabs>
 
-        <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-[#e4d699]/20"></div>
-          </div>
-          <div className="relative flex justify-center text-xs">
-            <span className="bg-black px-2 text-white/60">eller fortsätt med</span>
-          </div>
-        </div>
 
-        <Button
-          variant="outline"
-          className="w-full border-[#e4d699]/30 hover:bg-[#e4d699]/10"
-          onClick={handleGoogleSignIn}
-        >
-          <Chrome className="mr-2 h-4 w-4" />
-          Google
-        </Button>
       </CardContent>
       <CardFooter className="flex justify-center text-sm text-white/60">
         Genom att fortsätta godkänner du våra användarvillkor och integritetspolicy.

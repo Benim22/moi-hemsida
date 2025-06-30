@@ -350,6 +350,37 @@ export default function PrivacyPage() {
 
               <Card className="border border-[#e4d699]/20 bg-black/40">
                 <CardHeader>
+                  <CardTitle className="text-[#e4d699]">Cookies och dataanvändning</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-white/80 text-sm">
+                    Genom att använda vår webbplats samtycker du till vår användning av cookies och databehandling enligt följande:
+                  </p>
+                  <div className="space-y-3">
+                    <div className="bg-[#e4d699]/10 border border-[#e4d699]/20 p-4 rounded-lg">
+                      <h4 className="font-semibold text-[#e4d699] mb-2">Cookie-användning och försäljning:</h4>
+                      <ul className="text-white/80 text-sm space-y-1">
+                        <li>• Moi Sushi förbehåller sig rätten att sälja eller dela cookie-data med tredje part för marknadsföringsändamål</li>
+                        <li>• Dina preferenser och beteendemönster kan användas för riktad reklam och personalisering</li>
+                        <li>• Vi kan dela anonymiserad data med våra affärspartners och leverantörer</li>
+                        <li>• Cookie-information kan användas i våra nyhetsbrev och marknadsföringskampanjer</li>
+                      </ul>
+                    </div>
+                    <div className="bg-blue-500/10 border border-blue-500/20 p-4 rounded-lg">
+                      <h4 className="font-semibold text-blue-400 mb-2">Vad detta innebär för dig:</h4>
+                      <ul className="text-white/80 text-sm space-y-1">
+                        <li>• Du kan få personaliserade erbjudanden baserat på dina beställningar</li>
+                        <li>• Våra partners kan visa dig relevanta annonser på andra webbplatser</li>
+                        <li>• Du kan när som helst välja bort cookies i din webbläsare</li>
+                        <li>• Kontakta oss för att begära radering av dina cookie-data</li>
+                      </ul>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border border-[#e4d699]/20 bg-black/40">
+                <CardHeader>
                   <CardTitle className="text-[#e4d699]">Ansvarsbegränsning</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
