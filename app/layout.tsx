@@ -14,6 +14,7 @@ import { LocationSelector } from "@/components/LocationSelector"
 import { CookieBanner } from "@/components/CookieBanner"
 import { AnalyticsProvider } from "@/components/AnalyticsProvider"
 import { Footer } from "@/components/Footer"
+import { WelcomeModal } from "@/components/WelcomeModal"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -291,6 +292,7 @@ export default function RootLayout({
                 <BugReportFeedback />
                 <LocationSelector />
                 <CookieBanner />
+                <WelcomeModal />
                 <AnalyticsProvider />
                 <Toaster />
               </div>

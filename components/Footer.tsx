@@ -23,7 +23,7 @@ export function Footer() {
                 <Instagram className="h-5 w-5" />
               </a>
               <a 
-                href="https://facebook.com/moisushi" 
+                href="https://www.facebook.com/p/Moi-Sushi-Pokepowl-100076334504958/" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-white/60 hover:text-[#e4d699] transition-colors"

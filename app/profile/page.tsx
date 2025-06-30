@@ -154,16 +154,14 @@ export default function ProfilePage() {
                     </Button>
                     <Button
                       variant="outline"
-                      className={`w-full justify-start border-[#e4d699]/30 hover:bg-[#e4d699]/10 relative ${
+                      className={`w-full justify-start border-[#e4d699]/30 hover:bg-[#e4d699]/10 relative opacity-60 ${
                         activeTab === "rewards" ? "bg-[#e4d699]/10 border-[#e4d699]" : ""
                       }`}
                       onClick={() => setActiveTab("rewards")}
                     >
                       <Gift className="mr-2 h-4 w-4" />
                       Belöningar
-                      {rewardData.canRedeem && (
-                        <span className="absolute -top-1 -right-1 h-3 w-3 bg-green-500 rounded-full animate-pulse" />
-                      )}
+                      <span className="ml-auto text-xs text-white/60">Kommer snart</span>
                     </Button>
                     <Button
                       variant="outline"
@@ -224,12 +222,10 @@ export default function ProfilePage() {
                       </TabsTrigger>
                       <TabsTrigger
                         value="rewards"
-                        className="data-[state=active]:bg-[#e4d699] data-[state=active]:text-black relative"
+                        className="data-[state=active]:bg-[#e4d699] data-[state=active]:text-black relative opacity-60"
                       >
                         Belöningar
-                        {rewardData.canRedeem && (
-                          <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />
-                        )}
+                        <span className="ml-1 text-xs text-white/60">Snart</span>
                       </TabsTrigger>
                       <TabsTrigger
                         value="settings"
@@ -305,72 +301,52 @@ export default function ProfilePage() {
                     </TabsContent>
 
                     <TabsContent value="rewards">
-                      <div className="space-y-6">
-                        <div>
-                          <h3 className="text-lg font-medium mb-2">Dina belöningar</h3>
-                          <p className="text-white/60 text-sm mb-4">
-                            Samla stämplar för varje köp och få fantastiska belöningar!
-                          </p>
+                      <div className="relative">
+                        {/* Overlay för att gråa ut innehållet */}
+                        <div className="absolute inset-0 bg-black/60 z-10 rounded-lg flex items-center justify-center">
+                          <div className="text-center p-8">
+                            <Gift className="h-16 w-16 mx-auto mb-4 text-[#e4d699]/60" />
+                            <h3 className="text-xl font-medium mb-2 text-white">Kommer snart</h3>
+                            <p className="text-white/80 text-sm">
+                              Vi arbetar på att lansera vårt belöningssystem. 
+                              <br />
+                              Håll utkik för uppdateringar!
+                            </p>
+                          </div>
                         </div>
+                        
+                        {/* Gråat innehåll i bakgrunden */}
+                        <div className="space-y-6 opacity-30 pointer-events-none">
+                          <div>
+                            <h3 className="text-lg font-medium mb-2">Dina belöningar</h3>
+                            <p className="text-white/60 text-sm mb-4">
+                              Samla stämplar för varje köp och få fantastiska belöningar!
+                            </p>
+                          </div>
 
-                        <RewardCard
-                          program={{
-                            id: 1,
-                            name: "Klippkort - Gratis maträtt",
-                            description: "Köp 10 rätter och få den 11:e gratis!",
-                            requiredStamps: 10,
-                            rewardDescription: "Valfri huvudrätt från menyn helt gratis",
-                            isActive: true
-                          }}
-                          userReward={rewardData}
-                          onRedeem={() => {
-                            toast({
-                              title: "Belöning inlöst! 🎉",
-                              description: "Din gratis maträtt väntar på dig. Visa denna bekräftelse i kassan.",
-                              variant: "default",
-                            })
-                            setRewardData(prev => ({
-                              ...prev,
-                              currentStamps: 0,
-                              totalRedeemed: prev.totalRedeemed + 1,
-                              canRedeem: false
-                            }))
-                          }}
-                        />
+                          <RewardCard
+                            program={{
+                              id: 1,
+                              name: "Klippkort - Gratis maträtt",
+                              description: "Köp 10 rätter och få den 11:e gratis!",
+                              requiredStamps: 10,
+                              rewardDescription: "Valfri huvudrätt från menyn helt gratis",
+                              isActive: true
+                            }}
+                            userReward={rewardData}
+                            onRedeem={() => {}}
+                          />
 
-                        {/* Reward History */}
-                        <div className="mt-8">
-                          <h4 className="text-md font-medium mb-4">Belöningshistorik</h4>
-                          <div className="space-y-3">
-                            {rewardData.totalRedeemed > 0 ? (
-                              Array.from({ length: rewardData.totalRedeemed }, (_, index) => (
-                                <div
-                                  key={index}
-                                  className="flex items-center justify-between p-3 bg-black/30 rounded-lg border border-[#e4d699]/10"
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-green-500/20 rounded-lg">
-                                      <Gift className="h-4 w-4 text-green-400" />
-                                    </div>
-                                    <div>
-                                      <p className="font-medium text-sm">Gratis huvudrätt</p>
-                                      <p className="text-xs text-white/60">
-                                        Inlöst {new Date(Date.now() - (index * 30 * 24 * 60 * 60 * 1000)).toLocaleDateString('sv-SE')}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                                    Använd
-                                  </Badge>
-                                </div>
-                              ))
-                            ) : (
+                          {/* Reward History */}
+                          <div className="mt-8">
+                            <h4 className="text-md font-medium mb-4">Belöningshistorik</h4>
+                            <div className="space-y-3">
                               <div className="text-center py-8 text-white/60">
                                 <Gift className="h-12 w-12 mx-auto mb-3 opacity-50" />
                                 <p>Inga inlösta belöningar än</p>
                                 <p className="text-sm">Fortsätt handla för att samla stämplar!</p>
                               </div>
-                            )}
+                            </div>
                           </div>
                         </div>
                       </div>

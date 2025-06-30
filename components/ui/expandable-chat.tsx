@@ -69,9 +69,9 @@ const ExpandableChat: React.FC<ExpandableChatProps> = ({
 
   return (
     <div className={cn(`fixed ${chatConfig.positions[position]} z-50`, className)} {...props}>
-      {/* Mobile backdrop - only visible when chat is open */}
+      {/* Backdrop - visible when chat is open */}
       {isOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 sm:hidden" onClick={handleBackdropClick} aria-hidden="true" />
+        <div className="fixed inset-0 bg-black/50 z-40" onClick={handleBackdropClick} aria-hidden="true" />
       )}
 
       <div
@@ -85,7 +85,12 @@ const ExpandableChat: React.FC<ExpandableChatProps> = ({
         )}
       >
         {children}
-        <Button variant="ghost" size="icon" className="absolute top-2 right-2 sm:hidden" onClick={closeChat}>
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="absolute top-2 right-2 z-20 text-white/60 hover:text-white hover:bg-white/10" 
+          onClick={closeChat}
+        >
           <X className="h-4 w-4" />
         </Button>
       </div>

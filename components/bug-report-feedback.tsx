@@ -91,7 +91,7 @@ export function BugReportFeedback() {
       onOpenChange={setIsOpen}
     >
       <div className="flex flex-col h-full">
-        <ExpandableChatHeader className="flex items-center justify-between bg-[#e4d699]/10 z-10 flex-shrink-0">
+        <ExpandableChatHeader className="flex items-center bg-[#e4d699]/10 z-10 flex-shrink-0">
           <div className="flex items-center">
             <img
               src="https://cloud.appwrite.io/v1/storage/buckets/678c0f710007dd361cec/files/67ccd62d00368913f38e/view?project=678bfed4002a8a6174c4"
@@ -103,14 +103,6 @@ export function BugReportFeedback() {
               <p className="text-xs text-muted-foreground">Hjälp oss förbättra hemsidan</p>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-white/60 hover:text-white"
-            onClick={() => setIsOpen(false)}
-          >
-            <X className="h-5 w-5" />
-          </Button>
         </ExpandableChatHeader>
 
         <ExpandableChatBody className="bg-black/90 flex-1 overflow-y-auto p-4">
