@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
-import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle, RefreshCw, Settings, Wifi, Bluetooth, Mail } from "lucide-react"
+import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle, RefreshCw, Settings, Wifi, Bluetooth, Mail, Search } from "lucide-react"
 import jsPDF from 'jspdf'
 
 // ePOS-Print API Declaration (since we'll load it dynamically)
@@ -49,9 +49,11 @@ export default function RestaurantTerminal() {
     enabled: false,
     autoprintEnabled: true,
     autoemailEnabled: true, // Automatisk e-postutskick
+    trelleborgAutoPrint: true, // Automatisk utskrift för Trelleborg-beställningar
     printerIP: '192.168.1.100',
-    printerPort: '80', // Standard HTTP port för Epson TM-T20III
-    connectionType: 'wifi', // 'wifi' or 'bluetooth'
+    printerPort: '9100', // Standard port för thermal printers (9100 för TCP, 80 för HTTP)
+    connectionType: 'tcp', // 'tcp', 'wifi', or 'bluetooth'
+    printMethod: 'backend', // 'backend' (node-thermal-printer) or 'frontend' (ePOS SDK)
     debugMode: true // För utveckling
   })
   const [printerStatus, setPrinterStatus] = useState({
@@ -69,7 +71,7 @@ export default function RestaurantTerminal() {
       timestamp,
       message,
       type, // 'info', 'success', 'error', 'warning'
-      id: Date.now()
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}` // Unique ID with timestamp + random string
     }
     
     setDebugLogs(prev => [logEntry, ...prev.slice(0, 49)]) // Keep last 50 logs
@@ -201,6 +203,56 @@ export default function RestaurantTerminal() {
     })
   }
 
+  // Test printer connection using backend API
+  const testBackendPrinterConnection = async () => {
+    addDebugLog('🔍 Testar backend-anslutning till Epson TM-T20III...', 'info')
+    
+    try {
+      const response = await fetch('/api/printer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          printerIP: printerSettings.printerIP,
+          printerPort: parseInt(printerSettings.printerPort),
+          testConnection: true
+        })
+      })
+
+      const result = await response.json()
+      
+      if (result.success && result.connected) {
+        addDebugLog('✅ Backend-anslutning till skrivare framgångsrik!', 'success')
+        setPrinterStatus(prev => ({ 
+          ...prev, 
+          connected: true, 
+          lastTest: new Date(),
+          error: null 
+        }))
+        return true
+      } else {
+        addDebugLog(`❌ Backend-anslutning misslyckades: ${result.error || result.message}`, 'error')
+        setPrinterStatus(prev => ({ 
+          ...prev, 
+          connected: false, 
+          lastTest: new Date(),
+          error: result.error || result.message 
+        }))
+        return false
+      }
+    } catch (error) {
+      addDebugLog(`❌ Backend API-fel: ${error.message}`, 'error')
+      setPrinterStatus(prev => ({ 
+        ...prev, 
+        connected: false, 
+        lastTest: new Date(),
+        error: `Backend API-fel: ${error.message}` 
+      }))
+      return false
+    }
+  }
+
   // Test real printer connection using network detection
   const testPrinterConnection = async () => {
     addDebugLog('🔍 Startar verklig nätverkstest till Epson TM-T20III...', 'info')
@@ -210,6 +262,15 @@ export default function RestaurantTerminal() {
       setPrinterStatus(prev => ({ ...prev, connected: false, error: 'Skrivare inte aktiverad' }))
       return
     }
+
+    // First try backend connection
+    const backendConnected = await testBackendPrinterConnection()
+    if (backendConnected) {
+      return // Backend connection successful
+    }
+
+    // Fallback to frontend connection test
+    addDebugLog('🔄 Backend misslyckades, testar frontend-anslutning...', 'info')
 
     // Validate IP address format
     const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
@@ -350,28 +411,42 @@ export default function RestaurantTerminal() {
 
       addDebugLog('Laddar ePOS-Print API...', 'info')
 
-      const script = document.createElement('script')
-      script.src = 'https://cdn.jsdelivr.net/npm/epos-print@1.0.0/epos-print.min.js'
-      script.async = true
-      
-      script.onload = () => {
-        addDebugLog('ePOS-Print API laddad framgångsrikt', 'success')
-        setEposLoaded(true)
-      }
-      
-      script.onerror = () => {
-        addDebugLog('Kunde inte ladda ePOS-Print API - kör i simulatorläge', 'warning')
-        setEposLoaded(false)
-      }
-      
-      document.head.appendChild(script)
+      // Try multiple sources for ePOS SDK
+      const sources = [
+        '/epos-2.js', // Local file (if available)
+        'https://unpkg.com/epos-print@1.0.0/epos-print.min.js',
+        'https://cdn.jsdelivr.net/npm/epos-print@1.0.0/epos-print.min.js'
+      ]
 
-      // Cleanup
-      return () => {
-        if (document.head.contains(script)) {
-          document.head.removeChild(script)
+      let currentSourceIndex = 0
+
+      const tryLoadScript = () => {
+        if (currentSourceIndex >= sources.length) {
+          addDebugLog('Kunde inte ladda ePOS-Print API från någon källa - kör i simulatorläge', 'warning')
+          setEposLoaded(false)
+          return
         }
+
+        const script = document.createElement('script')
+        script.src = sources[currentSourceIndex]
+        script.async = true
+        
+        script.onload = () => {
+          addDebugLog(`ePOS-Print API laddad framgångsrikt från: ${sources[currentSourceIndex]}`, 'success')
+          setEposLoaded(true)
+        }
+        
+        script.onerror = () => {
+          addDebugLog(`Kunde inte ladda från: ${sources[currentSourceIndex]}`, 'warning')
+          document.head.removeChild(script)
+          currentSourceIndex++
+          tryLoadScript()
+        }
+        
+        document.head.appendChild(script)
       }
+
+      tryLoadScript()
     }
 
     if (printerSettings.enabled) {
@@ -1055,8 +1130,32 @@ Utvecklad av Skaply
     return receiptText
   }
 
-  // Print simple text receipt - works without printer
-  const printSimpleReceipt = (order) => {
+  // Print simple text receipt - Now tries thermal printer first, then fallback to text window
+  const printSimpleReceipt = async (order) => {
+    addDebugLog(`📄 Startar förbättrad textkvitto för order #${order.order_number}`, 'info')
+    
+    // First, try to print to thermal printer if enabled
+    if (printerSettings.enabled && !printerSettings.debugMode) {
+      try {
+        addDebugLog('🖨️ Försöker skriva ut till termisk skrivare först...', 'info')
+        
+        if (printerSettings.printMethod === 'backend') {
+          const success = await printBackendReceipt(order)
+          if (success) {
+            addDebugLog('✅ Termisk utskrift lyckades! Hoppar över textfönster.', 'success')
+            return
+          }
+        } else {
+          await printEPOSReceipt(order)
+          addDebugLog('✅ ePOS utskrift utförd! Hoppar över textfönster.', 'success')
+          return
+        }
+      } catch (error) {
+        addDebugLog(`⚠️ Termisk utskrift misslyckades: ${error.message}. Visar textkvitto istället.`, 'warning')
+      }
+    }
+    
+    // Fallback: Show text receipt in window (original functionality)
     try {
       const receiptText = generateSimpleReceipt(order)
       
@@ -1082,17 +1181,26 @@ Utvecklad av Skaply
               max-width: 300px;
               margin: 0 auto;
             }
+            .warning {
+              background: #fff3cd;
+              border: 1px solid #ffeaa7;
+              padding: 10px;
+              margin: 10px 0;
+              border-radius: 4px;
+              text-align: center;
+            }
             @media print {
               body { margin: 0; }
-              .no-print { display: none; }
+              .no-print, .warning { display: none; }
             }
           </style>
         </head>
         <body>
+          ${!printerSettings.enabled ? '<div class="warning">⚠️ Termisk skrivare är avaktiverad. Detta är endast en textvisning.</div>' : ''}
           <div class="receipt">${receiptText}</div>
           <div class="no-print" style="margin-top: 20px; text-align: center;">
             <button onclick="window.print()" style="padding: 10px 20px; font-size: 14px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
-              🖨️ Skriv ut
+              🖨️ Skriv ut till vanlig skrivare
             </button>
             <button onclick="window.close()" style="padding: 10px 20px; font-size: 14px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">
               ❌ Stäng
@@ -1103,8 +1211,6 @@ Utvecklad av Skaply
       `)
       
       printWindow.document.close()
-      
-      // Auto-focus the print window
       printWindow.focus()
       
       addDebugLog(`📄 Textkvitto öppnat för order #${order.order_number}`, 'success')
@@ -1283,13 +1389,165 @@ Utvecklad av Skaply
     return receiptText
   }
 
+  // Network printer discovery with improved validation
+  const discoverNetworkPrinters = async () => {
+    addDebugLog('🔍 Söker efter nätverksskrivare (förbättrad validering)...', 'info')
+    
+    const commonPrinterIPs = [
+      '192.168.1.100', '192.168.1.101', '192.168.1.102',
+      '192.168.0.100', '192.168.0.101', '192.168.0.102',
+      '10.0.0.100', '10.0.0.101', '10.0.0.102'
+    ]
+    
+    const discoveredPrinters = []
+    let testedCount = 0
+    
+    addDebugLog(`Testar ${commonPrinterIPs.length} vanliga skrivare-IP-adresser...`, 'info')
+    
+    for (const ip of commonPrinterIPs) {
+      try {
+        testedCount++
+        addDebugLog(`Testar ${ip} (${testedCount}/${commonPrinterIPs.length})...`, 'info')
+        
+        const response = await fetch('/api/printer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            printerIP: ip,
+            printerPort: 9100,
+            testConnection: true
+          })
+        })
+        
+        if (response.ok) {
+          const result = await response.json()
+          
+          // Kontrollera att det är en verifierad skrivare, inte bara TCP-anslutning
+          if (result.success && result.connected && result.details?.verified) {
+            discoveredPrinters.push({
+              ip: ip,
+              name: `Epson TM-T20III (${ip})`,
+              status: 'verified',
+              connectionTime: result.details.connectionTime,
+              printerType: result.details.printerType
+            })
+            addDebugLog(`✅ Verifierad Epson-skrivare hittad på ${ip} (${result.details.connectionTime}ms)`, 'success')
+          } else if (result.details?.tcpConnected && !result.details?.printerVerified) {
+            addDebugLog(`⚠️ Enhet på ${ip} svarar men är inte en Epson-skrivare`, 'warning')
+          } else {
+            addDebugLog(`❌ Ingen skrivare på ${ip}`, 'info')
+          }
+        } else {
+          addDebugLog(`❌ Ingen svar från ${ip}`, 'info')
+        }
+      } catch (error) {
+        addDebugLog(`❌ Fel vid test av ${ip}: ${error.message}`, 'info')
+      }
+      
+      // Kort paus mellan tester för att inte överbelasta nätverket
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    
+    if (discoveredPrinters.length === 0) {
+      addDebugLog('❌ Ingen verifierad Epson-skrivare hittades på nätverket', 'warning')
+      addDebugLog('💡 Tips: Kontrollera att skrivaren är påslagen och ansluten till samma nätverk', 'info')
+    } else {
+      addDebugLog(`🎉 Hittade ${discoveredPrinters.length} verifierad(e) skrivare!`, 'success')
+      
+      // Automatiskt uppdatera inställningarna med första hittade skrivaren
+      if (discoveredPrinters.length > 0) {
+        const firstPrinter = discoveredPrinters[0]
+        setPrinterSettings(prev => ({
+          ...prev,
+          printerIP: firstPrinter.ip,
+          printerPort: '9100'
+        }))
+        addDebugLog(`🔧 Uppdaterade skrivarinställningar automatiskt: ${firstPrinter.ip}:9100`, 'success')
+      }
+    }
+    
+    return discoveredPrinters
+  }
+
+  // Print using backend API (node-thermal-printer)
+  const printBackendReceipt = async (order) => {
+    addDebugLog(`🖨️ Backend-utskrift för order #${order.order_number}`, 'info')
+    
+    try {
+      // Prepare receipt data
+      const items = order.cart_items || order.items
+      const itemsArray = typeof items === 'string' ? JSON.parse(items) : items || []
+      
+      const receiptData = {
+        header: 'Moi Sushi & Poke Bowl',
+        orderNumber: order.order_number,
+        timestamp: new Date(order.created_at).toLocaleString('sv-SE'),
+        customer: order.profiles?.name || order.customer_name || 'Gäst',
+        phone: order.profiles?.phone || order.phone,
+        items: itemsArray,
+        total: `${order.total_price || order.amount} kr`,
+        deliveryType: order.delivery_type === 'delivery' ? 'Leverans' : 'Avhämtning'
+      }
+
+      const response = await fetch('/api/printer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          printerIP: printerSettings.printerIP,
+          printerPort: parseInt(printerSettings.printerPort),
+          receiptData: receiptData
+        })
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        addDebugLog(`✅ Backend-utskrift framgångsrik för order #${order.order_number}`, 'success')
+        setPrinterStatus(prev => ({ ...prev, lastTest: new Date(), error: null }))
+        showBrowserNotification(
+          '🖨️ Kvitto utskrivet!', 
+          `Order #${order.order_number} utskrivet via backend`,
+          false
+        )
+        return true
+      } else {
+        addDebugLog(`❌ Backend-utskrift misslyckades: ${result.error}`, 'error')
+        setPrinterStatus(prev => ({ ...prev, error: result.error }))
+        return false
+      }
+    } catch (error) {
+      addDebugLog(`❌ Backend API-fel vid utskrift: ${error.message}`, 'error')
+      setPrinterStatus(prev => ({ ...prev, error: error.message }))
+      return false
+    }
+  }
+
   // Print Receipt to Epson TM-T20III with ESC/POS commands
   const printEPOSReceipt = async (order) => {
     addDebugLog(`🖨️ Skriver ut kvitto för order #${order.order_number}`, 'info')
     
     try {
       // Simulator mode
-      if (!eposLoaded || printerSettings.debugMode) {
+      if (!printerSettings.enabled || printerSettings.debugMode) {
+        const receipt = generateMockEPOSReceipt(order)
+        simulatePrintReceipt(receipt, order)
+        return
+      }
+
+      // Choose print method based on settings
+      if (printerSettings.printMethod === 'backend') {
+        const backendSuccess = await printBackendReceipt(order)
+        if (backendSuccess) {
+          return // Backend printing successful
+        }
+        addDebugLog('🔄 Backend-utskrift misslyckades, provar frontend...', 'warning')
+      }
+
+      // Frontend ePOS printing
+      if (!eposLoaded) {
+        addDebugLog('❌ ePOS SDK inte laddat - använder simulator', 'warning')
         const receipt = generateMockEPOSReceipt(order)
         simulatePrintReceipt(receipt, order)
         return
@@ -2449,6 +2707,21 @@ Utvecklad av Skaply
 
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
                     <div className="flex-1">
+                      <Label className="text-white font-medium text-sm sm:text-base">🏪 Trelleborg Auto-utskrift</Label>
+                      <p className="text-white/60 text-xs sm:text-sm">Skriv ut kvitton automatiskt för alla Trelleborg-beställningar</p>
+                    </div>
+                    <Switch
+                      checked={printerSettings.trelleborgAutoPrint}
+                      onCheckedChange={(checked) => {
+                        setPrinterSettings(prev => ({ ...prev, trelleborgAutoPrint: checked }))
+                        addDebugLog(`Trelleborg automatisk utskrift ${checked ? 'aktiverad' : 'avaktiverad'}`, checked ? 'success' : 'warning')
+                      }}
+                      disabled={!printerSettings.enabled}
+                    />
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
+                    <div className="flex-1">
                       <Label className="text-white font-medium text-sm sm:text-base">Debug-läge (Simulator)</Label>
                       <p className="text-white/60 text-xs sm:text-sm">Använd simulator istället för riktig skrivare</p>
                     </div>
@@ -2459,6 +2732,52 @@ Utvecklad av Skaply
                         addDebugLog(`Debug-läge ${checked ? 'aktiverat' : 'avaktiverat'}`, checked ? 'warning' : 'info')
                       }}
                     />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-white font-medium text-sm sm:text-base">Utskriftsmetod</Label>
+                      <select
+                        value={printerSettings.printMethod}
+                        onChange={(e) => {
+                          setPrinterSettings(prev => ({ ...prev, printMethod: e.target.value }))
+                          addDebugLog(`Utskriftsmetod ändrad till: ${e.target.value}`, 'info')
+                        }}
+                        className="bg-black/50 border border-[#e4d699]/30 rounded-md px-3 py-2 text-white text-sm w-full"
+                        disabled={printerSettings.debugMode}
+                      >
+                        <option value="backend">Backend (Node.js TCP)</option>
+                        <option value="frontend">Frontend (ePOS SDK)</option>
+                      </select>
+                      <p className="text-white/60 text-xs mt-1">
+                        {printerSettings.printMethod === 'backend' 
+                          ? 'Använder node-thermal-printer via TCP' 
+                          : 'Använder Epson ePOS SDK via HTTP'
+                        }
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-white font-medium text-sm sm:text-base">Anslutningstyp</Label>
+                      <select
+                        value={printerSettings.connectionType}
+                        onChange={(e) => {
+                          const newType = e.target.value
+                          const newPort = newType === 'tcp' ? '9100' : '80'
+                          setPrinterSettings(prev => ({ 
+                            ...prev, 
+                            connectionType: newType,
+                            printerPort: newPort
+                          }))
+                          addDebugLog(`Anslutningstyp ändrad till: ${newType} (port: ${newPort})`, 'info')
+                        }}
+                        className="bg-black/50 border border-[#e4d699]/30 rounded-md px-3 py-2 text-white text-sm w-full"
+                        disabled={printerSettings.debugMode}
+                      >
+                        <option value="tcp">TCP (Port 9100)</option>
+                        <option value="wifi">Wi-Fi HTTP (Port 80)</option>
+                        <option value="bluetooth">Bluetooth</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2483,10 +2802,16 @@ Utvecklad av Skaply
                           setPrinterSettings(prev => ({ ...prev, printerPort: e.target.value }))
                           addDebugLog(`Skrivare port uppdaterad: ${e.target.value}`, 'info')
                         }}
-                        placeholder="8008"
+                        placeholder={printerSettings.connectionType === 'tcp' ? '9100' : '80'}
                         className="bg-black/50 border-[#e4d699]/30 text-white text-sm"
                         disabled={printerSettings.debugMode}
                       />
+                      <p className="text-white/60 text-xs mt-1">
+                        {printerSettings.connectionType === 'tcp' 
+                          ? 'Standard TCP port för thermal printers' 
+                          : 'Standard HTTP port för ePOS'
+                        }
+                      </p>
                     </div>
                   </div>
 
@@ -2501,6 +2826,17 @@ Utvecklad av Skaply
                       <Wifi className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                       <span className="hidden sm:inline">Testa anslutning</span>
                       <span className="sm:hidden">Test</span>
+                    </Button>
+                    
+                    <Button
+                      onClick={discoverNetworkPrinters}
+                      variant="outline"
+                      className="border-purple-500/40 text-purple-400 hover:bg-purple-500/10 text-xs sm:text-sm"
+                      size="sm"
+                    >
+                      <Search className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                      <span className="hidden sm:inline">Sök skrivare</span>
+                      <span className="sm:hidden">Sök</span>
                     </Button>
                     
                     <Button
