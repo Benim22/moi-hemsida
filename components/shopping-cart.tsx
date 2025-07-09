@@ -1291,11 +1291,11 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
                 <p className="text-xs text-white/60 mt-3">
                   Du kommer att omdirigeras till Foodora för att slutföra beställningen
                 </p>
-                {totalPrice < 150 && (
+                {totalPrice < 120 && (
                   <div className="mt-3 p-2 bg-orange-500/10 border border-orange-500/30 rounded-lg">
                     <p className="text-xs text-orange-400">
-                      ⚠️ Minsta beställning för hemleverans är 150 kr. 
-                      Du behöver lägga till {150 - totalPrice} kr till.
+                      ⚠️ Minsta beställning för hemleverans är 120 kr. 
+                      Du behöver lägga till {120 - totalPrice} kr till.
                     </p>
                   </div>
                 )}
@@ -1309,7 +1309,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
           className="w-full bg-[#e4d699] text-black hover:bg-[#e4d699]/90" 
           disabled={
             isSubmitting || 
-            (deliveryType === "delivery" && totalPrice < 150) ||
+            (deliveryType === "delivery" && totalPrice < 120) ||
             (deliveryType === "pickup" && !customerName) ||
             (deliveryType === "pickup" && !customerPhone) ||
             (deliveryType === "pickup" && !customerEmail) ||
@@ -1320,8 +1320,8 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
           {isSubmitting 
             ? "Bearbetar..." 
             : deliveryType === "delivery" 
-              ? totalPrice < 150 
-                ? `Lägg till ${150 - totalPrice} kr för hemleverans`
+              ? totalPrice < 120 
+                ? `Lägg till ${120 - totalPrice} kr för hemleverans`
                 : "Fortsätt till Foodora"
               : (!isCustomPickupTime && !pickupTime) || (isCustomPickupTime && (!pickupDate || !pickupTimeSlot))
                 ? "Välj avhämtningstid"
