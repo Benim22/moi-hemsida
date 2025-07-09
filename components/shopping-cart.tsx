@@ -730,74 +730,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         // Don't fail the order if email fails
       }
 
-      // Automatisk kvittoutskrift för Trelleborg-beställningar
-      if (selectedLocation.id === 'trelleborg') {
-        try {
-          console.log("🖨️ Kontrollerar skrivarinställningar för automatisk utskrift...")
-          
-          // Hämta skrivarinställningar
-          const settingsResponse = await fetch('/api/printer', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              action: 'get_settings'
-            })
-          })
 
-          const settingsResult = await settingsResponse.json()
-          
-          if (settingsResult.success && settingsResult.settings.trelleborgAutoPrint && settingsResult.settings.enabled) {
-            console.log("🖨️ Skickar automatisk kvittoutskrift för Trelleborg-beställning...")
-            
-            const printResponse = await fetch('/api/printer', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                action: 'print',
-                order: {
-                  order_number: orderNumber,
-                  created_at: new Date().toISOString(),
-                  customer_name: customerName,
-                  phone: customerPhone,
-                  profiles: {
-                    name: customerName,
-                    phone: customerPhone
-                  },
-                  cart_items: items.map(item => ({
-                    name: item.name,
-                    quantity: item.quantity,
-                    price: item.price,
-                    extras: item.extras || undefined
-                  })),
-                  total_amount: totalPrice,
-                  order_type: deliveryType === "delivery" ? "Leverans" : "Avhämtning",
-                  delivery_address: deliveryType === "delivery" ? customerAddress : undefined,
-                  pickup_time: getPickupTimeText(),
-                  special_instructions: specialInstructions || undefined,
-                  location: selectedLocation.name
-                }
-              })
-            })
-
-            const printResult = await printResponse.json()
-            if (printResult.success) {
-              console.log("✅ Automatisk kvittoutskrift framgångsrik för Trelleborg")
-            } else {
-              console.error("❌ Automatisk kvittoutskrift misslyckades:", printResult.error)
-              // Fortsätt även om utskriften misslyckas
-            }
-          } else {
-            console.log("ℹ️ Automatisk utskrift för Trelleborg är avaktiverad eller skrivare inte aktiverad")
-          }
-        } catch (printError) {
-          console.error("❌ Fel vid automatisk kvittoutskrift:", printError)
-          // Fortsätt även om utskriften misslyckas
-        }
-      }
 
       // Clear cart immediately after successful order
       clearCart()

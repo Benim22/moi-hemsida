@@ -6,8 +6,7 @@ const DEFAULT_PRINTER_SETTINGS = {
   enabled: false,
   autoprintEnabled: true,
   autoemailEnabled: true,
-  trelleborgAutoPrint: true,
-  printerIP: '192.168.1.100',
+  printerIP: '192.168.1.103',
   printerPort: '9100',
   connectionType: 'tcp',
   printMethod: 'backend',
@@ -44,6 +43,7 @@ export async function POST(request: NextRequest) {
         return await testConnection(printerIP || printerSettings.printerIP, printerPort || parseInt(printerSettings.printerPort))
 
       case 'print':
+        console.log(`📝 BACKEND: Utskrift begärd för order #${order?.order_number} - Timestamp: ${Date.now()}`)
         return await printReceipt(order, printerIP || printerSettings.printerIP, printerPort || parseInt(printerSettings.printerPort))
 
       default:
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     console.error('Printer API error:', error)
     return NextResponse.json({
       success: false,
-      error: error.message || 'Okänt fel'
+      error: error instanceof Error ? error.message : 'Okänt fel'
     }, { status: 500 })
   }
 }
@@ -83,25 +83,29 @@ async function testConnection(ip: string, port: number) {
     if (isConnected) {
       return NextResponse.json({
         success: true,
+        connected: true,
         message: `Anslutning till ${ip}:${port} framgångsrik`
       })
     } else {
       return NextResponse.json({
         success: false,
+        connected: false,
         error: `Kan inte ansluta till skrivaren på ${ip}:${port}`
       })
     }
   } catch (error) {
     return NextResponse.json({
       success: false,
-      error: `Anslutningsfel: ${error.message}`
+      connected: false,
+      error: `Anslutningsfel: ${error instanceof Error ? error.message : 'Okänt fel'}`
     })
   }
 }
 
 async function printReceipt(order: any, ip: string, port: number) {
   try {
-    console.log(`Printing receipt to ${ip}:${port}`, order)
+    console.log(`Printing receipt to ${ip}:${port}`)
+    console.log('Order data:', JSON.stringify(order, null, 2))
     
     const printer = new ThermalPrinter({
       type: PrinterTypes.EPSON,
@@ -124,46 +128,154 @@ async function printReceipt(order: any, ip: string, port: number) {
     // Clear any previous content
     printer.clear()
 
-    // Header
+    // Header - Större och mer synligt
     printer.alignCenter()
-    printer.setTextSize(1, 1)
+    printer.setTextSize(2, 2)
     printer.bold(true)
-    printer.println("Moi Sushi & Poke Bowl")
+    printer.println("MOI SUSHI")
+    printer.println("& POKE BOWL")
     printer.bold(false)
     printer.setTextSize(0, 0)
     printer.println("================================")
     printer.newLine()
 
-    // Order info
+    // Order info - Större och tydligare
     printer.alignLeft()
-    printer.println(`Order: #${order.order_number}`)
-    printer.println(`Datum: ${new Date(order.created_at).toLocaleString('sv-SE')}`)
-    printer.println(`Kund: ${order.customer_name || order.profiles?.name || 'Gast'}`)
+    printer.setTextSize(1, 1)
+    printer.bold(true)
+    printer.println(`ORDER: #${order.order_number}`)
+    printer.bold(false)
     
+    // Datum - Lite mindre för att få plats på en rad
+    printer.setTextSize(0, 0)
+    printer.bold(true)
+    printer.println(`DATUM: ${new Date(order.created_at).toLocaleString('sv-SE')}`)
+    printer.bold(false)
+    printer.newLine()
+
+    // Kundinfo - Större typsnitt
+    printer.setTextSize(1, 1)
+    printer.bold(true)
+    printer.println("KUND:")
+    printer.bold(false)
+    
+    // Namn - Större och fet stil
+    printer.setTextSize(1, 1)
+    printer.bold(true)
+    printer.println(`${order.customer_name || order.profiles?.name || 'Gast'}`)
+    printer.bold(false)
+    
+    // Telefon - Större och mer synligt
     const phone = order.phone || order.profiles?.phone
     if (phone) {
-      printer.println(`Telefon: ${phone}`)
+      printer.setTextSize(1, 1)
+      printer.bold(true)
+      printer.println(`TEL: ${phone}`)
+      printer.bold(false)
     }
+    printer.setTextSize(0, 0)
+    printer.newLine()
 
-    if (order.order_type) {
-      printer.println(`Typ: ${order.order_type}`)
+    // Leveranstyp - Större och mer synligt
+    printer.setTextSize(1, 1)
+    printer.bold(true)
+    if (order.delivery_type === 'delivery') {
+      printer.println("LEVERANS:")
+    } else {
+      printer.println("HAMTNING:")
     }
+    printer.bold(false)
+    printer.setTextSize(0, 0)
 
     if (order.delivery_address) {
-      printer.println(`Adress: ${order.delivery_address}`)
+      printer.println(`${order.delivery_address}`)
     }
 
-    if (order.pickup_time) {
-      printer.println(`Tid: ${order.pickup_time}`)
+    // HÄMTNINGSTID/LEVERANSTID - Extrahera från notes-fältet
+    let timeToShow = order.pickup_time || order.delivery_time
+    let remainingInstructions = order.special_instructions || ''
+    let estimatedMinutes = 30 // Standard: 30 minuter
+    
+    // Extrahera hämtningstid från notes-fältet
+    const notes = order.notes || ''
+    if (notes) {
+      const timeMatch = notes.match(/(?:Hämtningstid|Leveranstid):\s*(.+?)(?:\s*\||$)/i)
+      if (timeMatch) {
+        const timeText = timeMatch[1].trim().toLowerCase()
+        
+        console.log(`🕒 Hittad hämtningstid: "${timeText}"`)
+        
+        // Hantera olika tidsformat
+        if (timeText.includes('så snart som möjligt') || timeText.includes('asap')) {
+          estimatedMinutes = 20
+        } else if (timeText.includes('om 30 minuter') || timeText.includes('30 min')) {
+          estimatedMinutes = 30
+        } else if (timeText.includes('om 1 timme') || timeText.includes('1 tim')) {
+          estimatedMinutes = 60
+        } else if (timeText.includes('om 2 timmar') || timeText.includes('2 tim')) {
+          estimatedMinutes = 120
+        } else {
+          // Försök extrahera minuter från texten (t.ex. "30 minuter", "45 min", "1 timme")
+          const minutesMatch = timeText.match(/(\d+)\s*(min|minuter|minutes)/i)
+          const hoursMatch = timeText.match(/(\d+)\s*(tim|timme|timmar|hour|hours)/i)
+          
+          if (minutesMatch) {
+            estimatedMinutes = parseInt(minutesMatch[1])
+          } else if (hoursMatch) {
+            estimatedMinutes = parseInt(hoursMatch[1]) * 60 // Konvertera timmar till minuter
+          } else if (timeText.includes('lång') || timeText.includes('sent')) {
+            estimatedMinutes = 45 // Längre tid för "tar lång tid"
+          }
+        }
+        
+        console.log(`🕒 Beräknad väntetid: ${estimatedMinutes} minuter`)
+      }
     }
 
-    if (order.location) {
-      printer.println(`Restaurang: ${order.location}`)
+    // Beräkna faktisk hämtningstid om ingen specifik tid finns
+    if (!timeToShow) {
+      const orderTime = new Date(order.created_at)
+      const pickupTime = new Date(orderTime.getTime() + (estimatedMinutes * 60 * 1000))
+      timeToShow = pickupTime.toLocaleTimeString('sv-SE', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false 
+      })
     }
 
+    if (timeToShow) {
+      printer.newLine()
+      printer.alignCenter()
+      printer.setTextSize(2, 2)
+      printer.bold(true)
+      if (order.delivery_type === 'delivery') {
+        printer.println("LEVERANSTID:")
+      } else {
+        printer.println("HAMTNINGSTID:")
+      }
+      printer.println(`${timeToShow}`)
+      printer.bold(false)
+      printer.setTextSize(0, 0)
+      
+      // Lägg till info om beräknad tid (om det är automatiskt beräknat)
+      if (!order.pickup_time && !order.delivery_time) {
+        printer.println(`(Beraknad: +${estimatedMinutes} min)`)
+      }
+      
+      printer.alignLeft()
+      printer.newLine()
+    }
+
+    printer.println("================================")
+
+    // Items - Större och tydligare
+    printer.setTextSize(1, 1)
+    printer.bold(true)
+    printer.println("BESTALLNING:")
+    printer.bold(false)
+    printer.setTextSize(0, 0)
     printer.println("--------------------------------")
-
-    // Items
+    
     const items = order.cart_items || order.items || []
     const itemsArray = Array.isArray(items) ? items : (typeof items === 'string' ? JSON.parse(items) : [])
     
@@ -174,44 +286,119 @@ async function printReceipt(order: any, ip: string, port: number) {
       const itemTotal = itemPrice * quantity
       subtotal += itemTotal
 
+      // Item med större typsnitt
+      printer.setTextSize(1, 1)
+      printer.bold(true)
       printer.println(`${quantity}x ${item.name}`)
+      printer.bold(false)
+      printer.setTextSize(0, 0)
+      
+      // Debug: Visa item-objektet
+      console.log(`📋 Item detaljer för ${item.name}:`, JSON.stringify(item, null, 2))
+      
+      // Visa alternativ/options (t.ex. "Flamberad")
+      if (item.options) {
+        // Hantera flamberad-alternativ specifikt
+        if (item.options.flamberad !== undefined) {
+          const flamberadText = item.options.flamberad ? 'FLAMBERAD' : 'INTE FLAMBERAD'
+          console.log(`🔥 Flamberad-alternativ för ${item.name}: ${flamberadText}`)
+          printer.println(`   ${flamberadText}`)
+        }
+        
+        // Hantera andra options om det är en array
+        if (Array.isArray(item.options) && item.options.length > 0) {
+          const optionsText = item.options.map((opt: any) => typeof opt === 'object' ? opt.name : opt).join(', ')
+          printer.println(`   ${optionsText}`)
+        }
+      }
+      
+      // Visa alternativ från selectedOption fältet
+      if (item.selectedOption) {
+        printer.println(`   ${item.selectedOption}`)
+      }
+      
+      // Visa alternativ från alternative fältet
+      if (item.alternative) {
+        printer.println(`   ${item.alternative}`)
+      }
       
       // Add extras if any
       if (item.extras && item.extras.length > 0) {
-        const extrasText = Array.isArray(item.extras) 
-          ? item.extras.map(e => typeof e === 'object' ? e.name : e).join(', ')
-          : item.extras
-        printer.println(`   + ${extrasText}`)
+        for (const extra of item.extras) {
+          if (typeof extra === 'object') {
+            const extraPrice = parseFloat(extra.price) || 0
+            const extraTotal = extraPrice * quantity
+            if (extraPrice > 0) {
+              printer.println(`   + ${extra.name} (+${extraTotal} kr)`)
+            } else {
+              printer.println(`   + ${extra.name}`)
+            }
+          } else {
+            printer.println(`   + ${extra}`)
+          }
+        }
       }
       
+      // Pris med större typsnitt
       printer.alignRight()
+      printer.setTextSize(1, 1)
+      printer.bold(true)
       printer.println(`${itemTotal} kr`)
+      printer.bold(false)
+      printer.setTextSize(0, 0)
       printer.alignLeft()
+      printer.println("") // Extra rad mellan items
     }
 
-    printer.println("--------------------------------")
+    printer.println("================================")
 
-    // Total
-    printer.alignRight()
-    printer.setTextSize(1, 0)
+    // Total - Mycket större och mer synligt
+    printer.alignCenter()
+    printer.setTextSize(2, 2)
     printer.bold(true)
     const totalAmount = order.total_amount || order.totalPrice || subtotal
-    printer.println(`TOTALT: ${totalAmount} kr`)
+    printer.println("TOTALT:")
+    printer.println(`${totalAmount} kr`)
     printer.bold(false)
     printer.setTextSize(0, 0)
     printer.alignLeft()
 
-    // Special instructions
-    if (order.special_instructions) {
+    // Special instructions - Visa endast återstående önskemål (utan hämtningstid)
+    if (remainingInstructions && remainingInstructions.length > 0) {
       printer.newLine()
-      printer.println("Speciella önskemål:")
-      printer.println(order.special_instructions)
+      printer.println("================================")
+      printer.setTextSize(1, 1)
+      printer.bold(true)
+      printer.println("SPECIALONSKEMÅL:")
+      printer.bold(false)
+      printer.setTextSize(0, 0)
+      printer.println(remainingInstructions)
+      printer.println("================================")
     }
 
-    // Footer
+    // Order metadata
+    if (order.payment_method) {
+      printer.newLine()
+      printer.println(`Betalning: ${order.payment_method === 'cash' ? 'I restaurangen' : order.payment_method}`)
+    }
+
+    // Order location
+    if (order.location) {
+      printer.println(`Restaurang: ${order.location}`)
+    }
+
+    // Footer - Enkel och ren
     printer.newLine()
     printer.alignCenter()
-    printer.println("Tack för ditt köp!")
+    printer.setTextSize(1, 1)
+    printer.bold(true)
+    printer.println("TACK FÖR DITT KÖP!")
+    printer.bold(false)
+    printer.setTextSize(0, 0)
+    printer.println("Välkommen åter!")
+    printer.newLine()
+    printer.println("Moi Sushi & Pokébowl")
+    printer.newLine()
     printer.println("Utvecklad av Skaply")
     printer.newLine()
 
@@ -230,7 +417,7 @@ async function printReceipt(order: any, ip: string, port: number) {
     console.error('Print error:', error)
     return NextResponse.json({
       success: false,
-      error: `Utskriftsfel: ${error.message}`
+      error: `Utskriftsfel: ${error instanceof Error ? error.message : 'Okänt fel'}`
     })
   }
 }
