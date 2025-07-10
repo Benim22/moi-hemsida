@@ -10,7 +10,9 @@ const DEFAULT_PRINTER_SETTINGS = {
   printerPort: '9100',
   connectionType: 'tcp',
   printMethod: 'backend',
-  debugMode: false // Changed to false - let users enable debug mode if needed
+  debugMode: false, // Changed to false - let users enable debug mode if needed
+  webhookUrl: process.env.PRINTER_WEBHOOK_URL || 'http://localhost:3001/webhook/print',
+  webhookToken: process.env.PRINTER_WEBHOOK_TOKEN || 'YOUR_SECRET_TOKEN'
 }
 
 // Check if we're in production environment
@@ -135,7 +137,41 @@ async function printReceipt(order: any, ip: string, port: number) {
     console.log(`Printing receipt to ${ip}:${port}`)
     console.log('Order data:', JSON.stringify(order, null, 2))
     
-    // Remove production simulation - always try to print for real
+    // Try direct TCP connection first
+    try {
+      const printer = new ThermalPrinter({
+        type: PrinterTypes.EPSON,
+        interface: `tcp://${ip}:${port}`,
+        characterSet: CharacterSet.PC858_EURO,
+        removeSpecialCharacters: false,
+        lineCharacter: "-",
+        breakLine: BreakLine.WORD,
+        options: {
+          timeout: 10000
+        }
+      })
+
+      // Check connection first
+      const isConnected = await printer.isPrinterConnected()
+      if (!isConnected) {
+        throw new Error(`Skrivaren på ${ip}:${port} svarar inte`)
+      }
+      
+      console.log('✅ Direct TCP connection successful - proceeding with printing')
+    } catch (tcpError) {
+      console.log('❌ Direct TCP connection failed:', tcpError.message)
+      
+      // If in production and TCP fails, try webhook fallback
+      if (isProduction) {
+        console.log('🔄 Attempting webhook fallback for production environment...')
+        return await printViaWebhook(order)
+      } else {
+        // In development, re-throw the error
+        throw tcpError
+      }
+    }
+    
+    // If we reach here, TCP connection was successful, continue with normal printing
     const printer = new ThermalPrinter({
       type: PrinterTypes.EPSON,
       interface: `tcp://${ip}:${port}`,
@@ -147,12 +183,6 @@ async function printReceipt(order: any, ip: string, port: number) {
         timeout: 10000
       }
     })
-
-    // Check connection first
-    const isConnected = await printer.isPrinterConnected()
-    if (!isConnected) {
-      throw new Error(`Skrivaren på ${ip}:${port} svarar inte`)
-    }
 
     // Clear any previous content
     printer.clear()
@@ -447,6 +477,68 @@ async function printReceipt(order: any, ip: string, port: number) {
     return NextResponse.json({
       success: false,
       error: `Utskriftsfel: ${error instanceof Error ? error.message : 'Okänt fel'}`
+    })
+  }
+}
+
+// Webhook fallback function for production environments
+async function printViaWebhook(order: any) {
+  try {
+    console.log(`📡 Attempting webhook printing for order #${order.order_number}`)
+    
+    const webhookUrl = printerSettings.webhookUrl
+    const webhookToken = printerSettings.webhookToken
+    
+    if (!webhookUrl) {
+      throw new Error('Webhook URL inte konfigurerad')
+    }
+    
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        order: order,
+        authToken: webhookToken
+      }),
+      // Add timeout for webhook request
+      signal: AbortSignal.timeout(15000) // 15 second timeout
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(`Webhook fel: ${response.status} - ${errorData.error || 'Okänt fel'}`)
+    }
+    
+    const result = await response.json()
+    console.log('✅ Webhook printing successful:', result.message)
+    
+    return NextResponse.json({
+      success: true,
+      message: `Kvitto utskrivet via webhook: ${result.message}`,
+      method: 'webhook'
+    })
+    
+  } catch (error) {
+    console.error('❌ Webhook printing failed:', error)
+    
+    // If webhook also fails, provide helpful error message
+    let errorMessage = 'Webhook-utskrift misslyckades'
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        errorMessage = 'Webhook timeout - kontrollera att lokal server kör'
+      } else if (error.message.includes('fetch')) {
+        errorMessage = 'Kan inte nå webhook-server - kontrollera URL och att servern kör'
+      } else {
+        errorMessage = error.message
+      }
+    }
+    
+    return NextResponse.json({
+      success: false,
+      error: `Utskrift misslyckades: ${errorMessage}. Kontrollera att lokal webhook-server kör på ${printerSettings.webhookUrl}`,
+      method: 'webhook'
     })
   }
 }
