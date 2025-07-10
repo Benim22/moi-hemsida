@@ -21,16 +21,16 @@ declare global {
   }
 }
 
-// Default printer settings - should match API settings
+// Default printer settings - optimized for iPad production use
 const DEFAULT_PRINTER_SETTINGS = {
-  enabled: false, // Set to false by default for production
-  autoprintEnabled: false, // Disabled for production
+  enabled: true, // Enable by default for iPad use
+  autoprintEnabled: true, // Enable auto-print for webhook orders
   autoemailEnabled: true,
   printerIP: '192.168.1.103',
-  printerPort: '9100',
-  connectionType: 'tcp',
-  printMethod: 'backend',
-  debugMode: true // Always true for production to use simulator
+  printerPort: '80', // Use HTTP port 80 instead of TCP port 9100
+  connectionType: 'http', // Use HTTP instead of TCP
+  printMethod: 'frontend', // Use frontend/ePOS for iPad compatibility
+  debugMode: false // Disable debug mode for production
 }
 
 export default function RestaurantTerminal() {
@@ -71,6 +71,12 @@ export default function RestaurantTerminal() {
   // Global variabel för extra skydd mot duplicering
   const [lastPrintedOrderId, setLastPrintedOrderId] = useState(null)
   const [lastPrintedTime, setLastPrintedTime] = useState(null)
+
+  // Webhook bridge states
+  const [webhookBridgeActive, setWebhookBridgeActive] = useState(false)
+  const [webhookBridgeStatus, setWebhookBridgeStatus] = useState('inactive')
+  const [webhookEventCount, setWebhookEventCount] = useState(0)
+  const [lastWebhookEvent, setLastWebhookEvent] = useState(null)
 
   // Debug logging function
   const addDebugLog = (message, type = 'info') => {
@@ -434,11 +440,13 @@ export default function RestaurantTerminal() {
     }
   }
 
-  // Load ePOS SDK only in development or when explicitly enabled
+  // Load ePOS SDK - allow in production for iPad bridge functionality
   useEffect(() => {
-    // Skip loading ePOS SDK in production to avoid Mixed Content errors
-    if (window.location.protocol === 'https:' && window.location.hostname !== 'localhost') {
-      console.log('🚫 Hoppar över ePOS SDK-laddning i produktionsmiljö (HTTPS)')
+    // Allow ePOS SDK in production when using frontend print method
+    if (window.location.protocol === 'https:' && 
+        window.location.hostname !== 'localhost' && 
+        printerSettings.printMethod !== 'frontend') {
+      console.log('🚫 Hoppar över ePOS SDK-laddning i produktionsmiljö (HTTPS) - använd frontend print method för iPad')
       setEposLoaded(false)
       return
     }
