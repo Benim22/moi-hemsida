@@ -3157,7 +3157,8 @@ function LocationEditor() {
   // Lista över tillgängliga restaurangbilder i /public/restaurang-bilder/
   const availableRestaurantImages = [
     "image0.jpeg", "image1.jpeg", "image2.jpeg", "image3.png",
-    "vagn1.jpeg", "vagn2.jpeg", "vagn3.jpeg", "vagn4.jpeg", "vagn5.jpeg"
+    "vagn1.jpeg", "vagn2.jpeg", "vagn3.jpeg", "vagn4.jpeg", "vagn5.jpeg",
+    "IMG_9233.webp", "IMG_9234.webp"
   ]
 
   useEffect(() => {
