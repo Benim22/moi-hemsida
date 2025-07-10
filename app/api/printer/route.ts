@@ -10,7 +10,7 @@ const DEFAULT_PRINTER_SETTINGS = {
   printerPort: '9100',
   connectionType: 'tcp',
   printMethod: 'backend',
-  debugMode: true // Always true for production to use simulator
+  debugMode: false // Changed to false - let users enable debug mode if needed
 }
 
 // Check if we're in production environment
@@ -20,9 +20,9 @@ const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL
 // For now, we'll use memory storage (resets on server restart)
 let printerSettings = { 
   ...DEFAULT_PRINTER_SETTINGS,
-  // Force debug mode in production to avoid connection attempts
-  debugMode: isProduction ? true : DEFAULT_PRINTER_SETTINGS.debugMode,
-  enabled: isProduction ? false : DEFAULT_PRINTER_SETTINGS.enabled
+  // Remove forced debug mode in production - let the system try to connect
+  debugMode: DEFAULT_PRINTER_SETTINGS.debugMode,
+  enabled: DEFAULT_PRINTER_SETTINGS.enabled
 }
 
 export async function POST(request: NextRequest) {
@@ -72,18 +72,9 @@ export async function POST(request: NextRequest) {
 async function testConnection(ip: string, port: number) {
   try {
     console.log(`Testing connection to ${ip}:${port}`)
+    console.log(`Environment: ${process.env.NODE_ENV}, Platform: ${process.platform}`)
     
-    // In production, simulate success to avoid connection attempts
-    if (isProduction) {
-      console.log('Production environment detected - simulating printer connection')
-      return NextResponse.json({
-        success: true,
-        connected: true,
-        message: `Simulerad anslutning till ${ip}:${port} (produktionsmiljö)`,
-        simulated: true
-      })
-    }
-    
+    // Remove production simulation - always try to connect for real
     const printer = new ThermalPrinter({
       type: PrinterTypes.EPSON,
       interface: `tcp://${ip}:${port}`,
@@ -92,7 +83,8 @@ async function testConnection(ip: string, port: number) {
       lineCharacter: "-",
       breakLine: BreakLine.WORD,
       options: {
-        timeout: 5000
+        timeout: 10000, // Increased timeout for production
+        retries: 3      // Add retries for unstable connections
       }
     })
 
@@ -100,12 +92,14 @@ async function testConnection(ip: string, port: number) {
     const isConnected = await printer.isPrinterConnected()
     
     if (isConnected) {
+      console.log(`✅ Successfully connected to printer at ${ip}:${port}`)
       return NextResponse.json({
         success: true,
         connected: true,
         message: `Anslutning till ${ip}:${port} framgångsrik`
       })
     } else {
+      console.log(`❌ Failed to connect to printer at ${ip}:${port}`)
       return NextResponse.json({
         success: false,
         connected: false,
@@ -113,10 +107,25 @@ async function testConnection(ip: string, port: number) {
       })
     }
   } catch (error) {
+    console.error(`❌ Connection error to ${ip}:${port}:`, error)
+    
+    // Provide more specific error information
+    let errorMessage = `Anslutningsfel: ${error instanceof Error ? error.message : 'Okänt fel'}`
+    
+    if (error instanceof Error) {
+      if (error.message.includes('ECONNREFUSED')) {
+        errorMessage = `Anslutning nekad - kontrollera att skrivaren är på och port ${port} är öppen`
+      } else if (error.message.includes('ETIMEDOUT')) {
+        errorMessage = `Timeout - kontrollera nätverksanslutning till ${ip}`
+      } else if (error.message.includes('EHOSTUNREACH')) {
+        errorMessage = `Kan inte nå ${ip} - kontrollera IP-adress och nätverk`
+      }
+    }
+    
     return NextResponse.json({
       success: false,
       connected: false,
-      error: `Anslutningsfel: ${error instanceof Error ? error.message : 'Okänt fel'}`
+      error: errorMessage
     })
   }
 }
@@ -126,18 +135,7 @@ async function printReceipt(order: any, ip: string, port: number) {
     console.log(`Printing receipt to ${ip}:${port}`)
     console.log('Order data:', JSON.stringify(order, null, 2))
     
-    // In production, simulate successful printing
-    if (isProduction) {
-      console.log('Production environment detected - simulating receipt printing')
-      return NextResponse.json({
-        success: true,
-        printed: true,
-        message: `Kvitto för order #${order.order_number} simulerat utskrivet (produktionsmiljö)`,
-        simulated: true,
-        order_number: order.order_number
-      })
-    }
-    
+    // Remove production simulation - always try to print for real
     const printer = new ThermalPrinter({
       type: PrinterTypes.EPSON,
       interface: `tcp://${ip}:${port}`,
