@@ -21,6 +21,18 @@ declare global {
   }
 }
 
+// Default printer settings - should match API settings
+const DEFAULT_PRINTER_SETTINGS = {
+  enabled: false, // Set to false by default for production
+  autoprintEnabled: false, // Disabled for production
+  autoemailEnabled: true,
+  printerIP: '192.168.1.103',
+  printerPort: '9100',
+  connectionType: 'tcp',
+  printMethod: 'backend',
+  debugMode: true // Always true for production to use simulator
+}
+
 export default function RestaurantTerminal() {
   const { user, profile, setUser, setProfile, updateLocation } = useSimpleAuth()
   const [orders, setOrders] = useState([])
@@ -45,17 +57,7 @@ export default function RestaurantTerminal() {
 
   // ePOS Printer Settings
   const [showPrinterSettings, setShowPrinterSettings] = useState(false)
-  const [printerSettings, setPrinterSettings] = useState({
-    enabled: false,
-    autoprintEnabled: true,
-    autoemailEnabled: true, // Automatisk e-postutskick
-
-    printerIP: '192.168.1.103',
-    printerPort: '9100', // Standard port för thermal printers (9100 för TCP, 80 för HTTP)
-    connectionType: 'tcp', // 'tcp', 'wifi', or 'bluetooth'
-    printMethod: 'backend', // 'backend' (node-thermal-printer) or 'frontend' (ePOS SDK)
-    debugMode: true // För utveckling
-  })
+  const [printerSettings, setPrinterSettings] = useState(DEFAULT_PRINTER_SETTINGS)
   const [printerStatus, setPrinterStatus] = useState({
     connected: false,
     lastTest: null,
@@ -269,6 +271,18 @@ export default function RestaurantTerminal() {
       return
     }
 
+    // In production, always use simulated connection
+    if (window.location.protocol === 'https:' && window.location.hostname !== 'localhost') {
+      addDebugLog('🎭 Produktionsmiljö detekterad - använder simulerad anslutning', 'info')
+      setPrinterStatus(prev => ({ 
+        ...prev, 
+        connected: true, 
+        error: null,
+        message: 'Simulerad anslutning (produktionsmiljö)'
+      }))
+      return
+    }
+
     // First try backend connection
     const backendConnected = await testBackendPrinterConnection()
     if (backendConnected) {
@@ -420,56 +434,44 @@ export default function RestaurantTerminal() {
     }
   }
 
-  // Load ePOS-Print API dynamically
+  // Load ePOS SDK only in development or when explicitly enabled
   useEffect(() => {
-    const loadEPOSAPI = () => {
-      // Skip if already loaded or in simulator mode
-      if (eposLoaded || !printerSettings.enabled) return
+    // Skip loading ePOS SDK in production to avoid Mixed Content errors
+    if (window.location.protocol === 'https:' && window.location.hostname !== 'localhost') {
+      console.log('🚫 Hoppar över ePOS SDK-laddning i produktionsmiljö (HTTPS)')
+      setEposLoaded(false)
+      return
+    }
 
-      addDebugLog('Laddar ePOS-Print API...', 'info')
-
-      // Try multiple sources for ePOS SDK
-      const sources = [
-        '/epos-2.js', // Local file (if available)
-        'https://unpkg.com/epos-print@1.0.0/epos-print.min.js',
-        'https://cdn.jsdelivr.net/npm/epos-print@1.0.0/epos-print.min.js'
-      ]
-
-      let currentSourceIndex = 0
-
-      const tryLoadScript = () => {
-        if (currentSourceIndex >= sources.length) {
-          addDebugLog('Kunde inte ladda ePOS-Print API från någon källa - kör i simulatorläge', 'warning')
-          setEposLoaded(false)
+    const loadEPOS = async () => {
+      try {
+        // Check if already loaded
+        if (window.epos) {
+          console.log('✅ ePOS SDK redan laddat')
+          setEposLoaded(true)
           return
         }
 
+        // Load ePOS SDK
         const script = document.createElement('script')
-        script.src = sources[currentSourceIndex]
-        script.async = true
-        
+        script.src = '/epos-2.js'
         script.onload = () => {
-          addDebugLog(`ePOS-Print API laddad framgångsrikt från: ${sources[currentSourceIndex]}`, 'success')
+          console.log('✅ ePOS SDK laddat framgångsrikt')
           setEposLoaded(true)
         }
-        
         script.onerror = () => {
-          addDebugLog(`Kunde inte ladda från: ${sources[currentSourceIndex]}`, 'warning')
-          document.head.removeChild(script)
-          currentSourceIndex++
-          tryLoadScript()
+          console.error('❌ Kunde inte ladda ePOS SDK')
+          setEposLoaded(false)
         }
-        
         document.head.appendChild(script)
+      } catch (error) {
+        console.error('❌ Fel vid laddning av ePOS SDK:', error)
+        setEposLoaded(false)
       }
-
-      tryLoadScript()
     }
 
-    if (printerSettings.enabled) {
-      loadEPOSAPI()
-    }
-  }, [printerSettings.enabled, eposLoaded])
+    loadEPOS()
+  }, [])
 
   // Update selectedLocation when profile loads
   useEffect(() => {
@@ -1090,7 +1092,7 @@ export default function RestaurantTerminal() {
       playTone(1000, now + 0.2, 0.15) // Andra ton (högre)
       playTone(800, now + 0.4, 0.2)   // Tredje ton (tillbaka till första)
       
-      console.log('🔊 Fallback-ljud spelat')
+      console.log('�� Fallback-ljud spelat')
     } catch (error) {
       console.log('Kunde inte spela fallback-ljud:', error)
     }
@@ -1631,6 +1633,14 @@ Utvecklad av Skaply
     addDebugLog(`🖨️ Skriver ut kvitto för order #${order.order_number}`, 'info')
     
     try {
+      // In production, always use simulation
+      if (window.location.protocol === 'https:' && window.location.hostname !== 'localhost') {
+        addDebugLog('🎭 Produktionsmiljö detekterad - använder simulerad utskrift', 'info')
+        const receipt = generateMockEPOSReceipt(order)
+        simulatePrintReceipt(receipt, order)
+        return
+      }
+
       // Simulator mode
       if (!printerSettings.enabled || printerSettings.debugMode) {
         const receipt = generateMockEPOSReceipt(order)

@@ -3,19 +3,27 @@ import { ThermalPrinter, PrinterTypes, CharacterSet, BreakLine } from 'node-ther
 
 // Default printer settings - should match terminal settings
 const DEFAULT_PRINTER_SETTINGS = {
-  enabled: false,
-  autoprintEnabled: true,
+  enabled: false, // Set to false by default for production
+  autoprintEnabled: false, // Disabled for production
   autoemailEnabled: true,
   printerIP: '192.168.1.103',
   printerPort: '9100',
   connectionType: 'tcp',
   printMethod: 'backend',
-  debugMode: true
+  debugMode: true // Always true for production to use simulator
 }
+
+// Check if we're in production environment
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
 
 // In a real app, these would be stored in a database
 // For now, we'll use memory storage (resets on server restart)
-let printerSettings = { ...DEFAULT_PRINTER_SETTINGS }
+let printerSettings = { 
+  ...DEFAULT_PRINTER_SETTINGS,
+  // Force debug mode in production to avoid connection attempts
+  debugMode: isProduction ? true : DEFAULT_PRINTER_SETTINGS.debugMode,
+  enabled: isProduction ? false : DEFAULT_PRINTER_SETTINGS.enabled
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -65,6 +73,17 @@ async function testConnection(ip: string, port: number) {
   try {
     console.log(`Testing connection to ${ip}:${port}`)
     
+    // In production, simulate success to avoid connection attempts
+    if (isProduction) {
+      console.log('Production environment detected - simulating printer connection')
+      return NextResponse.json({
+        success: true,
+        connected: true,
+        message: `Simulerad anslutning till ${ip}:${port} (produktionsmiljö)`,
+        simulated: true
+      })
+    }
+    
     const printer = new ThermalPrinter({
       type: PrinterTypes.EPSON,
       interface: `tcp://${ip}:${port}`,
@@ -106,6 +125,18 @@ async function printReceipt(order: any, ip: string, port: number) {
   try {
     console.log(`Printing receipt to ${ip}:${port}`)
     console.log('Order data:', JSON.stringify(order, null, 2))
+    
+    // In production, simulate successful printing
+    if (isProduction) {
+      console.log('Production environment detected - simulating receipt printing')
+      return NextResponse.json({
+        success: true,
+        printed: true,
+        message: `Kvitto för order #${order.order_number} simulerat utskrivet (produktionsmiljö)`,
+        simulated: true,
+        order_number: order.order_number
+      })
+    }
     
     const printer = new ThermalPrinter({
       type: PrinterTypes.EPSON,
