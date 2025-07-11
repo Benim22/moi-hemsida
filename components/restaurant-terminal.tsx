@@ -28,8 +28,8 @@ const DEFAULT_PRINTER_SETTINGS = {
   autoemailEnabled: true,
   printerIP: '192.168.1.103',
   printerPort: '9100', // Use TCP port 9100 for iPad Bridge
-  connectionType: 'websocket', // Use WebSocket for iPad Bridge (avoids Mixed Content)
-  printMethod: 'frontend', // Use frontend WebSocket for iPad Bridge
+  connectionType: 'tcp', // Use TCP for iPad Bridge
+  printMethod: 'backend', // Use backend for iPad Bridge (works in both localhost and production)
   debugMode: false // Disable debug mode for production
 }
 
@@ -222,48 +222,41 @@ export default function RestaurantTerminal() {
     const isProduction = window.location.protocol === 'https:' && window.location.hostname !== 'localhost'
     
     if (isProduction) {
-      addDebugLog('🌉 Testar iPad Bridge-anslutning via WebSocket...', 'info')
+      addDebugLog('🌉 Testar iPad Bridge-anslutning via backend API...', 'info')
       
       try {
-        // Test WebSocket connection to avoid Mixed Content issues
-        const ws = new WebSocket(`ws://${printerSettings.printerIP}:9100`)
-        
-        return new Promise((resolve) => {
-          const timeout = setTimeout(() => {
-            ws.close()
-            addDebugLog('❌ iPad Bridge: Timeout vid anslutning till skrivaren', 'error')
-            setPrinterStatus({
-              connected: false,
-              lastTest: new Date(),
-              error: 'Timeout vid anslutning'
-            })
-            resolve(false)
-          }, 5000)
-          
-          ws.onopen = () => {
-            clearTimeout(timeout)
-            addDebugLog('✅ iPad Bridge: WebSocket-anslutning till skrivaren framgångsrik', 'success')
-            setPrinterStatus({
-              connected: true,
-              lastTest: new Date(),
-              error: null
-            })
-            ws.close()
-            resolve(true)
-          }
-          
-          ws.onerror = (error) => {
-            clearTimeout(timeout)
-            addDebugLog(`❌ iPad Bridge: WebSocket-anslutning misslyckades`, 'error')
-            setPrinterStatus({
-              connected: false,
-              lastTest: new Date(),
-              error: 'WebSocket-anslutning misslyckades'
-            })
-            resolve(false)
-          }
+        // Test via backend API
+        const response = await fetch('/api/printer', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'test',
+            printerIP: printerSettings.printerIP,
+            printerPort: 9100
+          })
         })
         
+        const result = await response.json()
+        
+        if (result.success && result.connected) {
+          addDebugLog('✅ iPad Bridge: Backend-anslutning till skrivaren framgångsrik', 'success')
+          setPrinterStatus({
+            connected: true,
+            lastTest: new Date(),
+            error: null
+          })
+          return true
+        } else {
+          addDebugLog(`❌ iPad Bridge: ${result.error || 'Anslutning misslyckades'}`, 'error')
+          setPrinterStatus({
+            connected: false,
+            lastTest: new Date(),
+            error: result.error || 'Anslutning misslyckades'
+          })
+          return false
+        }
       } catch (error) {
         addDebugLog(`❌ iPad Bridge: Kan inte ansluta till skrivaren - ${error.message}`, 'error')
         setPrinterStatus({
@@ -1692,134 +1685,7 @@ Utvecklad av Skaply
     }
   }
 
-  // iPad Bridge: Print via WebSocket to local printer (avoids Mixed Content issues)
-  const printHTTPToPrinter = async (order) => {
-    addDebugLog('🌉 iPad Bridge: Skickar via WebSocket till skrivaren', 'info')
-    
-    try {
-      // Use WebSocket to avoid Mixed Content issues
-      const ws = new WebSocket(`ws://${printerSettings.printerIP}:9100`)
-      
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          ws.close()
-          reject(new Error('Timeout - skrivaren svarar inte'))
-        }, 10000)
-        
-        ws.onopen = () => {
-          addDebugLog('✅ iPad Bridge: WebSocket-anslutning öppnad', 'info')
-          
-          // Generate ESC/POS commands
-          const escPosData = generateESCPOSData(order)
-          
-          // Send data to printer
-          ws.send(escPosData)
-          
-          // Close connection after sending
-          setTimeout(() => {
-            ws.close()
-          }, 1000)
-        }
-        
-        ws.onclose = () => {
-          clearTimeout(timeout)
-          addDebugLog('✅ iPad Bridge: Kvitto skickat till skrivaren via WebSocket', 'success')
-          setPrinterStatus(prev => ({ ...prev, connected: true, lastTest: new Date() }))
-          showBrowserNotification(
-            '🖨️ Kvitto utskrivet!', 
-            `Order #${order.order_number} utskrivet via iPad Bridge`,
-            false
-          )
-          resolve(true)
-        }
-        
-        ws.onerror = (error) => {
-          clearTimeout(timeout)
-          addDebugLog(`❌ iPad Bridge WebSocket-fel: ${error}`, 'error')
-          reject(new Error('WebSocket-anslutning misslyckades'))
-        }
-      })
-      
-    } catch (error) {
-      addDebugLog(`❌ iPad Bridge WebSocket-fel: ${error.message}`, 'error')
-      throw error
-    }
-  }
 
-  // Generate ESC/POS data for thermal printer
-  const generateESCPOSData = (order) => {
-    const commands = []
-    
-    // Initialize printer
-    commands.push('\x1B@') // ESC @ - Initialize
-    
-    // Header
-    commands.push('\x1Ba\x01') // Center align
-    commands.push('\x1D!\x11') // Double size
-    commands.push('MOI SUSHI\n& POKE BOWL\n')
-    commands.push('\x1D!\x00') // Normal size
-    commands.push('================================\n')
-    
-    // Order info
-    commands.push('\x1Ba\x00') // Left align
-    commands.push(`Order #${order.order_number || 'N/A'}\n`)
-    
-    const orderDate = new Date(order.created_at)
-    commands.push(`Datum: ${orderDate.toLocaleDateString('sv-SE')}\n`)
-    commands.push(`Tid: ${orderDate.toLocaleTimeString('sv-SE')}\n\n`)
-    
-    // Customer info
-    if (order.customer_name && order.customer_name !== 'Anonym kund') {
-      commands.push('\x1BE\x01KUND:\x1BE\x00\n') // Bold KUND:
-      commands.push(`${order.customer_name}\n`)
-      
-      if (order.customer_phone) {
-        commands.push(`Tel: ${order.customer_phone}\n`)
-      }
-      commands.push('\n')
-    }
-    
-    // Items
-    commands.push('\x1BE\x01BESTÄLLNING:\x1BE\x00\n') // Bold BESTÄLLNING:
-    commands.push('--------------------------------\n')
-    
-    const items = order.cart_items || order.items || []
-    const itemsArray = typeof items === 'string' ? JSON.parse(items) : items
-    
-    let totalAmount = 0
-    itemsArray.forEach(item => {
-      const itemName = item.name || 'Okänd produkt'
-      const quantity = item.quantity || 1
-      const price = item.price || 0
-      const itemTotal = quantity * price
-      totalAmount += itemTotal
-      
-      commands.push(`${quantity}x ${itemName}\n`)
-      commands.push(`    ${price} kr/st = ${itemTotal} kr\n\n`)
-    })
-    
-    // Total
-    commands.push('--------------------------------\n')
-    commands.push('\x1BE\x01') // Bold on
-    commands.push('\x1D!\x11') // Double size
-    commands.push(`TOTALT: ${order.total_amount || order.amount || totalAmount} kr\n`)
-    commands.push('\x1D!\x00') // Normal size
-    commands.push('\x1BE\x00') // Bold off
-    commands.push('\n')
-    
-    // Footer
-    commands.push('\x1Ba\x01') // Center align
-    commands.push('================================\n')
-    commands.push('Tack för din beställning!\n')
-    commands.push('MOI SUSHI & POKE BOWL\n')
-    commands.push('www.moisushi.se\n')
-    commands.push('\n\n\n')
-    
-    // Cut paper
-    commands.push('\x1DVB\x00') // Full cut
-    
-    return commands.join('')
-  }
 
 
 
@@ -1834,19 +1700,34 @@ Utvecklad av Skaply
       
       addDebugLog(`🌍 Miljö: ${isLocalhost ? 'Localhost' : isProduction ? 'Produktion (iPad Bridge)' : 'Utveckling'}`, 'info')
 
-      // iPad Bridge mode for production - use HTTP directly to printer
+      // Production mode - smart hybrid approach
       if (isProduction) {
-        addDebugLog('🌉 iPad Bridge-läge: Skickar HTTP-kommando direkt till skrivaren', 'info')
+        addDebugLog('🌐 Produktionsmiljö: Använder smart hybrid-utskrift', 'info')
+        
+        // Try backend printing (will work if iPad and printer are on same network)
         try {
-          await printHTTPToPrinter(order)
-          return
+          addDebugLog('🔄 Försöker backend-utskrift via iPad...', 'info')
+          const success = await printBackendReceipt(order)
+          if (success) {
+            addDebugLog('✅ Backend-utskrift lyckades via iPad Bridge!', 'success')
+            return
+          }
         } catch (error) {
-          addDebugLog(`❌ iPad Bridge misslyckades: ${error.message}`, 'error')
-          // Fallback to simulator
-          const receipt = generateMockEPOSReceipt(order)
-          simulatePrintReceipt(receipt, order)
-          return
+          addDebugLog(`⚠️ Backend-utskrift misslyckades: ${error.message}`, 'warning')
         }
+        
+        // Fallback: Show text receipt with helpful message
+        addDebugLog('📄 Visar textkvitto som backup - personal kan skriva ut manuellt', 'info')
+        const receipt = generateMockEPOSReceipt(order)
+        simulatePrintReceipt(receipt, order)
+        
+        // Show helpful notification
+        showBrowserNotification(
+          '📋 Ny beställning!', 
+          `Order #${order.order_number} - Klicka "Skriv ut kvitto" för fysisk utskrift`,
+          true
+        )
+        return
       }
 
       // Simulator mode

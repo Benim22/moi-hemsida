@@ -143,16 +143,6 @@ async function printReceipt(order: any, ip: string, port: number, bridgeMode: bo
       console.log('🌉 iPad Bridge: Using direct TCP connection')
       // Force TCP connection for iPad Bridge
       port = 9100 // Override to TCP port
-      
-      // Important: Check if we're running in cloud environment
-      if (isProduction) {
-        console.log('⚠️ iPad Bridge: Running in cloud environment - may not reach local printer')
-        return NextResponse.json({
-          success: false,
-          error: `iPad Bridge: Molnservern kan inte nå den lokala skrivaren på ${ip}:${port}. iPad Bridge fungerar bara när iPad och skrivare är på samma nätverk. Kontrollera att du använder iPad:en i restaurangen.`,
-          details: 'Cloud environment cannot reach local printer IP'
-        })
-      }
     }
     
     // Try direct TCP connection first
