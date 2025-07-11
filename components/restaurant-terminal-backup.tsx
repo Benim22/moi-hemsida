@@ -57,7 +57,7 @@ export default function RestaurantTerminal() {
       // Hantera både inloggade och anonyma användare
       const customerName = payload.new.profiles?.name || payload.new.customer_name || 'Gäst'
       const isAnonymous = payload.new.user_id === '00000000-0000-0000-0000-000000000000'
-      const customerLabel = isAnonymous ? `${customerName} (Anonym)` : customerName
+      const customerLabel = isAnonymous ? `${customerName} (Beställd utan inloggning)` : customerName
       
       const notificationTitle = 'Ny beställning!'
       const notificationBody = `Order #${payload.new.order_number} från ${customerLabel} - ${payload.new.total_price || payload.new.amount} kr`

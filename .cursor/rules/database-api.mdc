@@ -1,0 +1,101 @@
+---
+globs: app/api/**/*.ts,lib/**/*.ts,database/**/*.sql
+---
+
+# Database & API Konventioner
+
+## Supabase Database
+- **PostgreSQL** - Använd PostgreSQL funktioner och syntax
+- **Row Level Security (RLS)** - Alla tabeller ska ha RLS policies
+- **Typed queries** - Använd TypeScript för databas queries
+- **Error handling** - Hantera databas errors gracefully
+
+## API Routes (Next.js)
+- **Struktur**: Använd Next.js App Router API routes i `app/api/`
+- **HTTP Methods**: Implementera GET, POST, PUT, DELETE enligt REST
+- **Error responses**: Konsistenta error responses med status codes
+- **Validation**: Validera input data innan databas operationer
+
+## Supabase Clients
+- **Client-side**: Använd [lib/supabase.ts](mdc:lib/supabase.ts) för client operationer
+- **Server-side**: Använd [lib/supabase-admin.ts](mdc:lib/supabase-admin.ts) för admin operationer
+- **RLS bypass**: Använd admin client endast när RLS behöver kringgås
+
+## Database Schema Konventioner
+```sql
+-- Exempel på tabell struktur
+CREATE TABLE IF NOT EXISTS public.table_name (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Aktivera RLS
+ALTER TABLE public.table_name ENABLE ROW LEVEL SECURITY;
+
+-- Skapa policies
+CREATE POLICY "Users can view own data" 
+ON public.table_name 
+FOR SELECT 
+USING (auth.uid() = user_id);
+```
+
+## API Response Format
+```typescript
+// Framgångsrikt svar
+{
+  success: true,
+  data: any,
+  message?: string
+}
+
+// Felsvar
+{
+  success: false,
+  error: string,
+  details?: any
+}
+```
+
+## Databas Operationer
+- **Transactions** - Använd för komplexa operationer
+- **Indexes** - Lägg till för ofta använda queries
+- **Constraints** - Använd databas constraints för data integritet
+- **Migrations** - Alla schema ändringar ska dokumenteras i SQL filer
+
+## Säkerhet
+- **Input validation** - Validera all input från klienter
+- **SQL injection** - Använd parametriserade queries
+- **Authentication** - Verifiera användare för skyddade endpoints
+- **Authorization** - Kontrollera behörigheter med RLS policies
+
+## Location System
+- **Enum values**: `'trelleborg'`, `'malmo'`, `'ystad'`
+- **Mapping**: Svenska namn → databas enum i API routes
+- **Validation**: Validera location värden i API calls
+
+## Error Handling Pattern
+```typescript
+try {
+  const { data, error } = await supabase
+    .from('table')
+    .select('*')
+  
+  if (error) {
+    console.error('Database error:', error)
+    return NextResponse.json(
+      { success: false, error: 'Database operation failed' },
+      { status: 500 }
+    )
+  }
+  
+  return NextResponse.json({ success: true, data })
+} catch (error) {
+  console.error('Unexpected error:', error)
+  return NextResponse.json(
+    { success: false, error: 'Internal server error' },
+    { status: 500 }
+  )
+}
+```

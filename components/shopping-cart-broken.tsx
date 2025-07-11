@@ -479,13 +479,11 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         customer_email: customerEmail, // Store customer email for anonymous orders
         notes: `${deliveryType === "pickup" ? "Hämtningstid" : "Leveranstid"}: ${
           pickupTime === "asap"
-            ? "Så snart som möjligt"
-            : pickupTime === "30min"
-              ? "Om 30 minuter"
-              : pickupTime === "1hour"
-                ? "Om 1 timme"
-                : "Om 2 timmar"
-        }${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}${!user ? " | ANONYM BESTÄLLNING (Under 250kr)" : ""}`,
+            ? "Hämta snarast (30 min)"
+            : pickupTime === "1hour"
+              ? "Om 1 timme"
+              : "Om 2 timmar"
+        }${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}${!user ? " | Beställd utan inloggning (Under 250kr)" : ""}`,
         special_instructions: specialInstructions || null,
         payment_method: 'cash', // Betala i restaurangen
         order_number: orderNumber
@@ -592,13 +590,11 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
             orderType: deliveryType,
             phone: customerPhone,
             deliveryAddress: deliveryType === "delivery" ? customerAddress : null,
-            pickupTime: pickupTime === "asap"
-              ? "Så snart som möjligt"
-              : pickupTime === "30min"
-                ? "Om 30 minuter"
-                : pickupTime === "1hour"
-                  ? "Om 1 timme"
-                  : "Om 2 timmar",
+                    pickupTime: pickupTime === "asap"
+          ? "Hämta snarast (30 min)"
+          : pickupTime === "1hour"
+            ? "Om 1 timme"
+            : "Om 2 timmar",
             specialInstructions: specialInstructions || undefined,
           }),
         })
@@ -779,7 +775,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         {!user && totalPrice < 250 && (
           <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
             <p className="text-sm text-blue-400">
-              ℹ️ <strong>Anonym beställning tillåten</strong><br />
+                              ℹ️ <strong>Beställning utan inloggning tillåten</strong><br />
               För beställningar under 250kr krävs ingen inloggning för att motverka falska beställningar.
             </p>
           </div>
@@ -915,10 +911,9 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
                   <option value="" disabled>
                     Välj tid
                   </option>
-                  <option value="asap">Så snart som möjligt</option>
-                  <option value="30min">Om 30 minuter</option>
-                  <option value="1hour">Om 1 timme</option>
-                  <option value="2hours">Om 2 timmar</option>
+                                  <option value="asap">Hämta snarast (30 min)</option>
+                <option value="1hour">Om 1 timme</option>
+                <option value="2hours">Om 2 timmar</option>
                 </select>
               </div>
             </div>

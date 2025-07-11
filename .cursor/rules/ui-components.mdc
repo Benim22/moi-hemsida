@@ -1,0 +1,59 @@
+---
+globs: components/**/*.tsx,app/**/*.tsx
+---
+
+# UI Komponenter & Styling
+
+## shadcn/ui Komponenter
+- **Använd befintliga komponenter** - Kolla [components/ui/](mdc:components/ui/) först
+- **Radix UI bas** - Alla UI komponenter bygger på Radix UI primitives
+- **Tailwind styling** - Använd Tailwind classes för styling
+- **cn() utility** - Använd `cn()` från [lib/utils.ts](mdc:lib/utils.ts) för className sammanslagning
+
+## Styling Konventioner
+- **CSS Variables** - Använd CSS variables för theming (definierade i [globals.css](mdc:app/globals.css))
+- **Responsive design** - Mobile-first approach med Tailwind breakpoints
+- **Dark mode** - Projektet använder dark mode som standard
+- **Konsistenta färger** - Använd theme färger: `primary`, `secondary`, `accent`, `muted`
+
+## Komponent Struktur
+```typescript
+// Exempel på UI komponent
+const Button = React.forwardRef<
+  HTMLButtonElement,
+  React.ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<typeof buttonVariants>
+>(({ className, variant, size, asChild = false, ...props }, ref) => {
+  const Comp = asChild ? Slot : "button"
+  return (
+    <Comp
+      className={cn(buttonVariants({ variant, size, className }))}
+      ref={ref}
+      {...props}
+    />
+  )
+})
+Button.displayName = "Button"
+```
+
+## Animationer
+- **Framer Motion** - Använd för komplexa animationer
+- **Tailwind Animate** - För enkla animationer (fade, slide, etc.)
+- **CSS Transitions** - För hover effekter och tillståndsändringar
+
+## Tillgänglighet
+- **ARIA labels** - Lägg till för interaktiva element
+- **Keyboard navigation** - Stödj tangentbordsnavigering
+- **Focus management** - Synlig focus indicators
+- **Semantic HTML** - Använd rätt HTML element för rätt syfte
+
+## Responsivitet
+- **Mobile-first** - Börja med mobil design
+- **Breakpoints**: `sm:640px`, `md:768px`, `lg:1024px`, `xl:1280px`, `2xl:1536px`
+- **Flexbox/Grid** - Använd för layouter
+- **Container queries** - För komponentspecifik responsivitet
+
+## Färgschema
+- **Primary**: `#e4d699` (gul/guld ton)
+- **Background**: Dark mode som standard
+- **Accent**: Används för highlights och call-to-actions
+- **Muted**: För sekundär text och bakgrunder

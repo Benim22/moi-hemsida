@@ -1,0 +1,59 @@
+---
+globs: *.ts,*.tsx
+---
+
+# TypeScript & React Konventioner
+
+## TypeScript Regler
+- **Använd alltid TypeScript** - Inga `any` typer utan explicit anledning
+- **Strict mode** - Projektet använder strict TypeScript konfiguration
+- **Interface över type** - Använd `interface` för objekt definitioner
+- **Explicit return types** - För funktioner som exporteras
+- **Null safety** - Använd optional chaining (`?.`) och nullish coalescing (`??`)
+
+## React Konventioner
+- **Funktionskomponenter** - Använd alltid arrow functions för komponenter
+- **Props interface** - Definiera alltid props interface för komponenter
+- **forwardRef** - Använd för UI komponenter som behöver ref
+- **displayName** - Sätt displayName för forwardRef komponenter
+- **Hooks** - Följ React hooks regler (useCallback, useMemo för optimering)
+
+## Exempel på Komponentstruktur
+```typescript
+interface ComponentProps {
+  title: string
+  children?: React.ReactNode
+  className?: string
+  onClick?: () => void
+}
+
+const Component = React.forwardRef<HTMLDivElement, ComponentProps>(
+  ({ title, children, className, onClick, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={cn("base-styles", className)}
+        onClick={onClick}
+        {...props}
+      >
+        <h2>{title}</h2>
+        {children}
+      </div>
+    )
+  }
+)
+Component.displayName = "Component"
+
+export { Component, type ComponentProps }
+```
+
+## Import/Export Konventioner
+- **Named exports** - Använd för komponenter och utilities
+- **Default exports** - Endast för sidor och huvudkomponenter
+- **Barrel exports** - Använd index.ts filer för clean imports
+- **Absoluta imports** - Använd `@/` prefix för projektfiler
+
+## Error Handling
+- **Try-catch** - Använd för async operationer
+- **Error boundaries** - För React komponenter
+- **Typed errors** - Definiera error types där möjligt

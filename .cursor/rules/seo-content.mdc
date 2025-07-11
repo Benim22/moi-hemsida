@@ -1,0 +1,73 @@
+---
+description: SEO optimization and Swedish content guidelines
+---
+
+# SEO & Innehållsriktlinjer
+
+## SEO Metadata
+- **Titel struktur**: `Specifik sida | Moi Sushi & Poké Bowl`
+- **Beskrivningar**: 150-160 tecken, inkludera lokala sökord
+- **Nyckelord**: Fokus på lokala söktermer (Trelleborg, Malmö, Ystad)
+- **Strukturerad data**: Använd JSON-LD för restaurang schema
+
+## Svenska Sökord (Prioriterade)
+- **Primära**: "sushi Trelleborg", "poké bowl Malmö", "japansk mat Ystad"
+- **Sekundära**: "sushi beställning", "sushi leverans", "bordsbokningar"
+- **Långsvanstermer**: "bästa sushi i Skåne", "färsk sushi nära mig"
+
+## Innehållsriktlinjer
+- **Språk**: Svenska som primärspråk
+- **Ton**: Vänlig, professionell, inbjudande
+- **Lokala referenser**: Nämn specifika områden och landmärken
+- **Matbeskrivningar**: Detaljerade, aptitretande beskrivningar
+
+## Metadata Mall
+```typescript
+export const metadata: Metadata = {
+  title: "Specifik Sida | Moi Sushi & Poké Bowl",
+  description: "Beskrivning med lokala sökord och call-to-action",
+  keywords: ["sushi", "lokala sökord", "område"],
+  openGraph: {
+    title: "Samma som title",
+    description: "Samma som description",
+    images: ["/relevanta-bilder.jpg"],
+    locale: "sv_SE",
+    type: "website"
+  }
+}
+```
+
+## Lokala SEO Strategier
+- **Google My Business**: Optimera för alla tre platser
+- **Lokala citat**: Konsistenta NAP (Name, Address, Phone)
+- **Lokalt innehåll**: Skapa innehåll för varje stad
+- **Recensioner**: Uppmuntra och svara på Google recensioner
+
+## Bilder och Media
+- **Alt-text**: Beskrivande alt-text på svenska
+- **Filnamn**: Använd beskrivande filnamn med nyckelord
+- **Optimering**: WebP format för snabbare laddning
+- **Lazy loading**: Implementera för bättre prestanda
+
+## Teknisk SEO
+- **Site speed**: Optimera för snabb laddning
+- **Mobile-first**: Responsiv design
+- **Schema markup**: Restaurant, LocalBusiness, MenuItem
+- **Sitemap**: Automatisk generering med [sitemap.ts](mdc:app/sitemap.ts)
+
+## Innehållsstruktur
+- **H1**: En per sida, inkludera primärt nyckelord
+- **H2-H6**: Hierarkisk struktur med relaterade nyckelord
+- **Intern länkning**: Länka mellan relaterade sidor
+- **Extern länkning**: Länka till auktoritativa källor
+
+## Lokala Landmärken att Nämna
+- **Trelleborg**: Trelleborgs centrum, Stortorget, Hamnen
+- **Malmö**: Malmö Central, Västra Hamnen, Triangeln
+- **Ystad**: Ystad centrum, Stortorget, Klostret
+
+## Call-to-Action Formuleringar
+- "Beställ nu för snabb leverans"
+- "Boka bord online"
+- "Upptäck våra färska smaker"
+- "Leverans till [område]"

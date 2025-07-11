@@ -509,8 +509,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
   const getPickupTimeText = () => {
     if (!isCustomPickupTime) {
       switch (pickupTime) {
-        case "asap": return "Så snart som möjligt"
-        case "30min": return "Om 30 minuter"
+        case "asap": return "Hämta snarast (30 min)"
         case "1hour": return "Om 1 timme"
         case "2hours": return "Om 2 timmar"
         default: return ""
@@ -622,7 +621,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         phone: customerPhone,
         delivery_address: deliveryType === "delivery" ? customerAddress : null,
         delivery_type: deliveryType,
-        notes: `${deliveryType === "pickup" ? "Hämtningstid" : "Leveranstid"}: ${getPickupTimeText()}${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}${!user ? " | ANONYM BESTÄLLNING (Under 250kr)" : ""}`,
+        notes: `${deliveryType === "pickup" ? "Hämtningstid" : "Leveranstid"}: ${getPickupTimeText()}${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}${!user ? " | Beställd utan inloggning (Under 250kr)" : ""}`,
         special_instructions: specialInstructions || null,
         payment_method: 'cash', // Betala i restaurangen
         order_number: orderNumber
@@ -1005,7 +1004,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
                 
                 {/* Quick time options */}
                 <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => {
@@ -1020,26 +1019,8 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
                           : "border-white/20 bg-black/30 text-white/80 hover:border-white/40"
                       }`}
                     >
-                      Så snart som möjligt
+                      Hämta snarast (30 min)
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsCustomPickupTime(false)
-                        setPickupTime("30min")
-                        setPickupDate("")
-                        setPickupTimeSlot("")
-                      }}
-                      className={`p-3 rounded-lg border text-sm transition-colors ${
-                        !isCustomPickupTime && pickupTime === "30min"
-                          ? "border-[#e4d699] bg-[#e4d699]/10 text-[#e4d699]"
-                          : "border-white/20 bg-black/30 text-white/80 hover:border-white/40"
-                      }`}
-                    >
-                      Om 30 minuter
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => {

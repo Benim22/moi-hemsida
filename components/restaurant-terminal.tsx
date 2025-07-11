@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
-import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle, RefreshCw, Settings, Wifi, Bluetooth, Mail, Search } from "lucide-react"
+import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle, RefreshCw, Settings, Wifi, Bluetooth, Mail, Search, Volume2 } from "lucide-react"
 import jsPDF from 'jspdf'
 
 // ePOS-Print API Declaration (since we'll load it dynamically)
@@ -43,6 +43,9 @@ export default function RestaurantTerminal() {
   const [notificationDialog, setNotificationDialog] = useState(null)
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [audioEnabled, setAudioEnabled] = useState(false)
+  const [audioContext, setAudioContext] = useState(null)
+  const [isIOSDevice, setIsIOSDevice] = useState(false)
   
   // Filter states
   const [selectedLocation, setSelectedLocation] = useState(profile?.location || 'all')
@@ -490,6 +493,26 @@ export default function RestaurantTerminal() {
     }
   }
 
+  // Detect iOS devices and auto-enable audio for non-iOS
+  useEffect(() => {
+    const detectIOS = () => {
+      const userAgent = navigator.userAgent || navigator.vendor || window.opera
+      const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream
+      const isSafari = /^((?!chrome|android).)*safari/i.test(userAgent)
+      
+      setIsIOSDevice(isIOS || isSafari)
+      console.log('🔍 Enhetsdetektering:', { isIOS, isSafari, userAgent })
+      
+      // Auto-enable audio for non-iOS devices
+      if (!isIOS && !isSafari) {
+        console.log('🔊 Auto-aktiverar ljud för icke-iOS enhet')
+        setAudioEnabled(true)
+      }
+    }
+    
+    detectIOS()
+  }, [])
+
   // Load ePOS SDK - allow in production for iPad bridge functionality
   useEffect(() => {
     // Allow ePOS SDK in production when using frontend print method
@@ -582,7 +605,7 @@ export default function RestaurantTerminal() {
       // Hantera både inloggade och anonyma användare
       const customerName = payload.new.profiles?.name || payload.new.customer_name || 'Gäst'
       const isAnonymous = payload.new.user_id === '00000000-0000-0000-0000-000000000000'
-      const customerLabel = isAnonymous ? `${customerName} (Anonym)` : customerName
+      const customerLabel = isAnonymous ? `${customerName} (Beställd utan inloggning)` : customerName
       
       const notificationTitle = 'Ny beställning!'
       const notificationBody = `Order #${payload.new.order_number} från ${customerLabel} - ${payload.new.total_price || payload.new.amount} kr`
@@ -760,9 +783,26 @@ export default function RestaurantTerminal() {
                                        (payload.new.metadata?.location && payload.new.metadata.location === profile.location)
 
           if (shouldShowNotification) {
-            console.log('✅ Notifikation matchar - visar den')
+            console.log('✅ Notifikation matchar - kontrollerar duplicering')
             console.log('✅ Profile location:', profile.location, '| Notification location:', payload.new.metadata?.location)
-            setNotifications(prev => [payload.new, ...prev])
+            
+            // Kontrollera om vi redan har en notifikation för denna beställning
+            const orderId = payload.new.metadata?.order_id
+            if (orderId) {
+              setNotifications(prev => {
+                const existingNotification = prev.find(n => n.metadata?.order_id === orderId)
+                if (existingNotification) {
+                  console.log('⚠️ Notifikation för order', orderId, 'finns redan - hoppar över duplicering')
+                  return prev // Ingen förändring
+                }
+                console.log('✅ Ny unik notifikation för order', orderId, '- lägger till')
+                return [payload.new, ...prev]
+              })
+            } else {
+              // Notifikation utan order_id (systemmeddelanden etc)
+              setNotifications(prev => [payload.new, ...prev])
+            }
+            
             showBrowserNotification(payload.new.title, payload.new.message, true) // true för ordernotifikation
             playNotificationSound()
           } else {
@@ -920,7 +960,7 @@ export default function RestaurantTerminal() {
         .eq('user_role', 'admin')
         .eq('read', false)
         .order('created_at', { ascending: false })
-        .limit(10)
+        .limit(50) // Hämta fler för att ha tillräckligt efter deduplicering
 
       if (error) throw error
       
@@ -935,11 +975,27 @@ export default function RestaurantTerminal() {
         }
       }) || []
       
+      // Deduplicera notifikationer baserat på order_id - visa bara EN notifikation per beställning
+      const uniqueNotifications = []
+      const seenOrderIds = new Set()
+      
+      for (const notification of filteredNotifications) {
+        const orderId = notification.metadata?.order_id
+        if (orderId && !seenOrderIds.has(orderId)) {
+          seenOrderIds.add(orderId)
+          uniqueNotifications.push(notification)
+        } else if (!orderId) {
+          // Behåll notifikationer som inte har order_id (systemmeddelanden etc)
+          uniqueNotifications.push(notification)
+        }
+      }
+      
       console.log('📢 Hämtade notifikationer för location:', profile.location)
       console.log('📢 Totalt antal notifikationer från DB:', data?.length || 0)
       console.log('📢 Filtrerade notifikationer:', filteredNotifications.length)
+      console.log('📢 Unika notifikationer (deduplicated):', uniqueNotifications.length)
       
-      setNotifications(filteredNotifications)
+      setNotifications(uniqueNotifications.slice(0, 10)) // Begränsa till 10 efter deduplicering
     } catch (error) {
       console.error('Error fetching notifications:', error)
     }
@@ -1106,18 +1162,116 @@ export default function RestaurantTerminal() {
     }
   }
 
+  const activateAudio = async () => {
+    try {
+      console.log('🎵 Aktiverar ljud för iPad/Safari...')
+      
+      // Skapa och aktivera AudioContext
+      const newAudioContext = new (window.AudioContext || window.webkitAudioContext)()
+      
+      // På Safari/iPad kan AudioContext vara suspended, så vi måste resume den
+      if (newAudioContext.state === 'suspended') {
+        await newAudioContext.resume()
+        console.log('🎵 AudioContext resumed från suspended state')
+      }
+      
+      // Spela ett tyst ljud för att "unlåsa" ljudet
+      const oscillator = newAudioContext.createOscillator()
+      const gainNode = newAudioContext.createGain()
+      
+      oscillator.connect(gainNode)
+      gainNode.connect(newAudioContext.destination)
+      
+      oscillator.frequency.value = 440
+      oscillator.type = 'sine'
+      gainNode.gain.setValueAtTime(0.01, newAudioContext.currentTime) // Mycket tyst
+      
+      oscillator.start(newAudioContext.currentTime)
+      oscillator.stop(newAudioContext.currentTime + 0.1)
+      
+      setAudioContext(newAudioContext)
+      setAudioEnabled(true)
+      
+      console.log('✅ Ljud aktiverat! AudioContext state:', newAudioContext.state)
+      
+      // Bekräfta med en testton
+      setTimeout(() => {
+        playNotificationSound()
+      }, 200)
+      
+      showBrowserNotification('Ljud aktiverat! 🔊', 'Automatiska ljudnotifikationer fungerar nu', false)
+      
+    } catch (error) {
+      console.error('❌ Fel vid aktivering av ljud:', error)
+      showBrowserNotification('Ljudfel', 'Kunde inte aktivera ljud. Prova igen.', false)
+    }
+  }
+
   const playNotificationSound = () => {
     if (!notificationsEnabled) {
       console.log('🔕 Notiser är avaktiverade - hoppar över ljudnotifikation')
       return
     }
     
+    if (!audioEnabled) {
+      console.log('🔕 Ljud är inte aktiverat - hoppar över ljudnotifikation')
+      return
+    }
+    
     try {
-      // Använd direkt fallback-ljud istället för att leta efter fil
       console.log('🔊 Spelar notifikationsljud...')
-      playFallbackSound()
+      
+      // Prova först med den aktiverade AudioContext
+      if (audioContext && audioContext.state === 'running') {
+        playAdvancedSound()
+      } else {
+        // Fallback till enkel metod
+        playFallbackSound()
+      }
     } catch (error) {
       console.log('Fel med ljuduppspelning:', error)
+      // Prova fallback
+      playFallbackSound()
+    }
+  }
+
+  const playAdvancedSound = () => {
+    try {
+      if (!audioContext || audioContext.state !== 'running') {
+        console.log('❌ AudioContext inte redo, använder fallback')
+        playFallbackSound()
+        return
+      }
+      
+      // Spela en serie toner för att låta mer som en notifikation
+      const playTone = (frequency, startTime, duration, volume = 0.3) => {
+        const oscillator = audioContext.createOscillator()
+        const gainNode = audioContext.createGain()
+        
+        oscillator.connect(gainNode)
+        gainNode.connect(audioContext.destination)
+        
+        oscillator.frequency.value = frequency
+        oscillator.type = 'sine'
+        
+        gainNode.gain.setValueAtTime(0, startTime)
+        gainNode.gain.linearRampToValueAtTime(volume, startTime + 0.01)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
+        
+        oscillator.start(startTime)
+        oscillator.stop(startTime + duration)
+      }
+      
+      // Spela tre toner i sekvens (som iPhone notifikation) - lite högre volym
+      const now = audioContext.currentTime
+      playTone(800, now, 0.15, 0.4)        // Första ton
+      playTone(1000, now + 0.2, 0.15, 0.4) // Andra ton (högre)
+      playTone(800, now + 0.4, 0.2, 0.4)   // Tredje ton (tillbaka till första)
+      
+      console.log('🔊 Avancerat ljud spelat med aktiverad AudioContext')
+    } catch (error) {
+      console.log('Fel med avancerat ljud, använder fallback:', error)
+      playFallbackSound()
     }
   }
 
@@ -1784,7 +1938,7 @@ Utvecklad av Skaply
     commands.push(`Tid: ${orderDate.toLocaleTimeString('sv-SE')}\n\n`)
     
     // Customer info
-    if (order.customer_name && order.customer_name !== 'Anonym kund') {
+            if (order.customer_name && order.customer_name !== 'Gäst') {
       commands.push('\x1BE\x01') // Bold on
       commands.push('KUND:\n')
       commands.push('\x1BE\x00') // Bold off
@@ -2429,6 +2583,30 @@ Utvecklad av Skaply
                     </span>
                   </Button>
 
+                  {/* Audio Activation Button - Show only on iOS devices */}
+                  {isIOSDevice && (
+                    <Button 
+                      onClick={activateAudio}
+                      variant="outline" 
+                      className={`flex-1 sm:flex-none transition-all duration-200 ${
+                        audioEnabled 
+                          ? 'border-green-500/40 text-green-400 hover:bg-green-500/10' 
+                          : 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10'
+                      }`}
+                      size="sm"
+                      title="Aktivera ljud för automatiska notifikationer (krävs för iPad/Safari)"
+                      disabled={audioEnabled}
+                    >
+                      <Volume2 className="h-4 w-4 mr-1 sm:mr-2" />
+                      <span className="hidden sm:inline">
+                        {audioEnabled ? 'Ljud Aktivt' : 'Aktivera Ljud'}
+                      </span>
+                      <span className="sm:hidden">
+                        {audioEnabled ? '🔊' : '🔇'}
+                      </span>
+                    </Button>
+                  )}
+
                   {/* Test Notifications Button */}
                   <Button 
                     onClick={() => {
@@ -2533,6 +2711,33 @@ Utvecklad av Skaply
             </div>
           </CardContent>
         </Card>
+
+        {/* Audio Status Warning - Show only on iOS devices */}
+        {notificationsEnabled && !audioEnabled && isIOSDevice && (
+          <Card className="border border-yellow-500/30 bg-gradient-to-r from-yellow-900/20 to-orange-900/20 backdrop-blur-md mb-6">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-yellow-500/20 rounded-full flex items-center justify-center">
+                  <Volume2 className="h-4 w-4 text-yellow-400" />
+                </div>
+                <div>
+                  <p className="text-yellow-400 font-medium">Ljud är inte aktiverat</p>
+                  <p className="text-yellow-300/80 text-sm">
+                    För iPad/Safari: Tryck "Aktivera Ljud" för att höra automatiska notifikationer
+                  </p>
+                </div>
+                <Button
+                  onClick={activateAudio}
+                  variant="outline"
+                  size="sm"
+                  className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10"
+                >
+                  Aktivera Nu
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Notification Status Warning */}
         {!notificationsEnabled && (

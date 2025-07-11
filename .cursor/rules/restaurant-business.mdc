@@ -1,0 +1,108 @@
+---
+description: Restaurant business domain and functionality guidelines
+---
+
+# Restaurang Business Logic
+
+## Locations (Platser)
+- **Trelleborg**: Huvudkontor, första platsen
+- **Malmö**: Andra platsen, större marknad
+- **Ystad**: Tredje platsen, turistområde
+- **Database enum**: `'trelleborg'`, `'malmo'`, `'ystad'`
+
+## Meny Kategorier
+- **Sushi**: Nigiri, Maki, Sashimi
+- **Poké Bowls**: Anpassningsbara bowls
+- **Varm Mat**: Soppa, Gyoza, Tempura
+- **Drycker**: Läsk, Te, Kaffe
+- **Tillbehör**: Wasabi, Ingefära, Sojasås
+
+## Beställningssystem
+- **Kundvagn**: Persistent mellan sessioner
+- **Anpassningar**: Allergier, specialönskemål
+- **Leverans**: Olika zoner per plats
+- **Hämtning**: Tidsluckor för pickup
+- **Betalning**: Kort, Swish, Klarna
+
+## Bordsbokningar
+- **Tidsluckor**: 15-minuters intervall
+- **Kapacitet**: Olika per plats
+- **Förbokning**: Upp till 30 dagar
+- **Bekräftelse**: Email och SMS
+- **Avbokning**: Minst 2 timmar innan
+
+## Öppettider
+```typescript
+const openingHours = {
+  monday: { open: '11:00', close: '21:00' },
+  tuesday: { open: '11:00', close: '21:00' },
+  wednesday: { open: '11:00', close: '21:00' },
+  thursday: { open: '11:00', close: '21:00' },
+  friday: { open: '11:00', close: '22:00' },
+  saturday: { open: '11:00', close: '22:00' },
+  sunday: { open: '12:00', close: '21:00' }
+}
+```
+
+## Prissättning
+- **Dynamisk prissättning**: Olika priser per plats
+- **Kampanjer**: Lunch, Happy hour, Studentrabatt
+- **Leveransavgift**: Baserat på avstånd
+- **Minimibeställning**: Olika per område
+
+## Kvalitetssäkring
+- **Färskhet**: Daglig leverans av råvaror
+- **Allergener**: Tydlig märkning
+- **Halal**: Vissa produkter
+- **Vegetariskt/Veganskt**: Separata alternativ
+
+## Kundservice
+- **Chatbot**: AI-driven support
+- **Telefonsupport**: Under öppettider
+- **Email**: Inom 24 timmar
+- **Feedback**: Aktivt insamlande
+
+## Leveransområden
+```typescript
+const deliveryZones = {
+  trelleborg: {
+    zone1: { radius: 2, fee: 0 },    // Centrum
+    zone2: { radius: 5, fee: 39 },   // Närförort
+    zone3: { radius: 10, fee: 59 }   // Ytterområde
+  },
+  malmo: {
+    zone1: { radius: 3, fee: 0 },
+    zone2: { radius: 7, fee: 49 },
+    zone3: { radius: 15, fee: 79 }
+  },
+  ystad: {
+    zone1: { radius: 2, fee: 0 },
+    zone2: { radius: 4, fee: 29 },
+    zone3: { radius: 8, fee: 49 }
+  }
+}
+```
+
+## Säsongsmeny
+- **Vinter**: Varmare rätter, soppa
+- **Vår**: Lätta, färska ingredienser
+- **Sommar**: Kalla rätter, poké bowls
+- **Höst**: Säsongsspecialiteter
+
+## Lojalitetsprogram
+- **Poäng**: 1 kr = 1 poäng
+- **Belöningar**: Rabatter, gratis rätter
+- **Nivåer**: Brons, Silver, Guld
+- **Födelsedag**: Speciell rabatt
+
+## Eventcatering
+- **Företagslunch**: Specialpaket
+- **Privatfester**: Anpassade menyer
+- **Konferenser**: Lunch och fika
+- **Bröllop**: Exklusiva menyer
+
+## Hållbarhet
+- **Lokala leverantörer**: Minska transportavstånd
+- **Ekologiskt**: Vissa ingredienser
+- **Återvinning**: Förpackningar
+- **Matsvinn**: Minimering

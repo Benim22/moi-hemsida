@@ -1,0 +1,96 @@
+---
+description: Performance optimization and security best practices
+---
+
+# Prestanda & Säkerhet
+
+## Prestanda Optimering
+- **Image optimization**: Använd Next.js Image component för optimering
+- **Code splitting**: Använd dynamic imports för stora komponenter
+- **Lazy loading**: Implementera för bilder och komponenter
+- **Caching**: Använd Next.js caching strategier
+- **Bundle analysis**: Regelbunden analys av bundle storlek
+
+## Säkerhetsprinciper
+- **Input validation**: Validera all användarinput
+- **SQL injection**: Använd parametriserade queries
+- **XSS prevention**: Sanitera användarinput
+- **CSRF protection**: Implementera CSRF tokens
+- **Rate limiting**: Begränsa API requests
+
+## Next.js Säkerhet
+```typescript
+// next.config.mjs säkerhetsheaders
+async headers() {
+  return [
+    {
+      source: '/(.*)',
+      headers: [
+        {
+          key: 'Content-Security-Policy',
+          value: "default-src 'self'; script-src 'self' 'unsafe-eval'"
+        },
+        {
+          key: 'X-Frame-Options',
+          value: 'DENY'
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Supabase Säkerhet
+- **RLS Policies**: Implementera Row Level Security för alla tabeller
+- **Service Role**: Använd endast för admin operationer
+- **Environment Variables**: Aldrig exponera service role key
+- **Auth Validation**: Validera användare på server-side
+
+## Prestanda Monitoring
+- **Core Web Vitals**: Övervaka LCP, FID, CLS
+- **Loading Performance**: Mät och optimera laddningstider
+- **Database Performance**: Optimera queries och indexes
+- **API Response Times**: Övervaka API endpoint prestanda
+
+## Caching Strategier
+- **Static Generation**: Använd för statiskt innehåll
+- **Incremental Static Regeneration**: För semi-statiskt innehåll
+- **Client-side Caching**: Implementera för API responses
+- **CDN Caching**: Optimera för statiska assets
+
+## Error Handling
+- **Graceful Degradation**: Hantera fel utan att krasha appen
+- **Error Boundaries**: Implementera för React komponenter
+- **Logging**: Logga fel för debugging
+- **User Feedback**: Visa användbara felmeddelanden
+
+## Miljövariabler
+```typescript
+// Säker hantering av miljövariabler
+const requiredEnvVars = [
+  'NEXT_PUBLIC_SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY'
+]
+
+requiredEnvVars.forEach(envVar => {
+  if (!process.env[envVar]) {
+    throw new Error(`Missing required environment variable: ${envVar}`)
+  }
+})
+```
+
+## Säker API Design
+- **Authentication**: Verifiera användare för skyddade endpoints
+- **Authorization**: Kontrollera behörigheter
+- **Input Sanitization**: Rensa användarinput
+- **Rate Limiting**: Begränsa requests per användare
+- **HTTPS Only**: Tvinga HTTPS för all trafik
+
+## Prestanda Checklist
+- [ ] Bilder optimerade (WebP format)
+- [ ] Kod splittad för stora komponenter
+- [ ] Lazy loading implementerat
+- [ ] Database queries optimerade
+- [ ] Caching strategier implementerade
+- [ ] Bundle storlek analyserad
+- [ ] Core Web Vitals mätta

@@ -1,0 +1,44 @@
+---
+alwaysApply: true
+---
+
+# Moi Sushi & Poké Bowl - Projektöversikt
+
+Detta är en Next.js 14 applikation för Moi Sushi & Poké Bowl restaurang med flera platser i Skåne (Trelleborg, Malmö, Ystad).
+
+## Teknisk Stack
+- **Framework**: Next.js 14 med App Router
+- **Språk**: TypeScript
+- **Styling**: Tailwind CSS med CSS Variables för theming
+- **UI Components**: Radix UI + shadcn/ui komponenter
+- **Database**: Supabase (PostgreSQL) med Row Level Security (RLS)
+- **Authentication**: Supabase Auth
+- **State Management**: React Context (CartContext, LocationContext, SimpleAuthContext)
+- **Email**: Resend, EmailJS, Nodemailer för olika leverantörer
+- **Maps**: Google Maps API
+- **Animationer**: Framer Motion
+- **Deployment**: Vercel
+
+## Projektstruktur
+- `app/` - Next.js App Router sidor och API routes
+- `components/` - Återanvändbara React komponenter
+- `components/ui/` - shadcn/ui baskomponenter
+- `lib/` - Utility funktioner och service layers
+- `context/` - React Context providers
+- `database/` - SQL schema och migrations
+- `public/` - Statiska filer (bilder, ikoner)
+
+## Viktiga Funktioner
+- **Multi-location support** - Trelleborg, Malmö, Ystad
+- **Online beställning** - Kundvagn och checkout
+- **Bordsbokningar** - Reservationssystem
+- **Användarhantering** - Profiler och beställningshistorik
+- **Admin panel** - Orderhantering och feedback
+- **SEO optimerat** - Strukturerad data och metadata
+- **Responsive design** - Mobile-first approach
+- **Progressiv Web App** - PWA funktionalitet
+
+## Språk och Lokalisering
+- **Primärt språk**: Svenska
+- **Målgrupp**: Svenska kunder i Skåne
+- **SEO**: Fokus på svenska söktermer och lokala områden

@@ -1,0 +1,94 @@
+---
+alwaysApply: true
+---
+
+# Filorganisation & Namnkonventioner
+
+## Katalogstruktur
+```
+moi-hemsida/
+├── app/                    # Next.js App Router
+│   ├── (routes)/          # Sidor med layouts
+│   ├── api/               # API endpoints
+│   └── globals.css        # Global styles
+├── components/            # React komponenter
+│   ├── ui/               # shadcn/ui komponenter
+│   └── [feature]/        # Funktionsspecifika komponenter
+├── lib/                  # Utilities och services
+├── context/              # React Context providers
+├── hooks/                # Custom React hooks
+├── database/             # SQL schema och migrations
+└── public/               # Statiska filer
+```
+
+## Namnkonventioner
+- **Filer**: kebab-case för alla filer (`user-profile.tsx`)
+- **Komponenter**: PascalCase för komponentnamn (`UserProfile`)
+- **Hooks**: camelCase med `use` prefix (`useUserProfile`)
+- **Utilities**: camelCase (`formatCurrency`)
+- **Constants**: UPPER_SNAKE_CASE (`MAX_RETRY_COUNT`)
+
+## Komponentorganisation
+```typescript
+// components/feature/component-name.tsx
+import { ComponentProps } from './types'
+import { useComponentLogic } from './hooks'
+
+export const ComponentName = ({ ...props }: ComponentProps) => {
+  // Component logic
+}
+
+// components/feature/index.ts
+export { ComponentName } from './component-name'
+export type { ComponentProps } from './types'
+```
+
+## Import Ordning
+```typescript
+// 1. React och Next.js
+import React from 'react'
+import { NextRequest } from 'next/server'
+
+// 2. Externa bibliotek
+import { createClient } from '@supabase/supabase-js'
+
+// 3. Interna imports (absoluta)
+import { Button } from '@/components/ui/button'
+import { supabase } from '@/lib/supabase'
+
+// 4. Relativa imports
+import './styles.css'
+```
+
+## Filnamnskonventioner
+- **Sidor**: `page.tsx`, `layout.tsx`, `loading.tsx`, `error.tsx`
+- **API**: `route.ts` för API endpoints
+- **Komponenter**: `component-name.tsx`
+- **Hooks**: `use-hook-name.ts`
+- **Utils**: `utility-name.ts`
+- **Types**: `types.ts` eller `component-name.types.ts`
+
+## Katalogspecifika Regler
+- **`app/`**: Endast Next.js App Router filer
+- **`components/ui/`**: Endast shadcn/ui komponenter
+- **`lib/`**: Återanvändbara utilities och services
+- **`database/`**: SQL filer med beskrivande namn
+- **`public/`**: Statiska filer med SEO-vänliga namn
+
+## Bildhantering
+- **Format**: WebP för optimering
+- **Namngivning**: beskrivande-namn.webp
+- **Struktur**: Organisera i undermappar (`public/Meny-bilder/`)
+- **Alt-text**: Alltid inkludera beskrivande alt-text
+
+## Dokumentation
+- **README**: Uppdatera för nya funktioner
+- **Kommentarer**: JSDoc för publika funktioner
+- **TODO**: Använd TODO kommentarer för framtida förbättringar
+- **CHANGELOG**: Dokumentera större ändringar
+
+## Git Konventioner
+- **Commit meddelanden**: På svenska, beskrivande
+- **Branch namn**: feature/funktions-namn, fix/problem-namn
+- **PR titlar**: Beskrivande på svenska
+- **Tags**: Semantisk versioning (v1.0.0)
