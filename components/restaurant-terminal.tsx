@@ -211,22 +211,55 @@ export default function RestaurantTerminal() {
       
       try {
         // Test HTTPS connection to printer (kräver SSL-certifikat)
-        const response = await fetch(`https://${printerSettings.printerIP}/`, {
-          method: 'GET',
-          mode: 'no-cors',
-          signal: AbortSignal.timeout(5000)
-        })
+        // Prova flera endpoints för att hitta den som fungerar
+        const testEndpoints = [
+          '/',
+          '/cgi-bin/epos/service.cgi',
+          '/status'
+        ]
         
-        addDebugLog('✅ SSL Bridge: HTTPS-anslutning till skrivaren framgångsrik', 'success')
-        setPrinterStatus({
-          connected: true,
-          lastTest: new Date(),
-          error: null
-        })
-        return true
+        let connected = false
+        
+        for (const endpoint of testEndpoints) {
+          try {
+            addDebugLog(`🔄 Testar HTTPS-endpoint: ${endpoint}`, 'info')
+            
+            const response = await fetch(`https://${printerSettings.printerIP}${endpoint}`, {
+              method: 'GET',
+              mode: 'no-cors',
+              signal: AbortSignal.timeout(5000)
+            })
+            
+            addDebugLog(`✅ SSL Bridge: HTTPS-anslutning till skrivaren framgångsrik (${endpoint})`, 'success')
+            connected = true
+            break
+          } catch (endpointError) {
+            addDebugLog(`❌ Endpoint ${endpoint} misslyckades: ${endpointError.message}`, 'warning')
+          }
+        }
+        
+        if (connected) {
+          setPrinterStatus({
+            connected: true,
+            lastTest: new Date(),
+            error: null
+          })
+          return true
+        } else {
+          throw new Error('Alla HTTPS-endpoints misslyckades')
+        }
+        
       } catch (error) {
         addDebugLog(`❌ SSL Bridge: Kan inte ansluta via HTTPS - ${error.message}`, 'error')
-        addDebugLog('💡 Tips: Kontrollera att SSL-certifikat är skapat på skrivaren', 'warning')
+        
+        if (error.message.includes('ERR_CERT_AUTHORITY_INVALID')) {
+          addDebugLog('💡 Tips: Gå till https://192.168.1.103 och acceptera säkerhetsvarningen först', 'warning')
+        } else if (error.message.includes('ERR_SSL_PROTOCOL_ERROR')) {
+          addDebugLog('💡 Tips: Kontrollera att SSL/HTTPS är aktiverat på skrivaren', 'warning')
+        } else {
+          addDebugLog('💡 Tips: Kontrollera att SSL-certifikat är skapat på skrivaren', 'warning')
+        }
+        
         setPrinterStatus({
           connected: false,
           lastTest: new Date(),
@@ -1658,32 +1691,71 @@ Utvecklad av Skaply
     addDebugLog('🔐 SSL Bridge: Skickar HTTPS-kommando till skrivaren', 'info')
     
     try {
-      // Generate ESC/POS commands for the receipt
+      // Generate raw ESC/POS commands for the receipt
       const escPosCommands = generateESCPOSCommands(order)
       
-      // Send HTTPS POST request to printer (kräver SSL-certifikat på skrivaren)
-      const response = await fetch(`https://${printerSettings.printerIP}/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain',
-          'SOAPAction': '""'
-        },
-        body: escPosCommands
-      })
+      // Try multiple HTTPS endpoints för TM-T20III
+      const endpoints = [
+        `/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000`,
+        `/cgi-bin/epos/service.cgi`,
+        `/cgi-bin/epos/eposprint.cgi`,
+        `/api/print`
+      ]
       
-      if (response.ok) {
-        addDebugLog('✅ SSL Bridge: Kvitto skickat till skrivaren via HTTPS', 'success')
-        setPrinterStatus(prev => ({ ...prev, connected: true, lastTest: new Date() }))
-        showBrowserNotification(
-          '🖨️ Kvitto utskrivet!', 
-          `Order #${order.order_number} utskrivet via SSL Bridge`,
-          false
-        )
-      } else {
-        throw new Error(`HTTPS ${response.status}: ${response.statusText}`)
+      let lastError = null
+      
+      for (const endpoint of endpoints) {
+        try {
+          addDebugLog(`🔄 Testar HTTPS-endpoint: ${endpoint}`, 'info')
+          
+          const response = await fetch(`https://${printerSettings.printerIP}${endpoint}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain',
+              'SOAPAction': '""',
+              'User-Agent': 'MOI-SUSHI/1.0'
+            },
+            body: escPosCommands,
+            // Viktigt: Tillåt självsignerade certifikat
+            signal: AbortSignal.timeout(10000)
+          })
+          
+          if (response.ok) {
+            addDebugLog(`✅ SSL Bridge: Kvitto skickat till skrivaren via HTTPS (${endpoint})`, 'success')
+            setPrinterStatus(prev => ({ ...prev, connected: true, lastTest: new Date() }))
+            showBrowserNotification(
+              '🖨️ Kvitto utskrivet!', 
+              `Order #${order.order_number} utskrivet via SSL Bridge`,
+              false
+            )
+            return
+          } else {
+            lastError = new Error(`HTTPS ${response.status}: ${response.statusText}`)
+            addDebugLog(`❌ Endpoint ${endpoint} misslyckades: ${response.status}`, 'warning')
+          }
+        } catch (endpointError) {
+          lastError = endpointError
+          addDebugLog(`❌ Endpoint ${endpoint} fel: ${endpointError.message}`, 'warning')
+        }
       }
+      
+      // Om alla endpoints misslyckades, kasta senaste felet
+      throw lastError || new Error('Alla HTTPS-endpoints misslyckades')
+      
     } catch (error) {
       addDebugLog(`❌ SSL Bridge HTTPS-fel: ${error.message}`, 'error')
+      
+      // Ge mer specifika felmeddelanden
+      if (error.name === 'AbortError') {
+        throw new Error('Timeout - skrivaren svarar inte på HTTPS-anrop')
+      } else if (error.message.includes('ERR_CERT_AUTHORITY_INVALID')) {
+        throw new Error('SSL-certifikat ej godkänt - acceptera säkerhetsvarningen i webbläsaren först')
+      } else if (error.message.includes('ERR_SSL_PROTOCOL_ERROR')) {
+        throw new Error('SSL-protocol fel - kontrollera att HTTPS är aktiverat på skrivaren')
+      } else if (error.message.includes('ERR_CONNECTION_REFUSED')) {
+        throw new Error('Anslutning nekad - kontrollera att skrivaren är påslagen och ansluten')
+      }
+      
       throw error
     }
   }
@@ -3554,6 +3626,53 @@ Utvecklad av Skaply
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* HTTPS Setup Guide för produktion */}
+        {window.location.protocol === 'https:' && window.location.hostname !== 'localhost' && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <h3 className="font-bold text-blue-800 mb-2">🔐 HTTPS-konfiguration för iPad (Produktionsmiljö)</h3>
+            <div className="text-sm text-blue-700 space-y-2">
+              <p><strong>Steg 1:</strong> Logga in på skrivaren på <code>http://192.168.1.103</code></p>
+              <p><strong>Steg 2:</strong> Gå till TCP/IP → Security → Aktivera SSL/TLS</p>
+              <p><strong>Steg 3:</strong> Skapa självsignerat certifikat (Common Name: 192.168.1.103)</p>
+              <p><strong>Steg 4:</strong> Aktivera HTTPS-port (443)</p>
+              <p><strong>Steg 5:</strong> Gå till <code>https://192.168.1.103</code> och acceptera säkerhetsvarningen</p>
+              <p><strong>Steg 6:</strong> Testa anslutning nedan</p>
+            </div>
+          </div>
+        )}
+
+        {/* Printer Connection Status */}
+        <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
+          <h3 className="font-bold text-gray-800 mb-2">🖨️ Skrivare: Epson TM-T20III</h3>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">IP-adress:</span>
+              <span className="font-mono text-sm">{printerSettings.printerIP}:{printerSettings.printerPort}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Anslutning:</span>
+              <span className={`text-sm font-medium ${
+                printerStatus.connected ? 'text-green-600' : 'text-red-600'
+              }`}>
+                {printerStatus.connected ? '✅ Ansluten' : '❌ Ej ansluten'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Miljö:</span>
+              <span className="text-sm font-mono">
+                {window.location.protocol === 'https:' && window.location.hostname !== 'localhost' 
+                  ? '🔐 HTTPS (iPad Bridge)' 
+                  : '🏠 Localhost'}
+              </span>
+            </div>
+            {printerStatus.error && (
+              <div className="bg-red-50 border border-red-200 rounded p-2 mt-2">
+                <p className="text-red-600 text-sm">{printerStatus.error}</p>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )
