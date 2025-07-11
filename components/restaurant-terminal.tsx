@@ -250,7 +250,7 @@ export default function RestaurantTerminal() {
         return false
       }
     } else {
-      addDebugLog('🔍 Testar backend-anslutning till Epson TM-T20III...', 'info')
+    addDebugLog('🔍 Testar backend-anslutning till Epson TM-T20III...', 'info')
     }
     
     try {
@@ -1804,11 +1804,11 @@ Utvecklad av Skaply
             addDebugLog(`❌ SSL Bridge misslyckades: ${error.message}`, 'error')
             addDebugLog('💡 Tips: Kontrollera att SSL-certifikat är skapat och betrott på skrivaren', 'warning')
             // Fallback to simulator
-            const receipt = generateMockEPOSReceipt(order)
-            simulatePrintReceipt(receipt, order)
-            return
+        const receipt = generateMockEPOSReceipt(order)
+        simulatePrintReceipt(receipt, order)
+        return
           }
-        }
+      }
 
       // Simulator mode
       if (!printerSettings.enabled || printerSettings.debugMode) {
