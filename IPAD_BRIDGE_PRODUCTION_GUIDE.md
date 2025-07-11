@@ -48,9 +48,9 @@ Gå till **Skrivarinställningar** (⚙️-ikonen) och konfigurera:
 ✅ Automatisk utskrift: ON
 ✅ Automatisk e-post: ON
 📍 Skrivare IP: 192.168.1.103
-🔌 Port: 80
-🌐 Anslutningstyp: HTTP
-🖥️ Utskriftsmetod: Frontend (iPad Bridge)
+🔌 Port: 9100
+🌐 Anslutningstyp: TCP
+🖥️ Utskriftsmetod: Backend (iPad Bridge)
 🐛 Debug-läge: OFF (för produktion)
 ```
 

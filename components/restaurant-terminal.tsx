@@ -27,9 +27,9 @@ const DEFAULT_PRINTER_SETTINGS = {
   autoprintEnabled: true, // Enable auto-print for webhook orders
   autoemailEnabled: true,
   printerIP: '192.168.1.103',
-  printerPort: '80', // Use HTTP port 80 instead of TCP port 9100
-  connectionType: 'http', // Use HTTP instead of TCP
-  printMethod: 'frontend', // Use frontend/ePOS for iPad compatibility
+  printerPort: '9100', // Use TCP port 9100 for iPad Bridge
+  connectionType: 'tcp', // Use TCP for iPad Bridge
+  printMethod: 'backend', // Use backend for iPad Bridge (avoids Mixed Content)
   debugMode: false // Disable debug mode for production
 }
 
@@ -222,23 +222,36 @@ export default function RestaurantTerminal() {
     const isProduction = window.location.protocol === 'https:' && window.location.hostname !== 'localhost'
     
     if (isProduction) {
-      addDebugLog('🌉 Testar iPad Bridge-anslutning till Epson TM-T20III...', 'info')
+      addDebugLog('🌉 Testar iPad Bridge-anslutning via backend API...', 'info')
       
       try {
-        // Test HTTP connection to printer
-        const response = await fetch(`http://${printerSettings.printerIP}/`, {
-          method: 'GET',
-          mode: 'no-cors',
-          signal: AbortSignal.timeout(5000)
+        // Test via backend API to avoid Mixed Content issues
+        const response = await fetch('/api/printer', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'test',
+            printerIP: printerSettings.printerIP,
+            printerPort: 9100, // Force TCP port for iPad Bridge
+            bridgeMode: true
+          })
         })
         
-        addDebugLog('✅ iPad Bridge: Anslutning till skrivaren framgångsrik', 'success')
-        setPrinterStatus({
-          connected: true,
-          lastTest: new Date(),
-          error: null
-        })
-        return true
+        const result = await response.json()
+        
+        if (result.success && result.connected) {
+          addDebugLog('✅ iPad Bridge: Anslutning till skrivaren framgångsrik', 'success')
+          setPrinterStatus({
+            connected: true,
+            lastTest: new Date(),
+            error: null
+          })
+          return true
+        } else {
+          throw new Error(result.error || 'Anslutning misslyckades')
+        }
       } catch (error) {
         addDebugLog(`❌ iPad Bridge: Kan inte ansluta till skrivaren - ${error.message}`, 'error')
         setPrinterStatus({
@@ -1667,26 +1680,30 @@ Utvecklad av Skaply
     }
   }
 
-  // iPad Bridge: Print via HTTP directly to printer
+  // iPad Bridge: Print via backend API (avoids Mixed Content issues)
   const printHTTPToPrinter = async (order) => {
-    addDebugLog('🌉 iPad Bridge: Skickar HTTP-kommando till skrivaren', 'info')
+    addDebugLog('🌉 iPad Bridge: Skickar via backend API till skrivaren', 'info')
     
     try {
-      // Generate ESC/POS commands for the receipt
-      const escPosCommands = generateESCPOSCommands(order)
-      
-      // Send HTTP POST request to printer
-      const response = await fetch(`http://${printerSettings.printerIP}/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000`, {
+      // Use backend API to avoid Mixed Content issues
+      const response = await fetch('/api/printer', {
         method: 'POST',
         headers: {
-          'Content-Type': 'text/plain',
-          'SOAPAction': '""'
+          'Content-Type': 'application/json',
         },
-        body: escPosCommands
+        body: JSON.stringify({
+          action: 'print',
+          order: order,
+          printerIP: printerSettings.printerIP,
+          printerPort: printerSettings.printerPort,
+          bridgeMode: true // Special flag for iPad Bridge
+        })
       })
       
-      if (response.ok) {
-        addDebugLog('✅ iPad Bridge: Kvitto skickat till skrivaren via HTTP', 'success')
+      const result = await response.json()
+      
+      if (result.success) {
+        addDebugLog('✅ iPad Bridge: Kvitto skickat till skrivaren via backend', 'success')
         setPrinterStatus(prev => ({ ...prev, connected: true, lastTest: new Date() }))
         showBrowserNotification(
           '🖨️ Kvitto utskrivet!', 
@@ -1694,93 +1711,15 @@ Utvecklad av Skaply
           false
         )
       } else {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        throw new Error(result.error || 'Okänt fel')
       }
     } catch (error) {
-      addDebugLog(`❌ iPad Bridge HTTP-fel: ${error.message}`, 'error')
+      addDebugLog(`❌ iPad Bridge backend-fel: ${error.message}`, 'error')
       throw error
     }
   }
 
-  // Generate ESC/POS commands for Epson printer
-  const generateESCPOSCommands = (order) => {
-    const commands = []
-    
-    // Initialize printer
-    commands.push('\x1B@') // ESC @
-    
-    // Header
-    commands.push('\x1Ba\x01') // Center align
-    commands.push('\x1D!\x11') // Double size
-    commands.push('MOI SUSHI\n')
-    commands.push('& POKE BOWL\n')
-    commands.push('\x1D!\x00') // Normal size
-    commands.push('================================\n')
-    
-    // Order info
-    commands.push('\x1Ba\x00') // Left align
-    commands.push(`Order #${order.order_number || 'N/A'}\n`)
-    
-    const orderDate = new Date(order.created_at)
-    commands.push(`Datum: ${orderDate.toLocaleDateString('sv-SE')}\n`)
-    commands.push(`Tid: ${orderDate.toLocaleTimeString('sv-SE')}\n\n`)
-    
-    // Customer info
-    if (order.customer_name && order.customer_name !== 'Anonym kund') {
-      commands.push('\x1BE\x01') // Bold on
-      commands.push('KUND:\n')
-      commands.push('\x1BE\x00') // Bold off
-      commands.push(`${order.customer_name}\n`)
-      
-      if (order.customer_phone) {
-        commands.push(`Tel: ${order.customer_phone}\n`)
-      }
-      commands.push('\n')
-    }
-    
-    // Items
-    commands.push('\x1BE\x01') // Bold on
-    commands.push('BESTÄLLNING:\n')
-    commands.push('\x1BE\x00') // Bold off
-    commands.push('--------------------------------\n')
-    
-    const items = order.cart_items || order.items || []
-    const itemsArray = typeof items === 'string' ? JSON.parse(items) : items
-    
-    let totalAmount = 0
-    itemsArray.forEach(item => {
-      const itemName = item.name || 'Okänd produkt'
-      const quantity = item.quantity || 1
-      const price = item.price || 0
-      const itemTotal = quantity * price
-      totalAmount += itemTotal
-      
-      commands.push(`${quantity}x ${itemName}\n`)
-      commands.push(`    ${price} kr/st = ${itemTotal} kr\n\n`)
-    })
-    
-    // Total
-    commands.push('--------------------------------\n')
-    commands.push('\x1BE\x01') // Bold on
-    commands.push('\x1D!\x11') // Double size
-    commands.push(`TOTALT: ${order.total_amount || order.amount || totalAmount} kr\n`)
-    commands.push('\x1D!\x00') // Normal size
-    commands.push('\x1BE\x00') // Bold off
-    commands.push('\n')
-    
-    // Footer
-    commands.push('\x1Ba\x01') // Center align
-    commands.push('================================\n')
-    commands.push('Tack för din beställning!\n')
-    commands.push('MOI SUSHI & POKE BOWL\n')
-    commands.push('www.moisushi.se\n')
-    commands.push('\n\n\n')
-    
-    // Cut paper
-    commands.push('\x1DVB\x00') // Full cut
-    
-    return commands.join('')
-  }
+
 
   // Print Receipt to Epson TM-T20III with ESC/POS commands - iPad Bridge Mode
   const printEPOSReceipt = async (order) => {

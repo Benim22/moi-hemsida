@@ -54,7 +54,8 @@ export async function POST(request: NextRequest) {
 
       case 'print':
         console.log(`📝 BACKEND: Utskrift begärd för order #${order?.order_number} - Timestamp: ${Date.now()}`)
-        return await printReceipt(order, printerIP || printerSettings.printerIP, printerPort || parseInt(printerSettings.printerPort))
+        const { bridgeMode } = body
+        return await printReceipt(order, printerIP || printerSettings.printerIP, printerPort || parseInt(printerSettings.printerPort), bridgeMode)
 
       default:
         return NextResponse.json({
@@ -132,10 +133,17 @@ async function testConnection(ip: string, port: number) {
   }
 }
 
-async function printReceipt(order: any, ip: string, port: number) {
+async function printReceipt(order: any, ip: string, port: number, bridgeMode: boolean = false) {
   try {
-    console.log(`Printing receipt to ${ip}:${port}`)
+    console.log(`Printing receipt to ${ip}:${port}${bridgeMode ? ' (iPad Bridge mode)' : ''}`)
     console.log('Order data:', JSON.stringify(order, null, 2))
+    
+    // iPad Bridge mode - always use TCP for backend
+    if (bridgeMode) {
+      console.log('🌉 iPad Bridge: Using direct TCP connection')
+      // Force TCP connection for iPad Bridge
+      port = 9100 // Override to TCP port
+    }
     
     // Try direct TCP connection first
     try {
