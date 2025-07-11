@@ -1,28 +1,123 @@
 "use client"
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { MapPin, Phone, Mail, Clock, Instagram, Facebook } from 'lucide-react'
 import { useLocation } from '@/contexts/LocationContext'
+import { supabase } from '@/lib/supabase'
 
 export function Footer() {
   const { selectedLocation } = useLocation()
+  const [locations, setLocations] = useState([])
+  const [loading, setLoading] = useState(true)
 
-  // Fallback till Trelleborg om ingen location är vald
-  const currentLocation = selectedLocation || {
-    id: "trelleborg",
-    name: "Trelleborg",
-    displayName: "Moi Sushi Trelleborg", 
-    address: "Corfitz-Beck-Friisgatan 5B, 231 43 Trelleborg",
-    phone: "0410-281 10",
-    email: "trelleborg@moisushi.se",
-    hours: {
-      weekdays: "11.00 – 21.00",
-      saturday: "12.00 – 21.00",
-      sunday: "15.00 – 21.00"
-    },
-    coordinates: { lat: 55.3758, lng: 13.1568 }
-  }
+  // Hämta locations från databasen
+  useEffect(() => {
+    const fetchLocations = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('locations')
+          .select('*')
+          .eq('is_active', true)
+          .order('name')
+
+        if (error) throw error
+
+                 const transformedLocations = data.map(location => {
+           // Skapa konsistent ID som matchar LocationContext
+           let locationId = location.name.toLowerCase()
+           if (locationId === 'malmö') locationId = 'malmo'
+           
+           return {
+             id: locationId,
+             name: location.name,
+             displayName: location.display_name,
+             address: location.address,
+             phone: location.phone,
+             email: location.email,
+             hours: location.opening_hours || {
+               weekdays: "11.00 – 21.00",
+               saturday: "12.00 – 21.00",
+               sunday: "15.00 – 21.00"
+             },
+             coordinates: { 
+               lat: parseFloat(location.latitude) || 0, 
+               lng: parseFloat(location.longitude) || 0 
+             }
+           }
+         })
+
+        setLocations(transformedLocations)
+      } catch (error) {
+        console.error('Error fetching locations:', error)
+                 // Fallback till hårdkodade värden om databasen inte fungerar
+         setLocations([
+           {
+             id: "trelleborg",
+             name: "Trelleborg",
+             displayName: "Moi Sushi Trelleborg", 
+             address: "Corfitz-Beck-Friisgatan 5B, 231 43 Trelleborg",
+             phone: "0410-281 10",
+             email: "trelleborg@moisushi.se",
+             hours: {
+               weekdays: "11.00 – 21.00",
+               saturday: "12.00 – 21.00",
+               sunday: "15.00 – 21.00"
+             },
+             coordinates: { lat: 55.3758, lng: 13.1568 }
+           },
+           {
+             id: "malmo",
+             name: "Malmö",
+             displayName: "Moi Sushi Malmö", 
+             address: "Östra Förstadsgatan 16B, 211 43 Malmö",
+             phone: "040-842 52",
+             email: "malmo@moisushi.se",
+             hours: {
+               weekdays: "11.00 – 23.00",
+               saturday: "12.00 – 23.00",
+               sunday: "15.00 – 21.00"
+             },
+             coordinates: { lat: 55.6051, lng: 13.0040 }
+           },
+           {
+             id: "ystad",
+             name: "Ystad",
+             displayName: "Moi Sushi Food Truck Ystad", 
+             address: "Österportstorg, 271 41 Ystad",
+             phone: "076-059 84 09",
+             email: "ystad@moisushi.se",
+             hours: {
+               weekdays: "11.00 – 15.00",
+               saturday: "11.00 – 15.00",
+               sunday: "Stängt"
+             },
+             coordinates: { lat: 55.4297, lng: 13.8204 }
+           }
+         ])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchLocations()
+  }, [])
+
+     // Hitta vald location från databas-data, fallback till första location
+   const currentLocation = selectedLocation || locations[0] || {
+     id: "loading",
+     name: "Laddar...",
+     displayName: "Moi Sushi", 
+     address: "Laddar adress...",
+     phone: "",
+     email: "info@moisushi.se",
+     hours: {
+       weekdays: "11.00 – 21.00",
+       saturday: "12.00 – 21.00",
+       sunday: "15.00 – 21.00"
+     },
+     coordinates: { lat: 0, lng: 0 }
+   }
   return (
     <footer className="bg-black/95 border-t border-[#e4d699]/20 mt-auto">
       <div className="max-w-7xl mx-auto px-4 py-12">
@@ -57,68 +152,35 @@ export function Footer() {
           <div className="space-y-4">
             <h4 className="text-lg font-semibold text-[#e4d699]">Våra Platser</h4>
             <div className="space-y-3">
-              <div className={`p-2 rounded-lg transition-colors ${
-                currentLocation.id === 'trelleborg' 
-                  ? 'bg-[#e4d699]/10 border border-[#e4d699]/30' 
-                  : 'hover:bg-white/5'
-              }`}>
-                <h5 className={`font-medium ${
-                  currentLocation.id === 'trelleborg' ? 'text-[#e4d699]' : 'text-white'
-                }`}>
-                  Trelleborg
-                  {currentLocation.id === 'trelleborg' && (
-                    <span className="ml-2 text-xs bg-[#e4d699]/20 px-2 py-1 rounded-full">
-                      Vald
-                    </span>
-                  )}
-                </h5>
-                <div className="flex items-start space-x-2 text-sm text-white/70">
-                  <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                  <span>Corfitz-Beck-Friisgatan 5B, 231 43 Trelleborg</span>
-                </div>
-              </div>
-              
-              <div className={`p-2 rounded-lg transition-colors ${
-                currentLocation.id === 'malmo' 
-                  ? 'bg-[#e4d699]/10 border border-[#e4d699]/30' 
-                  : 'hover:bg-white/5'
-              }`}>
-                <h5 className={`font-medium ${
-                  currentLocation.id === 'malmo' ? 'text-[#e4d699]' : 'text-white'
-                }`}>
-                  Malmö
-                  {currentLocation.id === 'malmo' && (
-                    <span className="ml-2 text-xs bg-[#e4d699]/20 px-2 py-1 rounded-full">
-                      Vald
-                    </span>
-                  )}
-                </h5>
-                <div className="flex items-start space-x-2 text-sm text-white/70">
-                  <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                  <span>Södergatan 45, 211 34 Malmö</span>
-                </div>
-              </div>
-              
-              <div className={`p-2 rounded-lg transition-colors ${
-                currentLocation.id === 'ystad' 
-                  ? 'bg-[#e4d699]/10 border border-[#e4d699]/30' 
-                  : 'hover:bg-white/5'
-              }`}>
-                <h5 className={`font-medium ${
-                  currentLocation.id === 'ystad' ? 'text-[#e4d699]' : 'text-white'
-                }`}>
-                  Ystad (Food Truck)
-                  {currentLocation.id === 'ystad' && (
-                    <span className="ml-2 text-xs bg-[#e4d699]/20 px-2 py-1 rounded-full">
-                      Vald
-                    </span>
-                  )}
-                </h5>
-                <div className="flex items-start space-x-2 text-sm text-white/70">
-                  <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                  <span>Österportstorg, 271 41 Ystad</span>
-                </div>
-              </div>
+              {loading ? (
+                <div className="text-white/60 text-sm">Laddar platser...</div>
+              ) : (
+                locations.map((location) => (
+                  <div 
+                    key={location.id}
+                    className={`p-2 rounded-lg transition-colors ${
+                      currentLocation.id === location.id 
+                        ? 'bg-[#e4d699]/10 border border-[#e4d699]/30' 
+                        : 'hover:bg-white/5'
+                    }`}
+                  >
+                    <h5 className={`font-medium ${
+                      currentLocation.id === location.id ? 'text-[#e4d699]' : 'text-white'
+                    }`}>
+                      {location.displayName}
+                      {currentLocation.id === location.id && (
+                        <span className="ml-2 text-xs bg-[#e4d699]/20 px-2 py-1 rounded-full">
+                          Vald
+                        </span>
+                      )}
+                    </h5>
+                    <div className="flex items-start space-x-2 text-sm text-white/70">
+                      <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                      <span>{location.address}</span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
