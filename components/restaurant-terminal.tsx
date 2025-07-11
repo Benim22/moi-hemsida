@@ -27,9 +27,9 @@ const DEFAULT_PRINTER_SETTINGS = {
   autoprintEnabled: true, // Enable auto-print for webhook orders
   autoemailEnabled: true,
   printerIP: '192.168.1.103',
-  printerPort: '9100', // Use TCP port 9100 for iPad Bridge
-  connectionType: 'tcp', // Use TCP for iPad Bridge
-  printMethod: 'backend', // Use backend for iPad Bridge (works in both localhost and production)
+  printerPort: '443', // Use HTTPS port 443 for SSL Bridge
+  connectionType: 'https', // Use HTTPS with SSL certificate
+  printMethod: 'frontend', // Use frontend SSL Bridge for iPad compatibility
   debugMode: false // Disable debug mode for production
 }
 
@@ -222,43 +222,26 @@ export default function RestaurantTerminal() {
     const isProduction = window.location.protocol === 'https:' && window.location.hostname !== 'localhost'
     
     if (isProduction) {
-      addDebugLog('🌉 Testar iPad Bridge-anslutning via backend API...', 'info')
+      addDebugLog('🔐 Testar SSL Bridge-anslutning till Epson TM-T20III...', 'info')
       
       try {
-        // Test via backend API
-        const response = await fetch('/api/printer', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'test',
-            printerIP: printerSettings.printerIP,
-            printerPort: 9100
-          })
+        // Test HTTPS connection to printer (kräver SSL-certifikat)
+        const response = await fetch(`https://${printerSettings.printerIP}/`, {
+          method: 'GET',
+          mode: 'no-cors',
+          signal: AbortSignal.timeout(5000)
         })
         
-        const result = await response.json()
-        
-        if (result.success && result.connected) {
-          addDebugLog('✅ iPad Bridge: Backend-anslutning till skrivaren framgångsrik', 'success')
-          setPrinterStatus({
-            connected: true,
-            lastTest: new Date(),
-            error: null
-          })
-          return true
-        } else {
-          addDebugLog(`❌ iPad Bridge: ${result.error || 'Anslutning misslyckades'}`, 'error')
-          setPrinterStatus({
-            connected: false,
-            lastTest: new Date(),
-            error: result.error || 'Anslutning misslyckades'
-          })
-          return false
-        }
+        addDebugLog('✅ SSL Bridge: HTTPS-anslutning till skrivaren framgångsrik', 'success')
+        setPrinterStatus({
+          connected: true,
+          lastTest: new Date(),
+          error: null
+        })
+        return true
       } catch (error) {
-        addDebugLog(`❌ iPad Bridge: Kan inte ansluta till skrivaren - ${error.message}`, 'error')
+        addDebugLog(`❌ SSL Bridge: Kan inte ansluta via HTTPS - ${error.message}`, 'error')
+        addDebugLog('💡 Tips: Kontrollera att SSL-certifikat är skapat på skrivaren', 'warning')
         setPrinterStatus({
           connected: false,
           lastTest: new Date(),
@@ -1685,9 +1668,120 @@ Utvecklad av Skaply
     }
   }
 
+  // SSL Bridge: Print via HTTPS directly to printer (löser Mixed Content-problemet)
+  const printHTTPToPrinter = async (order) => {
+    addDebugLog('🔐 SSL Bridge: Skickar HTTPS-kommando till skrivaren', 'info')
+    
+    try {
+      // Generate ESC/POS commands for the receipt
+      const escPosCommands = generateESCPOSCommands(order)
+      
+      // Send HTTPS POST request to printer (kräver SSL-certifikat på skrivaren)
+      const response = await fetch(`https://${printerSettings.printerIP}/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain',
+          'SOAPAction': '""'
+        },
+        body: escPosCommands
+      })
+      
+      if (response.ok) {
+        addDebugLog('✅ SSL Bridge: Kvitto skickat till skrivaren via HTTPS', 'success')
+        setPrinterStatus(prev => ({ ...prev, connected: true, lastTest: new Date() }))
+        showBrowserNotification(
+          '🖨️ Kvitto utskrivet!', 
+          `Order #${order.order_number} utskrivet via SSL Bridge`,
+          false
+        )
+      } else {
+        throw new Error(`HTTPS ${response.status}: ${response.statusText}`)
+      }
+    } catch (error) {
+      addDebugLog(`❌ SSL Bridge HTTPS-fel: ${error.message}`, 'error')
+      throw error
+    }
+  }
 
-
-
+  // Generate ESC/POS commands for Epson printer
+  const generateESCPOSCommands = (order) => {
+    const commands = []
+    
+    // Initialize printer
+    commands.push('\x1B@') // ESC @
+    
+    // Header
+    commands.push('\x1Ba\x01') // Center align
+    commands.push('\x1D!\x11') // Double size
+    commands.push('MOI SUSHI\n')
+    commands.push('& POKE BOWL\n')
+    commands.push('\x1D!\x00') // Normal size
+    commands.push('================================\n')
+    
+    // Order info
+    commands.push('\x1Ba\x00') // Left align
+    commands.push(`Order #${order.order_number || 'N/A'}\n`)
+    
+    const orderDate = new Date(order.created_at)
+    commands.push(`Datum: ${orderDate.toLocaleDateString('sv-SE')}\n`)
+    commands.push(`Tid: ${orderDate.toLocaleTimeString('sv-SE')}\n\n`)
+    
+    // Customer info
+    if (order.customer_name && order.customer_name !== 'Anonym kund') {
+      commands.push('\x1BE\x01') // Bold on
+      commands.push('KUND:\n')
+      commands.push('\x1BE\x00') // Bold off
+      commands.push(`${order.customer_name}\n`)
+      
+      if (order.customer_phone) {
+        commands.push(`Tel: ${order.customer_phone}\n`)
+      }
+      commands.push('\n')
+    }
+    
+    // Items
+    commands.push('\x1BE\x01') // Bold on
+    commands.push('BESTÄLLNING:\n')
+    commands.push('\x1BE\x00') // Bold off
+    commands.push('--------------------------------\n')
+    
+    const items = order.cart_items || order.items || []
+    const itemsArray = typeof items === 'string' ? JSON.parse(items) : items
+    
+    let totalAmount = 0
+    itemsArray.forEach(item => {
+      const itemName = item.name || 'Okänd produkt'
+      const quantity = item.quantity || 1
+      const price = item.price || 0
+      const itemTotal = quantity * price
+      totalAmount += itemTotal
+      
+      commands.push(`${quantity}x ${itemName}\n`)
+      commands.push(`    ${price} kr/st = ${itemTotal} kr\n\n`)
+    })
+    
+    // Total
+    commands.push('--------------------------------\n')
+    commands.push('\x1BE\x01') // Bold on
+    commands.push('\x1D!\x11') // Double size
+    commands.push(`TOTALT: ${order.total_amount || order.amount || totalAmount} kr\n`)
+    commands.push('\x1D!\x00') // Normal size
+    commands.push('\x1BE\x00') // Bold off
+    commands.push('\n')
+    
+    // Footer
+    commands.push('\x1Ba\x01') // Center align
+    commands.push('================================\n')
+    commands.push('Tack för din beställning!\n')
+    commands.push('MOI SUSHI & POKE BOWL\n')
+    commands.push('www.moisushi.se\n')
+    commands.push('\n\n\n')
+    
+    // Cut paper
+    commands.push('\x1DVB\x00') // Full cut
+    
+    return commands.join('')
+  }
 
   // Print Receipt to Epson TM-T20III with ESC/POS commands - iPad Bridge Mode
   const printEPOSReceipt = async (order) => {
@@ -1700,35 +1794,21 @@ Utvecklad av Skaply
       
       addDebugLog(`🌍 Miljö: ${isLocalhost ? 'Localhost' : isProduction ? 'Produktion (iPad Bridge)' : 'Utveckling'}`, 'info')
 
-      // Production mode - smart hybrid approach
-      if (isProduction) {
-        addDebugLog('🌐 Produktionsmiljö: Använder smart hybrid-utskrift', 'info')
-        
-        // Try backend printing (will work if iPad and printer are on same network)
-        try {
-          addDebugLog('🔄 Försöker backend-utskrift via iPad...', 'info')
-          const success = await printBackendReceipt(order)
-          if (success) {
-            addDebugLog('✅ Backend-utskrift lyckades via iPad Bridge!', 'success')
+              // SSL Bridge mode for production - use HTTPS directly to printer
+        if (isProduction) {
+          addDebugLog('🔐 SSL Bridge-läge: Skickar HTTPS-kommando direkt till skrivaren', 'info')
+          try {
+            await printHTTPToPrinter(order)
+            return
+          } catch (error) {
+            addDebugLog(`❌ SSL Bridge misslyckades: ${error.message}`, 'error')
+            addDebugLog('💡 Tips: Kontrollera att SSL-certifikat är skapat och betrott på skrivaren', 'warning')
+            // Fallback to simulator
+            const receipt = generateMockEPOSReceipt(order)
+            simulatePrintReceipt(receipt, order)
             return
           }
-        } catch (error) {
-          addDebugLog(`⚠️ Backend-utskrift misslyckades: ${error.message}`, 'warning')
         }
-        
-        // Fallback: Show text receipt with helpful message
-        addDebugLog('📄 Visar textkvitto som backup - personal kan skriva ut manuellt', 'info')
-        const receipt = generateMockEPOSReceipt(order)
-        simulatePrintReceipt(receipt, order)
-        
-        // Show helpful notification
-        showBrowserNotification(
-          '📋 Ny beställning!', 
-          `Order #${order.order_number} - Klicka "Skriv ut kvitto" för fysisk utskrift`,
-          true
-        )
-        return
-      }
 
       // Simulator mode
       if (!printerSettings.enabled || printerSettings.debugMode) {
