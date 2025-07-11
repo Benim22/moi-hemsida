@@ -303,9 +303,33 @@ export async function sendBookingConfirmation(bookingData: any) {
   )
 }
 
+// Skicka välkomstmail
+export async function sendWelcomeEmail(customerData: any) {
+  const variables = {
+    customer_name: customerData.customer_name || customerData.customerName || 'Kära kund',
+    customer_email: customerData.customer_email || customerData.customerEmail || '',
+    restaurant_name: process.env.SMTP_FROM_NAME || 'Moi Sushi & Poké Bowl',
+    restaurant_phone: '0410-281 10',
+    restaurant_address: 'Algatan 17, Trelleborg',
+    restaurant_email: process.env.SMTP_FROM_EMAIL || 'info@moisushi.se',
+    website_url: process.env.NEXT_PUBLIC_SITE_URL || 'https://moisushi.se',
+    current_date: new Date().toLocaleDateString('sv-SE'),
+    location: customerData.location || 'Trelleborg'
+  }
+
+  return await sendTemplatedEmail(
+    'welcome_email',
+    customerData.customer_email || customerData.customerEmail,
+    variables,
+    undefined,
+    customerData.location
+  )
+}
+
 // Skicka test-email
 export async function sendTestEmail(toEmail: string) {
-  console.log('🔍 Debug sendTestEmail - Environment variables:', {
+  console.log('🔍 DEBUG: sendTestEmail called with:', toEmail)
+  console.log('🔍 DEBUG: Environment variables:', {
     SMTP_HOST: process.env.SMTP_HOST,
     SMTP_PORT: process.env.SMTP_PORT,
     SMTP_USER: process.env.SMTP_USER,
@@ -316,145 +340,181 @@ export async function sendTestEmail(toEmail: string) {
 
   // Kontrollera att alla nödvändiga miljövariabler finns
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS || !process.env.SMTP_FROM_EMAIL) {
+    console.error('❌ Missing required environment variables')
     return {
       success: false,
       error: 'Saknade miljövariabler: SMTP_USER, SMTP_PASS eller SMTP_FROM_EMAIL'
     }
   }
 
-     // Kontrollera att e-postadressen ser rätt ut
-   const emailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-   if (!emailFormat.test(process.env.SMTP_USER)) {
-     return {
-       success: false,
-       error: `Ogiltig e-postadress format: ${process.env.SMTP_USER}`
-     }
-   }
-
-   console.log('ℹ️ Testar One.com SMTP med inloggningsuppgifter för info@moisushi.se')
-   console.log('ℹ️ Observera: Använd samma lösenord som du använder för One.com webmail')
-
-     // Testa One.com med officiella inställningar från deras dokumentation
-   const oneComConfigs = [
-     {
-       name: 'One.com Official (TLS)',
-       host: 'send.one.com',
-       port: 587,
-       secure: false,
-       requireTLS: true,
-       authMethod: 'PLAIN'
-     },
-     {
-       name: 'One.com Alternative (STARTTLS)',
-       host: 'send.one.com',
-       port: 587,
-       secure: false,
-       requireTLS: false,
-       authMethod: 'LOGIN'
-     },
-     {
-       name: 'One.com SSL/TLS',
-       host: 'send.one.com', 
-       port: 465,
-       secure: true,
-       requireTLS: false,
-       authMethod: 'PLAIN'
-     }
-   ]
-
-  for (const config of oneComConfigs) {
-    try {
-      console.log(`🔄 Testing ${config.name} (${config.host}:${config.port})`)
-      
-             const transporterConfig = {
-         host: config.host,
-         port: config.port,
-         secure: config.secure,
-         requireTLS: config.requireTLS,
-         auth: {
-           user: process.env.SMTP_USER,
-           pass: process.env.SMTP_PASS,
-           method: config.authMethod
-         },
-         tls: {
-           rejectUnauthorized: false,
-           servername: config.host
-         },
-         connectionTimeout: 60000,
-         greetingTimeout: 30000,
-         socketTimeout: 60000,
-         pool: false, // Stäng av connection pooling
-         maxConnections: 1,
-         maxMessages: 1
-       }
-
-      console.log('📧 Creating transporter with config:', {
-        host: transporterConfig.host,
-        port: transporterConfig.port,
-        secure: transporterConfig.secure,
-        requireTLS: transporterConfig.requireTLS,
-        user: transporterConfig.auth.user
-      })
-
-             const transporter = nodemailer.createTransport(transporterConfig)
-      
-      console.log('🔍 Verifying connection...')
-      await transporter.verify()
-      console.log('✅ Connection verified successfully!')
-      
-             const mailOptions = {
-         from: `${process.env.SMTP_FROM_NAME} <${process.env.SMTP_FROM_EMAIL}>`,
-         to: toEmail,
-         subject: `Test från Moi Sushi & Poké Bowl`,
-         text: `Hej!\n\nDetta är ett test-email från Moi Sushi & Poké Bowl för att verifiera att vår e-postserver fungerar korrekt.\n\nServer: ${config.name} (${config.host}:${config.port})\n\nMed vänliga hälsningar,\nMoi Sushi & Poké Bowl Team`,
-         html: `
-           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-             <h2 style="color: #333;">Test från Moi Sushi & Poké Bowl</h2>
-             <p>Hej!</p>
-             <p>Detta är ett <strong>test-email</strong> från Moi Sushi & Poké Bowl för att verifiera att vår e-postserver fungerar korrekt.</p>
-             <p><strong>Server:</strong> ${config.name} (<code>${config.host}:${config.port}</code>)</p>
-             <hr style="border: 1px solid #eee; margin: 20px 0;">
-             <p style="color: #666; font-size: 12px;">
-               Med vänliga hälsningar,<br>
-               Moi Sushi & Poké Bowl Team<br>
-               <a href="mailto:info@moisushi.se">info@moisushi.se</a>
-             </p>
-           </div>
-         `,
-         headers: {
-           'X-Mailer': 'Moi Sushi System',
-           'Reply-To': process.env.SMTP_FROM_EMAIL
-         }
-       }
-
-      console.log('📤 Sending email...')
-      const info = await transporter.sendMail(mailOptions)
-      
-      console.log('✅ Email sent successfully!', {
-        messageId: info.messageId,
-        server: config.name
-      })
-      
-      return { 
-        success: true, 
-        messageId: info.messageId, 
-        server: config.name,
-        host: config.host,
-        port: config.port
-      }
-      
-    } catch (error) {
-      console.error(`❌ ${config.name} failed:`, {
-        message: error.message,
-        code: error.code,
-        command: error.command
-      })
+  // Kontrollera att e-postadressen ser rätt ut
+  const emailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!emailFormat.test(process.env.SMTP_USER)) {
+    console.error('❌ Invalid email format for SMTP_USER:', process.env.SMTP_USER)
+    return {
+      success: false,
+      error: `Ogiltig e-postadress format: ${process.env.SMTP_USER}`
     }
   }
 
-  return { 
-    success: false, 
-    error: 'Alla SMTP-konfigurationer misslyckades. Kontrollera att ditt One.com e-postkonto är korrekt konfigurerat och att SMTP är aktiverat.' 
+  // Kontrollera att mottagarens e-postadress är korrekt
+  if (!emailFormat.test(toEmail)) {
+    console.error('❌ Invalid recipient email format:', toEmail)
+    return {
+      success: false,
+      error: `Ogiltig mottagaradress: ${toEmail}`
+    }
+  }
+
+  try {
+    console.log('📧 Creating transporter with same config as "Testa anslutning"')
+    
+    // Använd samma transporter som verifyOneComConnection()
+    const transporter = createTransporter()
+    
+    console.log('🔍 Verifying connection before sending...')
+    await transporter.verify()
+    console.log('✅ Connection verified successfully!')
+    
+    const mailOptions = {
+      from: `${process.env.SMTP_FROM_NAME} <${process.env.SMTP_FROM_EMAIL}>`,
+      to: toEmail,
+      subject: `Test från Moi Sushi & Poké Bowl - ${new Date().toLocaleString('sv-SE')}`,
+      text: `Hej!\n\nDetta är ett test-email från Moi Sushi & Poké Bowl för att verifiera att vår e-postserver fungerar korrekt.\n\nSkickat: ${new Date().toLocaleString('sv-SE')}\nServer: ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}\nAnvändare: ${process.env.SMTP_USER}\nTill: ${toEmail}\n\nOm du ser detta meddelande fungerar systemet korrekt!\n\nMed vänliga hälsningar,\nMoi Sushi & Poké Bowl Team`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #333; border-bottom: 2px solid #ff6b35; padding-bottom: 10px;">Test från Moi Sushi & Poké Bowl</h2>
+          <p>Hej!</p>
+          <p>Detta är ett <strong>test-email</strong> från Moi Sushi & Poké Bowl för att verifiera att vår e-postserver fungerar korrekt.</p>
+          
+          <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <h3 style="color: #555; margin-top: 0;">Teknisk information:</h3>
+            <p><strong>Skickat:</strong> ${new Date().toLocaleString('sv-SE')}</p>
+            <p><strong>Server:</strong> ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}</p>
+            <p><strong>Avsändare:</strong> ${process.env.SMTP_USER}</p>
+            <p><strong>Till:</strong> ${toEmail}</p>
+          </div>
+          
+          <div style="background: #d4edda; padding: 15px; border-radius: 5px; border-left: 4px solid #28a745;">
+            <p style="margin: 0; color: #155724;"><strong>✅ Framgång!</strong> Om du ser detta meddelande fungerar systemet korrekt!</p>
+          </div>
+          
+          <hr style="border: 1px solid #eee; margin: 20px 0;">
+          <p style="color: #666; font-size: 12px;">
+            Med vänliga hälsningar,<br>
+            Moi Sushi & Poké Bowl Team<br>
+            <a href="mailto:${process.env.SMTP_FROM_EMAIL}" style="color: #ff6b35;">${process.env.SMTP_FROM_EMAIL}</a><br>
+            📞 0410-281 10 | 📍 Algatan 17, Trelleborg
+          </p>
+        </div>
+      `,
+      headers: {
+        'X-Mailer': 'Moi Sushi System',
+        'X-Priority': '1',
+        'Reply-To': process.env.SMTP_FROM_EMAIL,
+        'Return-Path': process.env.SMTP_FROM_EMAIL
+      }
+    }
+
+    console.log('📤 Sending email with options:', {
+      from: mailOptions.from,
+      to: mailOptions.to,
+      subject: mailOptions.subject,
+      headers: mailOptions.headers
+    })
+
+    const info = await transporter.sendMail(mailOptions)
+    
+    console.log('✅ Email sent successfully! Full info:', {
+      messageId: info.messageId,
+      response: info.response,
+      envelope: info.envelope,
+      accepted: info.accepted,
+      rejected: info.rejected,
+      pending: info.pending
+    })
+    
+    // Logga i databasen med mer information
+    try {
+      console.log('📝 Logging email to database...')
+      const logResult = await supabaseAdmin
+        .from('email_logs')
+        .insert({
+          recipient_email: toEmail,
+          subject: mailOptions.subject,
+          status: 'sent',
+          metadata: {
+            template_type: 'test_email',
+            message_id: info.messageId,
+            smtp_host: process.env.SMTP_HOST,
+            smtp_port: process.env.SMTP_PORT,
+            smtp_user: process.env.SMTP_USER,
+            response: info.response,
+            envelope: info.envelope,
+            accepted: info.accepted,
+            rejected: info.rejected
+          },
+          sent_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+      
+      console.log('✅ Email logged to database:', logResult)
+    } catch (logError) {
+      console.error('❌ Failed to log email to database:', logError)
+    }
+    
+    return { 
+      success: true, 
+      messageId: info.messageId,
+      response: info.response,
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      accepted: info.accepted,
+      rejected: info.rejected
+    }
+    
+  } catch (error) {
+    console.error('❌ Test email failed with detailed error:', {
+      message: error.message,
+      code: error.code,
+      command: error.command,
+      response: error.response,
+      responseCode: error.responseCode,
+      stack: error.stack
+    })
+    
+    // Logga fel i databasen
+    try {
+      await supabaseAdmin
+        .from('email_logs')
+        .insert({
+          recipient_email: toEmail,
+          subject: `Test från Moi Sushi & Poké Bowl - FAILED`,
+          status: 'failed',
+          metadata: {
+            template_type: 'test_email',
+            error_message: error.message,
+            error_code: error.code,
+            smtp_host: process.env.SMTP_HOST,
+            smtp_port: process.env.SMTP_PORT,
+            smtp_user: process.env.SMTP_USER
+          },
+          sent_at: new Date().toISOString()
+        })
+    } catch (logError) {
+      console.error('❌ Failed to log error to database:', logError)
+    }
+    
+    return { 
+      success: false, 
+      error: `Test email misslyckades: ${error.message}`,
+      details: {
+        code: error.code,
+        command: error.command,
+        response: error.response
+      }
+    }
   }
 }
 

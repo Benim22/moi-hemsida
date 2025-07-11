@@ -6776,6 +6776,9 @@ function EmailManagement() {
   // One.com SMTP funktioner
   const checkOneComConnection = async () => {
     try {
+      setTestingOneCom(true)
+      console.log('🔍 Testing One.com connection...')
+      
       const response = await fetch('/api/admin/email-templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -6783,14 +6786,32 @@ function EmailManagement() {
       })
       const result = await response.json()
       
+      console.log('📧 One.com connection result:', result)
+      
       if (result.success) {
         setOneComConnectionStatus('connected')
+        toast({
+          title: "✅ One.com SMTP anslutning lyckades!",
+          description: "SMTP-servern svarar och anslutningen fungerar.",
+        })
       } else {
         setOneComConnectionStatus('error')
+        toast({
+          title: "❌ One.com SMTP anslutning misslyckades",
+          description: result.error || "Okänt fel vid anslutning till SMTP-servern",
+          variant: "destructive"
+        })
       }
     } catch (error) {
       console.error('Error checking One.com connection:', error)
       setOneComConnectionStatus('error')
+      toast({
+        title: "❌ Fel vid One.com SMTP-test",
+        description: "Kunde inte testa anslutningen till SMTP-servern",
+        variant: "destructive"
+      })
+    } finally {
+      setTestingOneCom(false)
     }
   }
 
@@ -7147,7 +7168,10 @@ function EmailManagement() {
 
   // Send actual test email
   const handleSendTestEmail = async () => {
-    if (!testEmailAddress.trim()) {
+    // Kontrollera rätt variabel för template test modal
+    const emailToUse = testEmail || testEmailAddress
+    
+    if (!emailToUse.trim()) {
       toast({
         title: "❌ E-postadress saknas",
         description: "Ange en giltig e-postadress",
@@ -7158,31 +7182,63 @@ function EmailManagement() {
 
     try {
       setTestingEmail(true)
-      const response = await fetch('/api/test-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          type: emailTestType
-        })
-      })
-
-      const result = await response.json()
       
-      if (result.success) {
-        const typeNames = {
-          order: 'Orderbekräftelse',
-          booking: 'Bokningsbekräftelse', 
-          contact: 'Kontaktmeddelande'
-        }
-        
-        toast({
-          title: "✅ Test-e-post skickad!",
-          description: `${typeNames[emailTestType]} skickades som test`,
+      // Om detta är för template test modal, skicka den specifika mallen
+      if (showTestModal && previewTemplate) {
+        const response = await fetch('/api/admin/email-templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            action: 'send_template_test',
+            email: emailToUse,
+            template_id: previewTemplate.id,
+            template_type: previewTemplate.type
+          })
         })
-        setEmailDialogOpen(false)
-        setTestEmailAddress('')
+
+        const result = await response.json()
+        
+        if (result.success) {
+          toast({
+            title: "✅ Test-e-post skickad!",
+            description: `${previewTemplate.name} skickades som test-email (ID: ${result.messageId})`
+          })
+          setShowTestModal(false)
+          setTestEmail('')
+          fetchEmailLogs()
+          fetchEmailStats()
+        } else {
+          throw new Error(result.error || 'Okänt fel')
+        }
       } else {
-        throw new Error(result.error || 'Okänt fel')
+        // Annars använd den gamla metoden
+        const response = await fetch('/api/test-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            type: emailTestType,
+            email: emailToUse
+          })
+        })
+
+        const result = await response.json()
+        
+        if (result.success) {
+          const typeNames = {
+            order: 'Orderbekräftelse',
+            booking: 'Bokningsbekräftelse', 
+            contact: 'Kontaktmeddelande'
+          }
+          
+          toast({
+            title: "✅ Test-e-post skickad!",
+            description: `${typeNames[emailTestType]} skickades som test`,
+          })
+          setEmailDialogOpen(false)
+          setTestEmailAddress('')
+        } else {
+          throw new Error(result.error || 'Okänt fel')
+        }
       }
     } catch (error) {
       console.error('Error sending test email:', error)
@@ -8735,9 +8791,19 @@ function EmailManagement() {
             <Button
               onClick={handleSendTestEmail}
               className="bg-[#e4d699] text-black hover:bg-[#e4d699]/90"
-              disabled={!testEmail}
+              disabled={!testEmail || testingEmail}
             >
-              Skicka test
+              {testingEmail ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Skickar...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Skicka test
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sendTemplatedEmail, sendTestEmail, verifyEmailConnection } from '@/lib/nodemailer-service'
+import { sendTemplatedEmail, sendTestEmail, verifyOneComConnection } from '@/lib/nodemailer-one'
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,9 +22,9 @@ export async function POST(request: NextRequest) {
 
       case 'verify':
         console.log('🔍 Verifying email connection...')
-        const verifyResult = await verifyEmailConnection()
+        const verifyResult = await verifyOneComConnection()
         console.log('🔍 Verify result:', verifyResult)
-        return NextResponse.json({ success: verifyResult })
+        return NextResponse.json(verifyResult)
 
       case 'send':
       case 'send_template':

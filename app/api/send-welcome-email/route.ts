@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sendWelcomeEmail } from '@/lib/email-template-service'
+import { sendWelcomeEmail } from '@/lib/nodemailer-one'
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +29,11 @@ export async function POST(request: NextRequest) {
     const result = await sendWelcomeEmail(customerData)
     
     if (result.success) {
-      return NextResponse.json({ success: true, message: 'Welcome email sent successfully' })
+      return NextResponse.json({ 
+        success: true, 
+        message: 'Welcome email sent successfully via One.com SMTP',
+        messageId: result.messageId 
+      })
     } else {
       return NextResponse.json(
         { success: false, error: result.error },
