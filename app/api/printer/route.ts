@@ -143,6 +143,16 @@ async function printReceipt(order: any, ip: string, port: number, bridgeMode: bo
       console.log('🌉 iPad Bridge: Using direct TCP connection')
       // Force TCP connection for iPad Bridge
       port = 9100 // Override to TCP port
+      
+      // Important: Check if we're running in cloud environment
+      if (isProduction) {
+        console.log('⚠️ iPad Bridge: Running in cloud environment - may not reach local printer')
+        return NextResponse.json({
+          success: false,
+          error: `iPad Bridge: Molnservern kan inte nå den lokala skrivaren på ${ip}:${port}. iPad Bridge fungerar bara när iPad och skrivare är på samma nätverk. Kontrollera att du använder iPad:en i restaurangen.`,
+          details: 'Cloud environment cannot reach local printer IP'
+        })
+      }
     }
     
     // Try direct TCP connection first
@@ -169,7 +179,17 @@ async function printReceipt(order: any, ip: string, port: number, bridgeMode: bo
     } catch (tcpError) {
       console.log('❌ Direct TCP connection failed:', tcpError.message)
       
-      // If in production and TCP fails, try webhook fallback
+      // For iPad Bridge mode, don't use webhook fallback - just fail with clear error
+      if (bridgeMode) {
+        console.log('🌉 iPad Bridge: TCP connection failed - no webhook fallback in bridge mode')
+        return NextResponse.json({
+          success: false,
+          error: `iPad Bridge: Kan inte ansluta till skrivaren på ${ip}:${port}. Kontrollera att skrivaren är på och ansluten till samma nätverk.`,
+          details: tcpError.message
+        })
+      }
+      
+      // If in production and TCP fails, try webhook fallback (only for non-bridge mode)
       if (isProduction) {
         console.log('🔄 Attempting webhook fallback for production environment...')
         return await printViaWebhook(order)

@@ -49,8 +49,8 @@ Gå till **Skrivarinställningar** (⚙️-ikonen) och konfigurera:
 ✅ Automatisk e-post: ON
 📍 Skrivare IP: 192.168.1.103
 🔌 Port: 9100
-🌐 Anslutningstyp: TCP
-🖥️ Utskriftsmetod: Backend (iPad Bridge)
+🌐 Anslutningstyp: WebSocket
+🖥️ Utskriftsmetod: Frontend (iPad Bridge)
 🐛 Debug-läge: OFF (för produktion)
 ```
 
@@ -78,14 +78,14 @@ Gå till **Skrivarinställningar** (⚙️-ikonen) och konfigurera:
 ## 🔧 Så här fungerar iPad Bridge
 
 ```
-Kund beställer → Supabase → Realtime Event → iPad lyssnar → HTTP till skrivare → Kvitto!
+Kund beställer → Supabase → Realtime Event → iPad lyssnar → WebSocket till skrivare → Kvitto!
 ```
 
 1. **Kund gör beställning** på `https://moisushi.se`
 2. **Order sparas** i Supabase database
 3. **Realtime event** skickas till alla anslutna klienter
 4. **iPad terminal** lyssnar på events
-5. **iPad skickar HTTP-kommando** direkt till skrivaren
+5. **iPad skickar WebSocket-kommando** direkt till skrivaren (port 9100)
 6. **Kvitto skrivs ut** automatiskt
 
 ## ✅ Fördelar med iPad Bridge
