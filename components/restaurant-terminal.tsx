@@ -27,9 +27,9 @@ const DEFAULT_PRINTER_SETTINGS = {
   autoprintEnabled: true, // Enable auto-print for webhook orders
   autoemailEnabled: true,
   printerIP: '192.168.1.103',
-  printerPort: '443', // Use HTTPS port 443 for SSL Bridge
-  connectionType: 'https', // Use HTTPS with SSL certificate
-  printMethod: 'frontend', // Use frontend SSL Bridge for iPad compatibility
+  printerPort: '80', // Use HTTP port 80 for ePOS-Print
+  connectionType: 'wifi', // Use Wi-Fi HTTP for iPad compatibility
+  printMethod: 'frontend', // Use frontend ePOS-Print for iPad compatibility
   debugMode: false // Disable debug mode for production
 }
 
@@ -3115,7 +3115,16 @@ Utvecklad av Skaply
                         value={printerSettings.connectionType}
                         onChange={(e) => {
                           const newType = e.target.value
-                          const newPort = newType === 'tcp' ? '9100' : '80'
+                          let newPort = '80' // Default to HTTP
+                          
+                          if (newType === 'tcp') {
+                            newPort = '9100' // Raw TCP port
+                          } else if (newType === 'wifi') {
+                            newPort = '80' // HTTP port for ePOS-Print
+                          } else if (newType === 'bluetooth') {
+                            newPort = '80' // Default port for Bluetooth
+                          }
+                          
                           setPrinterSettings(prev => ({ 
                             ...prev, 
                             connectionType: newType,
@@ -3126,8 +3135,8 @@ Utvecklad av Skaply
                         className="bg-black/50 border border-[#e4d699]/30 rounded-md px-3 py-2 text-white text-sm w-full"
                         disabled={printerSettings.debugMode}
                       >
-                        <option value="tcp">TCP (Port 9100)</option>
-                        <option value="wifi">Wi-Fi HTTP (Port 80)</option>
+                        <option value="tcp">TCP (Port 9100) - Direkt kommunikation</option>
+                        <option value="wifi">Wi-Fi HTTP (Port 80) - ePOS-Print</option>
                         <option value="bluetooth">Bluetooth</option>
                       </select>
                     </div>

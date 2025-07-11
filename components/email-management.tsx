@@ -70,6 +70,9 @@ const EmailManagement = () => {
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null)
   const [testEmail, setTestEmail] = useState('')
   const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'connected' | 'failed'>('unknown')
+  const [deliveryDiagnostics, setDeliveryDiagnostics] = useState<any>(null)
+  const [isTestModalOpen, setIsTestModalOpen] = useState(false)
+  const [templateToTest, setTemplateToTest] = useState<EmailTemplate | null>(null)
 
   // Form states
   const [editingTemplate, setEditingTemplate] = useState<Partial<EmailTemplate>>({
@@ -191,6 +194,66 @@ const EmailManagement = () => {
       }
     } catch (error) {
       toast.error('Kunde inte skicka test-email')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const testTemplate = (template: EmailTemplate) => {
+    setTemplateToTest(template)
+    setIsTestModalOpen(true)
+  }
+
+  const sendTemplateTest = async (email: string) => {
+    if (!templateToTest || !email) {
+      toast.error('Mall och e-postadress krävs')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch('/api/admin/email-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'send_template_test', 
+          email: email,
+          template_id: templateToTest.id,
+          template_type: templateToTest.type 
+        })
+      })
+      const data = await response.json()
+      
+      if (data.success) {
+        toast.success(`Test-email skickat med mall "${templateToTest.name}"!`)
+        setIsTestModalOpen(false)
+        setTemplateToTest(null)
+        fetchLogs()
+        fetchStats()
+      } else {
+        toast.error(`Test-email misslyckades: ${data.error}`)
+      }
+    } catch (error) {
+      toast.error('Kunde inte skicka test-email')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const checkDeliveryDiagnostics = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch('/api/debug/email-delivery')
+      const data = await response.json()
+      
+      if (response.ok) {
+        setDeliveryDiagnostics(data)
+        toast.success('Leveransdiagnostik uppdaterad!')
+      } else {
+        toast.error(`Kunde inte hämta diagnostik: ${data.error}`)
+      }
+    } catch (error) {
+      toast.error('Kunde inte hämta leveransdiagnostik')
     } finally {
       setLoading(false)
     }
@@ -376,6 +439,9 @@ const EmailManagement = () => {
                       <Badge variant={template.is_active ? 'default' : 'secondary'}>
                         {template.is_active ? 'Aktiv' : 'Inaktiv'}
                       </Badge>
+                      <Button onClick={() => testTemplate(template)} variant="outline" size="sm" title="Testa mall">
+                        <Send className="h-4 w-4" />
+                      </Button>
                       <Button onClick={() => viewTemplate(template)} variant="outline" size="sm">
                         <Eye className="h-4 w-4" />
                       </Button>
@@ -477,6 +543,103 @@ const EmailManagement = () => {
                 <Send className="h-4 w-4 mr-2" />
                 Skicka test-email
               </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Leveransdiagnostik</CardTitle>
+              <CardDescription>
+                Kontrollera domänens e-postkonfiguration och leveransförmåga
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button onClick={checkDeliveryDiagnostics} disabled={loading}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Kontrollera leveransförmåga
+              </Button>
+              
+              {deliveryDiagnostics && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <h4 className="font-medium">SPF Record</h4>
+                      <Badge variant={deliveryDiagnostics.spf?.status === 'OK' ? 'default' : 'destructive'}>
+                        {deliveryDiagnostics.spf?.status || 'UNKNOWN'}
+                      </Badge>
+                      {deliveryDiagnostics.spf?.record && (
+                        <p className="text-xs text-gray-600">{deliveryDiagnostics.spf.record}</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className="font-medium">DMARC Record</h4>
+                      <Badge variant={deliveryDiagnostics.dmarc?.status === 'OK' ? 'default' : 'destructive'}>
+                        {deliveryDiagnostics.dmarc?.status || 'UNKNOWN'}
+                      </Badge>
+                      {deliveryDiagnostics.dmarc?.record && (
+                        <p className="text-xs text-gray-600">{deliveryDiagnostics.dmarc.record}</p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <h4 className="font-medium">DKIM Records</h4>
+                    <Badge variant={deliveryDiagnostics.dkim?.status === 'OK' ? 'default' : 'destructive'}>
+                      {deliveryDiagnostics.dkim?.status || 'UNKNOWN'}
+                    </Badge>
+                    {deliveryDiagnostics.dkim?.records?.map((record: any, index: number) => (
+                      <p key={index} className="text-xs text-gray-600">
+                        {record.selector}: {record.status}
+                      </p>
+                    ))}
+                  </div>
+
+                  {deliveryDiagnostics.analysis && (
+                    <div className="space-y-2">
+                      <h4 className="font-medium">Leveransanalys</h4>
+                      <Badge variant={
+                        deliveryDiagnostics.analysis.overall_status === 'GOOD' ? 'default' : 
+                        deliveryDiagnostics.analysis.overall_status === 'NEEDS_IMPROVEMENT' ? 'secondary' : 'destructive'
+                      }>
+                        {deliveryDiagnostics.analysis.overall_status}
+                      </Badge>
+                      
+                      {deliveryDiagnostics.analysis.gmail_issues?.length > 0 && (
+                        <div>
+                          <h5 className="text-sm font-medium text-red-600">Gmail Problem:</h5>
+                          <ul className="text-xs text-gray-600">
+                            {deliveryDiagnostics.analysis.gmail_issues.map((issue: string, index: number) => (
+                              <li key={index}>• {issue}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {deliveryDiagnostics.analysis.outlook_issues?.length > 0 && (
+                        <div>
+                          <h5 className="text-sm font-medium text-red-600">Outlook Problem:</h5>
+                          <ul className="text-xs text-gray-600">
+                            {deliveryDiagnostics.analysis.outlook_issues.map((issue: string, index: number) => (
+                              <li key={index}>• {issue}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {deliveryDiagnostics.analysis.recommendations?.length > 0 && (
+                        <div>
+                          <h5 className="text-sm font-medium text-blue-600">Rekommendationer:</h5>
+                          <ul className="text-xs text-gray-600">
+                            {deliveryDiagnostics.analysis.recommendations.map((rec: string, index: number) => (
+                              <li key={index}>• {rec}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -600,6 +763,45 @@ const EmailManagement = () => {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Template Test Modal */}
+      <Dialog open={isTestModalOpen} onOpenChange={setIsTestModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Testa mall: {templateToTest?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Skicka ett test-email med denna mall för att se hur den ser ut.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="template-test-email">E-postadress</Label>
+              <Input
+                id="template-test-email"
+                type="email"
+                placeholder="din@email.com"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    sendTemplateTest((e.target as HTMLInputElement).value)
+                  }
+                }}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsTestModalOpen(false)}>
+                Avbryt
+              </Button>
+              <Button onClick={() => {
+                const emailInput = document.getElementById('template-test-email') as HTMLInputElement
+                sendTemplateTest(emailInput.value)
+              }} disabled={loading}>
+                <Send className="h-4 w-4 mr-2" />
+                Skicka test
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -3,17 +3,21 @@ import { supabaseAdmin } from './supabase-admin'
 
 // Skapa transporter för One.com SMTP
 export const createTransporter = () => {
+  // Försök först med port 465 (SSL) för bättre kompatibilitet
+  const useSSL = process.env.SMTP_PORT === '465' || !process.env.SMTP_PORT
+  const port = useSSL ? 465 : parseInt(process.env.SMTP_PORT || '587')
+  
   const config = {
-    host: process.env.SMTP_HOST || 'mailout.one.com',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true', // false för 587, true för 465
+    host: process.env.SMTP_HOST || 'send.one.com', // Använd send.one.com istället för mailout.one.com
+    port: port,
+    secure: useSSL, // true för 465, false för 587
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
     tls: {
       rejectUnauthorized: false,
-      ciphers: 'SSLv3'
+      minVersion: 'TLSv1.2'
     },
     connectionTimeout: 60000, // 60 sekunder
     greetingTimeout: 30000,   // 30 sekunder
