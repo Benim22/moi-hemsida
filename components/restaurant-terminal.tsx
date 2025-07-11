@@ -168,33 +168,18 @@ export default function RestaurantTerminal() {
 
       // Method 2: Try HTTP fetch with no-cors (fallback)
       const testHTTP = () => {
-        return new Promise((httpResolve) => {
-          const controller = new AbortController()
-          const fetchTimeout = setTimeout(() => {
-            controller.abort()
-            httpResolve({ method: 'http', success: false, error: 'timeout', time: performance.now() - startTime })
-          }, timeout)
+        return new Promise((resolve) => {
+          // Skip HTTP test in HTTPS environment to avoid Mixed Content
+          if (window.location.protocol === 'https:') {
+            console.log('🔒 Skipping HTTP test in HTTPS environment (Mixed Content prevention)')
+            resolve(false)
+            return
+          }
 
-          fetch(`http://${ip}:${port}/`, {
-            method: 'GET',
-            mode: 'no-cors',
-            signal: controller.signal
-          })
-          .then(() => {
-            clearTimeout(fetchTimeout)
-            httpResolve({ method: 'http', success: true, time: performance.now() - startTime })
-          })
-          .catch((error) => {
-            clearTimeout(fetchTimeout)
-            const elapsed = performance.now() - startTime
-            const isQuickFailure = elapsed < 1000
-            httpResolve({ 
-              method: 'http', 
-              success: false, 
-              error: isQuickFailure ? 'connection_refused' : 'timeout',
-              time: elapsed 
-            })
-          })
+          const img = new Image()
+          img.onload = () => resolve(true)
+          img.onerror = () => resolve(false)
+          img.src = `https://${ip}:${port}/favicon.ico?t=${Date.now()}`
         })
       }
 

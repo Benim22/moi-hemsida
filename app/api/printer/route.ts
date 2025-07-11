@@ -11,7 +11,7 @@ const DEFAULT_PRINTER_SETTINGS = {
   connectionType: 'tcp',
   printMethod: 'backend',
   debugMode: false, // Changed to false - let users enable debug mode if needed
-  webhookUrl: process.env.PRINTER_WEBHOOK_URL || 'http://192.168.1.103:3001/webhook/print',
+      webhookUrl: process.env.PRINTER_WEBHOOK_URL || 'https://192.168.1.103:3001/webhook/print',
   webhookToken: process.env.PRINTER_WEBHOOK_TOKEN || 'moi-sushi-printer-token-2024'
 }
 

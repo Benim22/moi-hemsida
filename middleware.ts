@@ -5,6 +5,19 @@ import type { NextRequest } from "next/server"
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
 
+  // Add security headers to fix "INTE SÄKER" warnings
+  res.headers.set('X-Frame-Options', 'DENY')
+  res.headers.set('X-Content-Type-Options', 'nosniff')
+  res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+  res.headers.set('X-XSS-Protection', '1; mode=block')
+  
+  // Force HTTPS in production
+  if (req.nextUrl.protocol === 'http:' && process.env.NODE_ENV === 'production') {
+    const httpsUrl = new URL(req.url)
+    httpsUrl.protocol = 'https:'
+    return NextResponse.redirect(httpsUrl)
+  }
+
   // Check if Supabase environment variables are set
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -30,6 +43,15 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/profile/:path*"],
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+  ],
 }
 
