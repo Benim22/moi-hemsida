@@ -621,7 +621,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         phone: customerPhone,
         delivery_address: deliveryType === "delivery" ? customerAddress : null,
         delivery_type: deliveryType,
-        notes: `${deliveryType === "pickup" ? "Hämtningstid" : "Leveranstid"}: ${getPickupTimeText()}${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}${!user ? " | Beställd utan inloggning (Under 250kr)" : ""}`,
+        notes: `${deliveryType === "pickup" ? "Hämtningstid" : "Leveranstid"}: ${getPickupTimeText()}${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}${!user ? " | Beställd utan inloggning" : ""}`,
         special_instructions: specialInstructions || null,
         payment_method: 'cash', // Betala i restaurangen
         order_number: orderNumber

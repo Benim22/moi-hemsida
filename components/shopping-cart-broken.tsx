@@ -483,7 +483,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
             : pickupTime === "1hour"
               ? "Om 1 timme"
               : "Om 2 timmar"
-        }${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}${!user ? " | Beställd utan inloggning (Under 250kr)" : ""}`,
+        }${deliveryType === "delivery" && customerAddress ? ` | Leveransadress: ${customerAddress}` : ""}${!user ? " | Beställd utan inloggning" : ""}`,
         special_instructions: specialInstructions || null,
         payment_method: 'cash', // Betala i restaurangen
         order_number: orderNumber
