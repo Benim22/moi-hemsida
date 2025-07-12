@@ -1,131 +1,142 @@
-'use client'
+"use client"
 
-import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { toast } from 'sonner'
-import { 
-  Mail, 
-  Send, 
-  CheckCircle, 
-  XCircle, 
-  Clock, 
-  FileText, 
-  Plus,
-  Edit,
-  Trash2,
-  Eye,
-  Settings,
-  RefreshCw
-} from 'lucide-react'
+import { useState, useEffect } from "react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { useToast } from "@/hooks/use-toast"
+import { supabase } from "@/lib/supabase"
+import { Loader2, Settings, Send, CheckCircle, XCircle, AlertCircle, RefreshCw, Mail, Eye, Calendar } from "lucide-react"
 
-interface EmailTemplate {
-  id: string
-  type: string
-  name: string
-  subject: string
-  html_content: string
-  text_content: string
-  location: string | null
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
+export default function EmailManagement() {
+  const [isLoading, setIsLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState("settings")
+  const [sendGridConnectionStatus, setSendGridConnectionStatus] = useState(null)
+  const [testingSendGrid, setTestingSendGrid] = useState(false)
+  const [sendGridDialogOpen, setSendGridDialogOpen] = useState(false)
+  const [sendGridTestEmail, setSendGridTestEmail] = useState('')
+  const [emailStats, setEmailStats] = useState({ total: 0, sent: 0, failed: 0, today: 0, success_rate: 0 })
+  const [sendGridSettings, setSendGridSettings] = useState([])
+  const [localSendGridSettings, setLocalSendGridSettings] = useState({})
+  const [emailLogs, setEmailLogs] = useState([])
+  const [isSaving, setIsSaving] = useState(false)
+  
+  const { toast } = useToast()
 
-interface EmailLog {
-  id: string
-  template_type: string
-  recipient: string
-  subject: string
-  status: 'sent' | 'failed' | 'pending'
-  message_id: string | null
-  error_message: string | null
-  location: string | null
-  sent_at: string
-}
-
-interface EmailStats {
-  total: number
-  sent: number
-  failed: number
-  today: number
-  success_rate: number
-}
-
-const EmailManagement = () => {
-  const [templates, setTemplates] = useState<EmailTemplate[]>([])
-  const [logs, setLogs] = useState<EmailLog[]>([])
-  const [stats, setStats] = useState<EmailStats>({
-    total: 0, sent: 0, failed: 0, today: 0, success_rate: 0
-  })
-  const [loading, setLoading] = useState(false)
-  const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null)
-  const [testEmail, setTestEmail] = useState('')
-  const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'connected' | 'failed'>('unknown')
-  const [deliveryDiagnostics, setDeliveryDiagnostics] = useState<any>(null)
-  const [isTestModalOpen, setIsTestModalOpen] = useState(false)
-  const [templateToTest, setTemplateToTest] = useState<EmailTemplate | null>(null)
-
-  // Form states
-  const [editingTemplate, setEditingTemplate] = useState<Partial<EmailTemplate>>({
-    type: 'order_confirmation',
-    name: '',
-    subject: '',
-    html_content: '',
-    text_content: '',
-    location: null,
-    is_active: true
-  })
-
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false)
-
-  // Load data on mount
   useEffect(() => {
-    fetchTemplates()
-    fetchLogs()
-    fetchStats()
+    checkSendGridConnection()
+    fetchSendGridSettings()
+    fetchEmailLogs()
+    fetchEmailStats()
   }, [])
 
-  const fetchTemplates = async () => {
+  const checkSendGridConnection = async () => {
     try {
-      const response = await fetch('/api/admin/email-templates')
-      const data = await response.json()
-      if (response.ok) {
-        setTemplates(data.templates)
+      setTestingSendGrid(true)
+      console.log('🔍 Testing SendGrid connection...')
+      
+      const response = await fetch('/api/sendgrid', {
+        method: 'GET'
+      })
+      const result = await response.json()
+      
+      console.log('📧 SendGrid connection result:', result)
+      
+      if (result.success) {
+        setSendGridConnectionStatus('connected')
+        setIsLoading(false)
+        toast({
+          title: "✅ SendGrid anslutning lyckades!",
+          description: "SendGrid API svarar och anslutningen fungerar.",
+        })
       } else {
-        toast.error(`Fel vid hämtning av mallar: ${data.error}`)
+        setSendGridConnectionStatus('error')
+        setIsLoading(false)
+        toast({
+          title: "❌ SendGrid anslutning misslyckades",
+          description: result.error || "Okänt fel vid anslutning till SendGrid API",
+          variant: "destructive"
+        })
       }
     } catch (error) {
-      console.error('Error fetching templates:', error)
-      toast.error('Kunde inte hämta e-postmallar')
+      console.error('Error checking SendGrid connection:', error)
+      setSendGridConnectionStatus('error')
+      setIsLoading(false)
+      toast({
+        title: "❌ Fel vid SendGrid-test",
+        description: "Kunde inte testa anslutningen till SendGrid API",
+        variant: "destructive"
+      })
+    } finally {
+      setTestingSendGrid(false)
     }
   }
 
-  const fetchLogs = async () => {
+  const handleSendSendGridTestEmail = async () => {
+    if (!sendGridTestEmail.trim()) {
+      toast({
+        title: "❌ E-postadress saknas",
+        description: "Ange en giltig e-postadress",
+        variant: "destructive"
+      })
+      return
+    }
+
     try {
-      const response = await fetch('/api/admin/email-logs?limit=50')
-      const data = await response.json()
-      if (response.ok) {
-        setLogs(data.logs)
+      setTestingSendGrid(true)
+      const response = await fetch('/api/sendgrid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'send_test',
+          email: sendGridTestEmail,
+          testType: 'admin_test'
+        })
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        toast({
+          title: "✅ SendGrid test-e-post skickad!",
+          description: `Test-email skickades via SendGrid (ID: ${result.messageId})`
+        })
+        setSendGridDialogOpen(false)
+        setSendGridTestEmail('')
+        fetchEmailLogs()
+        fetchEmailStats()
       } else {
-        toast.error(`Fel vid hämtning av loggar: ${data.error}`)
+        throw new Error(result.error || 'Okänt fel')
       }
     } catch (error) {
-      console.error('Error fetching logs:', error)
-      toast.error('Kunde inte hämta e-postloggar')
+      console.error('Error sending SendGrid test email:', error)
+      toast({
+        title: "❌ Fel vid SendGrid e-posttest",
+        description: error instanceof Error ? error.message : 'Kunde inte skicka test-e-post via SendGrid',
+        variant: "destructive"
+      })
+    } finally {
+      setTestingSendGrid(false)
     }
   }
 
-  const fetchStats = async () => {
+  const fetchEmailLogs = async () => {
+    try {
+      const response = await fetch('/api/admin/email-logs?limit=20')
+      const data = await response.json()
+      if (response.ok) {
+        setEmailLogs(data.logs || [])
+      }
+    } catch (error) {
+      console.error('Error fetching email logs:', error)
+    }
+  }
+
+  const fetchEmailStats = async () => {
     try {
       const response = await fetch('/api/admin/email-logs', {
         method: 'POST',
@@ -134,678 +145,374 @@ const EmailManagement = () => {
       })
       const data = await response.json()
       if (response.ok) {
-        setStats(data.stats)
-      } else {
-        toast.error(`Fel vid hämtning av statistik: ${data.error}`)
+        setEmailStats(data.stats)
       }
     } catch (error) {
-      console.error('Error fetching stats:', error)
-      toast.error('Kunde inte hämta statistik')
+      console.error('Error fetching email stats:', error)
     }
   }
 
-  const testConnection = async () => {
-    setLoading(true)
+  const fetchSendGridSettings = async () => {
     try {
-      const response = await fetch('/api/admin/email-templates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'test_connection' })
+      const { data, error } = await supabase
+        .from('email_settings')
+        .select('*')
+        .in('setting_key', ['sendgrid_api_key', 'sendgrid_from_email', 'sendgrid_enabled'])
+
+      if (error) throw error
+
+      setSendGridSettings(data || [])
+      
+      // Skapa lokala inställningar från databasen
+      const localSettings = {}
+      data?.forEach(setting => {
+        localSettings[setting.setting_key] = setting.setting_value
       })
-      const data = await response.json()
-      
-      if (data.success) {
-        setConnectionStatus('connected')
-        toast.success('SMTP-anslutning fungerar!')
-      } else {
-        setConnectionStatus('failed')
-        toast.error(`SMTP-anslutning misslyckades: ${data.error}`)
-      }
+      setLocalSendGridSettings(localSettings)
     } catch (error) {
-      setConnectionStatus('failed')
-      toast.error('Kunde inte testa SMTP-anslutning')
-    } finally {
-      setLoading(false)
+      console.error('Error fetching SendGrid settings:', error)
     }
   }
 
-  const sendTestEmail = async () => {
-    if (!testEmail) {
-      toast.error('Ange en e-postadress')
-      return
-    }
-
-    setLoading(true)
+  const updateSendGridSetting = async (settingKey, newValue) => {
     try {
-      const response = await fetch('/api/admin/email-templates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'send_test', email: testEmail })
+      setIsSaving(true)
+      const { data, error } = await supabase
+        .from('email_settings')
+        .upsert([
+          {
+            setting_key: settingKey,
+            setting_value: newValue,
+            updated_at: new Date().toISOString()
+          }
+        ], { onConflict: 'setting_key' })
+        .select()
+
+      if (error) throw error
+
+      // Uppdatera lokala inställningar
+      setLocalSendGridSettings(prev => ({
+        ...prev,
+        [settingKey]: newValue
+      }))
+
+      // Uppdatera settings array
+      setSendGridSettings(prev => {
+        const existingIndex = prev.findIndex(s => s.setting_key === settingKey)
+        if (existingIndex >= 0) {
+          const updated = [...prev]
+          updated[existingIndex] = { ...updated[existingIndex], setting_value: newValue }
+          return updated
+        } else {
+          return [...prev, { setting_key: settingKey, setting_value: newValue }]
+        }
       })
-      const data = await response.json()
-      
-      if (data.success) {
-        toast.success('Test-email skickat!')
-        setTestEmail('')
-        fetchLogs()
-        fetchStats()
-      } else {
-        toast.error(`Test-email misslyckades: ${data.error}`)
-      }
-    } catch (error) {
-      toast.error('Kunde inte skicka test-email')
-    } finally {
-      setLoading(false)
-    }
-  }
 
-  const testTemplate = (template: EmailTemplate) => {
-    setTemplateToTest(template)
-    setIsTestModalOpen(true)
-  }
-
-  const sendTemplateTest = async (email: string) => {
-    if (!templateToTest || !email) {
-      toast.error('Mall och e-postadress krävs')
-      return
-    }
-
-    setLoading(true)
-    try {
-      const response = await fetch('/api/admin/email-templates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          action: 'send_template_test', 
-          email: email,
-          template_id: templateToTest.id,
-          template_type: templateToTest.type 
-        })
+      toast({
+        title: "✅ Inställning sparad",
+        description: `${settingKey} har uppdaterats`,
       })
-      const data = await response.json()
-      
-      if (data.success) {
-        toast.success(`Test-email skickat med mall "${templateToTest.name}"!`)
-        setIsTestModalOpen(false)
-        setTemplateToTest(null)
-        fetchLogs()
-        fetchStats()
-      } else {
-        toast.error(`Test-email misslyckades: ${data.error}`)
-      }
     } catch (error) {
-      toast.error('Kunde inte skicka test-email')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const checkDeliveryDiagnostics = async () => {
-    setLoading(true)
-    try {
-      const response = await fetch('/api/debug/email-delivery')
-      const data = await response.json()
-      
-      if (response.ok) {
-        setDeliveryDiagnostics(data)
-        toast.success('Leveransdiagnostik uppdaterad!')
-      } else {
-        toast.error(`Kunde inte hämta diagnostik: ${data.error}`)
-      }
-    } catch (error) {
-      toast.error('Kunde inte hämta leveransdiagnostik')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const saveTemplate = async () => {
-    if (!editingTemplate.name || !editingTemplate.subject || !editingTemplate.html_content) {
-      toast.error('Fyll i alla obligatoriska fält')
-      return
-    }
-
-    setLoading(true)
-    try {
-      const url = editingTemplate.id ? '/api/admin/email-templates' : '/api/admin/email-templates'
-      const method = editingTemplate.id ? 'PUT' : 'POST'
-      const body = editingTemplate.id ? 
-        editingTemplate : 
-        { action: 'create_template', ...editingTemplate }
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+      console.error('Error updating SendGrid setting:', error)
+      toast({
+        title: "❌ Fel vid sparande",
+        description: `Kunde inte uppdatera ${settingKey}`,
+        variant: "destructive"
       })
-      const data = await response.json()
-      
-      if (response.ok) {
-        toast.success(editingTemplate.id ? 'Mall uppdaterad!' : 'Mall skapad!')
-        setIsEditModalOpen(false)
-        setEditingTemplate({
-          type: 'order_confirmation',
-          name: '',
-          subject: '',
-          html_content: '',
-          text_content: '',
-          location: null,
-          is_active: true
-        })
-        fetchTemplates()
-      } else {
-        toast.error(`Fel: ${data.error}`)
-      }
-    } catch (error) {
-      toast.error('Kunde inte spara mall')
     } finally {
-      setLoading(false)
+      setIsSaving(false)
     }
   }
 
-  const deleteTemplate = async (id: string) => {
-    if (!confirm('Är du säker på att du vill ta bort denna mall?')) {
-      return
-    }
-
-    setLoading(true)
-    try {
-      const response = await fetch(`/api/admin/email-templates?id=${id}`, {
-        method: 'DELETE'
-      })
-      const data = await response.json()
-      
-      if (response.ok) {
-        toast.success('Mall borttagen!')
-        fetchTemplates()
-      } else {
-        toast.error(`Fel: ${data.error}`)
-      }
-    } catch (error) {
-      toast.error('Kunde inte ta bort mall')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const editTemplate = (template: EmailTemplate) => {
-    setEditingTemplate(template)
-    setIsEditModalOpen(true)
-  }
-
-  const viewTemplate = (template: EmailTemplate) => {
-    setSelectedTemplate(template)
-    setIsViewModalOpen(true)
-  }
-
-  const getStatusColor = (status: string) => {
+  const getConnectionStatusIcon = (status) => {
     switch (status) {
-      case 'sent': return 'bg-green-500'
-      case 'failed': return 'bg-red-500'
-      case 'pending': return 'bg-yellow-500'
-      default: return 'bg-gray-500'
+      case 'connected':
+        return <CheckCircle className="h-4 w-4 text-green-500" />
+      case 'error':
+        return <XCircle className="h-4 w-4 text-red-500" />
+      default:
+        return <AlertCircle className="h-4 w-4 text-yellow-500" />
     }
   }
 
-  const getStatusIcon = (status: string) => {
+  const getConnectionStatusText = (status) => {
     switch (status) {
-      case 'sent': return <CheckCircle className="h-4 w-4" />
-      case 'failed': return <XCircle className="h-4 w-4" />
-      case 'pending': return <Clock className="h-4 w-4" />
-      default: return <Mail className="h-4 w-4" />
+      case 'connected':
+        return 'Ansluten'
+      case 'error':
+        return 'Fel'
+      default:
+        return 'Okänd'
     }
+  }
+
+  const getConnectionStatusColor = (status) => {
+    switch (status) {
+      case 'connected':
+        return 'bg-green-500/20 text-green-400 border-green-500/50'
+      case 'error':
+        return 'bg-red-500/20 text-red-400 border-red-500/50'
+      default:
+        return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50'
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-white/60">Laddar e-postinställningar...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">📧 E-posthantering</h2>
-        <div className="flex gap-2">
-          <Button onClick={fetchTemplates} variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Uppdatera
-          </Button>
-          <Button onClick={() => setIsEditModalOpen(true)} size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            Ny mall
-          </Button>
+        <div>
+          <h2 className="text-2xl font-bold">E-posthantering</h2>
+          <p className="text-white/60 mt-1">Hantera e-postleverans via SendGrid</p>
         </div>
+        <Badge variant="secondary" className="bg-blue-500/20 text-blue-400">
+          SendGrid
+        </Badge>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Totalt</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Skickade</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.sent}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Misslyckade</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{stats.failed}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Idag</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.today}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Framgång</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.success_rate}%</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Tabs defaultValue="templates" className="w-full">
-        <TabsList>
-          <TabsTrigger value="templates">E-postmallar</TabsTrigger>
-          <TabsTrigger value="logs">E-postloggar</TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="settings">Inställningar</TabsTrigger>
+          <TabsTrigger value="test">Testa</TabsTrigger>
+          <TabsTrigger value="logs">Loggar</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="templates" className="space-y-4">
-          <div className="grid gap-4">
-            {templates.map((template) => (
-              <Card key={template.id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-lg">{template.name}</CardTitle>
-                      <CardDescription>
-                        Typ: {template.type} | Uppdaterad: {new Date(template.updated_at).toLocaleDateString('sv-SE')}
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={template.is_active ? 'default' : 'secondary'}>
-                        {template.is_active ? 'Aktiv' : 'Inaktiv'}
-                      </Badge>
-                      <Button onClick={() => testTemplate(template)} variant="outline" size="sm" title="Testa mall">
-                        <Send className="h-4 w-4" />
-                      </Button>
-                      <Button onClick={() => viewTemplate(template)} variant="outline" size="sm">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button onClick={() => editTemplate(template)} variant="outline" size="sm">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button onClick={() => deleteTemplate(template.id)} variant="outline" size="sm">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-gray-600">{template.subject}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="logs" className="space-y-4">
-          <div className="grid gap-2">
-            {logs.map((log) => (
-              <Card key={log.id}>
-                <CardContent className="pt-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-1 rounded-full ${getStatusColor(log.status)}`}>
-                        {getStatusIcon(log.status)}
-                      </div>
-                      <div>
-                        <p className="font-medium">{log.recipient}</p>
-                        <p className="text-sm text-gray-600">{log.subject}</p>
-                        <p className="text-xs text-gray-500">
-                          {log.template_type} | {new Date(log.sent_at).toLocaleString('sv-SE')}
-                        </p>
-                      </div>
-                    </div>
-                    <Badge variant={log.status === 'sent' ? 'default' : 'destructive'}>
-                      {log.status === 'sent' ? 'Skickat' : 'Misslyckades'}
-                    </Badge>
-                  </div>
-                  {log.error_message && (
-                    <Alert className="mt-2">
-                      <AlertDescription>{log.error_message}</AlertDescription>
-                    </Alert>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
         <TabsContent value="settings" className="space-y-4">
-          <Card>
+          <Card className="border-[#e4d699]/20 bg-black/50">
             <CardHeader>
-              <CardTitle>SMTP-anslutning</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                SendGrid Inställningar
+              </CardTitle>
               <CardDescription>
-                Testa anslutningen till One.com SMTP-servern
+                Konfigurera SendGrid API-inställningar för e-postleverans
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${
-                  connectionStatus === 'connected' ? 'bg-green-500' : 
-                  connectionStatus === 'failed' ? 'bg-red-500' : 'bg-gray-500'
-                }`} />
-                <span className="text-sm">
-                  {connectionStatus === 'connected' ? 'Ansluten' : 
-                   connectionStatus === 'failed' ? 'Anslutning misslyckad' : 'Okänd'}
-                </span>
+            <CardContent className="space-y-6">
+              {/* Connection Status */}
+              <div className="flex items-center justify-between p-4 rounded-lg border border-[#e4d699]/20 bg-black/30">
+                <div className="flex items-center gap-3">
+                  {getConnectionStatusIcon(sendGridConnectionStatus)}
+                  <div>
+                    <p className="font-medium">Anslutningsstatus</p>
+                    <p className="text-sm text-white/60">
+                      {getConnectionStatusText(sendGridConnectionStatus)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge className={getConnectionStatusColor(sendGridConnectionStatus)}>
+                    {getConnectionStatusText(sendGridConnectionStatus)}
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={checkSendGridConnection}
+                    disabled={testingSendGrid}
+                  >
+                    {testingSendGrid ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
-              <Button onClick={testConnection} disabled={loading}>
-                <Settings className="h-4 w-4 mr-2" />
-                Testa anslutning
-              </Button>
+
+              {/* API Key */}
+              <div className="space-y-2">
+                <Label htmlFor="sendgrid_api_key">SendGrid API Nyckel</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="sendgrid_api_key"
+                    type="password"
+                    placeholder="SG.xxxxxxxxxxxxxxxxxxxxx"
+                    value={localSendGridSettings.sendgrid_api_key || ''}
+                    onChange={(e) => setLocalSendGridSettings(prev => ({
+                      ...prev,
+                      sendgrid_api_key: e.target.value
+                    }))}
+                  />
+                  <Button
+                    onClick={() => updateSendGridSetting('sendgrid_api_key', localSendGridSettings.sendgrid_api_key)}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Spara'}
+                  </Button>
+                </div>
+                <p className="text-xs text-white/60">
+                  Hämta din API-nyckel från SendGrid dashboard
+                </p>
+              </div>
+
+              {/* From Email */}
+              <div className="space-y-2">
+                <Label htmlFor="sendgrid_from_email">Från E-postadress</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="sendgrid_from_email"
+                    type="email"
+                    placeholder="Moi Sushi <info@moisushi.se>"
+                    value={localSendGridSettings.sendgrid_from_email || ''}
+                    onChange={(e) => setLocalSendGridSettings(prev => ({
+                      ...prev,
+                      sendgrid_from_email: e.target.value
+                    }))}
+                  />
+                  <Button
+                    onClick={() => updateSendGridSetting('sendgrid_from_email', localSendGridSettings.sendgrid_from_email)}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Spara'}
+                  </Button>
+                </div>
+                <p className="text-xs text-white/60">
+                  E-postadress och namn som visas som avsändare
+                </p>
+              </div>
+
+              {/* Enabled Toggle */}
+              <div className="flex items-center justify-between p-4 rounded-lg border border-[#e4d699]/20 bg-black/30">
+                <div>
+                  <p className="font-medium">Aktivera SendGrid</p>
+                  <p className="text-sm text-white/60">
+                    Aktivera eller inaktivera e-postleverans via SendGrid
+                  </p>
+                </div>
+                <Button
+                  variant={localSendGridSettings.sendgrid_enabled === 'true' ? 'default' : 'outline'}
+                  onClick={() => updateSendGridSetting('sendgrid_enabled', localSendGridSettings.sendgrid_enabled === 'true' ? 'false' : 'true')}
+                  disabled={isSaving}
+                >
+                  {localSendGridSettings.sendgrid_enabled === 'true' ? 'Aktiverad' : 'Inaktiverad'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
+        </TabsContent>
 
-          <Card>
+        <TabsContent value="test" className="space-y-4">
+          <Card className="border-[#e4d699]/20 bg-black/50">
             <CardHeader>
-              <CardTitle>Skicka test-email</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Send className="h-5 w-5" />
+                Testa E-postleverans
+              </CardTitle>
               <CardDescription>
-                Skicka ett test-email för att verifiera att systemet fungerar
+                Skicka test-e-post för att verifiera SendGrid-konfigurationen
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="test-email">E-postadress</Label>
+                <Label htmlFor="test_email">Test E-postadress</Label>
                 <Input
-                  id="test-email"
+                  id="test_email"
                   type="email"
-                  value={testEmail}
-                  onChange={(e) => setTestEmail(e.target.value)}
-                  placeholder="din@email.com"
+                  placeholder="test@example.com"
+                  value={sendGridTestEmail}
+                  onChange={(e) => setSendGridTestEmail(e.target.value)}
                 />
               </div>
-              <Button onClick={sendTestEmail} disabled={loading || !testEmail}>
-                <Send className="h-4 w-4 mr-2" />
-                Skicka test-email
+              <Button
+                onClick={handleSendSendGridTestEmail}
+                disabled={testingSendGrid || !sendGridTestEmail.trim()}
+                className="w-full"
+              >
+                {testingSendGrid ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Send className="h-4 w-4 mr-2" />
+                )}
+                Skicka Test E-post
               </Button>
             </CardContent>
           </Card>
 
-          <Card>
+          {/* Statistics */}
+          <Card className="border-[#e4d699]/20 bg-black/50">
             <CardHeader>
-              <CardTitle>Leveransdiagnostik</CardTitle>
+              <CardTitle>E-poststatistik</CardTitle>
+              <CardDescription>Översikt över e-postleveranser</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-3 rounded-lg bg-black/30">
+                  <div className="text-2xl font-bold text-[#e4d699]">{emailStats.total}</div>
+                  <div className="text-sm text-white/60">Totalt</div>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-black/30">
+                  <div className="text-2xl font-bold text-green-400">{emailStats.sent}</div>
+                  <div className="text-sm text-white/60">Skickade</div>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-black/30">
+                  <div className="text-2xl font-bold text-red-400">{emailStats.failed}</div>
+                  <div className="text-sm text-white/60">Misslyckade</div>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-black/30">
+                  <div className="text-2xl font-bold text-blue-400">{emailStats.today}</div>
+                  <div className="text-sm text-white/60">Idag</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="logs" className="space-y-4">
+          <Card className="border-[#e4d699]/20 bg-black/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Eye className="h-5 w-5" />
+                E-postloggar
+              </CardTitle>
               <CardDescription>
-                Kontrollera domänens e-postkonfiguration och leveransförmåga
+                Senaste e-postleveranserna och deras status
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <Button onClick={checkDeliveryDiagnostics} disabled={loading}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Kontrollera leveransförmåga
-              </Button>
-              
-              {deliveryDiagnostics && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <h4 className="font-medium">SPF Record</h4>
-                      <Badge variant={deliveryDiagnostics.spf?.status === 'OK' ? 'default' : 'destructive'}>
-                        {deliveryDiagnostics.spf?.status || 'UNKNOWN'}
-                      </Badge>
-                      {deliveryDiagnostics.spf?.record && (
-                        <p className="text-xs text-gray-600">{deliveryDiagnostics.spf.record}</p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <h4 className="font-medium">DMARC Record</h4>
-                      <Badge variant={deliveryDiagnostics.dmarc?.status === 'OK' ? 'default' : 'destructive'}>
-                        {deliveryDiagnostics.dmarc?.status || 'UNKNOWN'}
-                      </Badge>
-                      {deliveryDiagnostics.dmarc?.record && (
-                        <p className="text-xs text-gray-600">{deliveryDiagnostics.dmarc.record}</p>
-                      )}
-                    </div>
+            <CardContent>
+              <div className="space-y-2">
+                {emailLogs.length === 0 ? (
+                  <div className="text-center py-8 text-white/60">
+                    <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    Inga e-postloggar tillgängliga
                   </div>
-                  
-                  <div className="space-y-2">
-                    <h4 className="font-medium">DKIM Records</h4>
-                    <Badge variant={deliveryDiagnostics.dkim?.status === 'OK' ? 'default' : 'destructive'}>
-                      {deliveryDiagnostics.dkim?.status || 'UNKNOWN'}
-                    </Badge>
-                    {deliveryDiagnostics.dkim?.records?.map((record: any, index: number) => (
-                      <p key={index} className="text-xs text-gray-600">
-                        {record.selector}: {record.status}
-                      </p>
-                    ))}
-                  </div>
-
-                  {deliveryDiagnostics.analysis && (
-                    <div className="space-y-2">
-                      <h4 className="font-medium">Leveransanalys</h4>
-                      <Badge variant={
-                        deliveryDiagnostics.analysis.overall_status === 'GOOD' ? 'default' : 
-                        deliveryDiagnostics.analysis.overall_status === 'NEEDS_IMPROVEMENT' ? 'secondary' : 'destructive'
-                      }>
-                        {deliveryDiagnostics.analysis.overall_status}
-                      </Badge>
-                      
-                      {deliveryDiagnostics.analysis.gmail_issues?.length > 0 && (
-                        <div>
-                          <h5 className="text-sm font-medium text-red-600">Gmail Problem:</h5>
-                          <ul className="text-xs text-gray-600">
-                            {deliveryDiagnostics.analysis.gmail_issues.map((issue: string, index: number) => (
-                              <li key={index}>• {issue}</li>
-                            ))}
-                          </ul>
+                ) : (
+                  emailLogs.map((log, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-black/30 border border-[#e4d699]/10">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          {log.status === 'sent' ? (
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-red-500" />
+                          )}
+                          <span className="text-sm">{log.recipient}</span>
                         </div>
-                      )}
-                      
-                      {deliveryDiagnostics.analysis.outlook_issues?.length > 0 && (
-                        <div>
-                          <h5 className="text-sm font-medium text-red-600">Outlook Problem:</h5>
-                          <ul className="text-xs text-gray-600">
-                            {deliveryDiagnostics.analysis.outlook_issues.map((issue: string, index: number) => (
-                              <li key={index}>• {issue}</li>
-                            ))}
-                          </ul>
+                        <div className="text-xs text-white/60">
+                          {log.subject}
                         </div>
-                      )}
-                      
-                      {deliveryDiagnostics.analysis.recommendations?.length > 0 && (
-                        <div>
-                          <h5 className="text-sm font-medium text-blue-600">Rekommendationer:</h5>
-                          <ul className="text-xs text-gray-600">
-                            {deliveryDiagnostics.analysis.recommendations.map((rec: string, index: number) => (
-                              <li key={index}>• {rec}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-white/60">
+                        <Calendar className="h-3 w-3" />
+                        {new Date(log.created_at).toLocaleString('sv-SE')}
+                      </div>
                     </div>
-                  )}
-                </div>
-              )}
+                  ))
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Edit Template Modal */}
-      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingTemplate.id ? 'Redigera mall' : 'Skapa ny mall'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="template-type">Typ</Label>
-                <Select
-                  value={editingTemplate.type}
-                  onValueChange={(value) => setEditingTemplate(prev => ({ ...prev, type: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="order_confirmation">Orderbekräftelse</SelectItem>
-                    <SelectItem value="booking_confirmation">Bokningsbekräftelse</SelectItem>
-                    <SelectItem value="welcome">Välkomstmail</SelectItem>
-                    <SelectItem value="test_email">Test-email</SelectItem>
-                    <SelectItem value="custom">Anpassad</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="template-name">Namn</Label>
-                <Input
-                  id="template-name"
-                  value={editingTemplate.name || ''}
-                  onChange={(e) => setEditingTemplate(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="Mall-namn"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="template-subject">Ämne</Label>
-              <Input
-                id="template-subject"
-                value={editingTemplate.subject || ''}
-                onChange={(e) => setEditingTemplate(prev => ({ ...prev, subject: e.target.value }))}
-                placeholder="E-postämne (kan innehålla variabler som {{customer_name}})"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="template-html">HTML-innehåll</Label>
-              <Textarea
-                id="template-html"
-                value={editingTemplate.html_content || ''}
-                onChange={(e) => setEditingTemplate(prev => ({ ...prev, html_content: e.target.value }))}
-                placeholder="HTML-innehåll för e-post"
-                rows={15}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="template-text">Text-innehåll (valfritt)</Label>
-              <Textarea
-                id="template-text"
-                value={editingTemplate.text_content || ''}
-                onChange={(e) => setEditingTemplate(prev => ({ ...prev, text_content: e.target.value }))}
-                placeholder="Textversion av e-post"
-                rows={8}
-              />
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
-                Avbryt
-              </Button>
-              <Button onClick={saveTemplate} disabled={loading}>
-                {editingTemplate.id ? 'Uppdatera' : 'Skapa'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* View Template Modal */}
-      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Visa mall: {selectedTemplate?.name}</DialogTitle>
-          </DialogHeader>
-          {selectedTemplate && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <strong>Typ:</strong> {selectedTemplate.type}
-                </div>
-                <div>
-                  <strong>Status:</strong> {selectedTemplate.is_active ? 'Aktiv' : 'Inaktiv'}
-                </div>
-              </div>
-              <div>
-                <strong>Ämne:</strong> {selectedTemplate.subject}
-              </div>
-              <div>
-                <strong>HTML-innehåll:</strong>
-                <div className="mt-2 p-4 bg-gray-100 rounded max-h-96 overflow-y-auto">
-                  <pre className="text-sm whitespace-pre-wrap">{selectedTemplate.html_content}</pre>
-                </div>
-              </div>
-              {selectedTemplate.text_content && (
-                <div>
-                  <strong>Text-innehåll:</strong>
-                  <div className="mt-2 p-4 bg-gray-100 rounded max-h-96 overflow-y-auto">
-                    <pre className="text-sm whitespace-pre-wrap">{selectedTemplate.text_content}</pre>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Template Test Modal */}
-      <Dialog open={isTestModalOpen} onOpenChange={setIsTestModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Testa mall: {templateToTest?.name}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              Skicka ett test-email med denna mall för att se hur den ser ut.
-            </p>
-            <div className="space-y-2">
-              <Label htmlFor="template-test-email">E-postadress</Label>
-              <Input
-                id="template-test-email"
-                type="email"
-                placeholder="din@email.com"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    sendTemplateTest((e.target as HTMLInputElement).value)
-                  }
-                }}
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsTestModalOpen(false)}>
-                Avbryt
-              </Button>
-              <Button onClick={() => {
-                const emailInput = document.getElementById('template-test-email') as HTMLInputElement
-                sendTemplateTest(emailInput.value)
-              }} disabled={loading}>
-                <Send className="h-4 w-4 mr-2" />
-                Skicka test
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
-}
-
-export default EmailManagement 
+} 

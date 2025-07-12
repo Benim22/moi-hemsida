@@ -589,6 +589,8 @@ export default function RestaurantTerminal() {
       console.log('🔔 User location:', profile.location)
       console.log('🔔 User_id:', payload.new.user_id)
       console.log('🔔 Customer_name:', payload.new.customer_name)
+      console.log('🔔 Special_instructions:', payload.new.special_instructions) // DEBUG
+      console.log('🔔 Notes:', payload.new.notes) // DEBUG
       
       // Kontrollera om denna order ska visas för denna location
       // Använd profile.location (användarens faktiska location) istället för selectedLocation (filter)
@@ -941,7 +943,11 @@ export default function RestaurantTerminal() {
         status: order.status,
         customer_name: order.customer_name,
         profile_name: order.profiles?.name,
-        final_name: order.profiles?.name || order.customer_name || 'Gäst'
+        final_name: order.profiles?.name || order.customer_name || 'Gäst',
+        special_instructions: order.special_instructions, // DEBUG
+        notes: order.notes, // DEBUG
+        has_special_instructions: !!order.special_instructions, // DEBUG
+        has_notes: !!order.notes // DEBUG
       })))
       
       setOrders(data || [])
@@ -1412,7 +1418,7 @@ ${itemsArray.map(item => {
 TOTALT: ${order.total_price || order.amount} kr
 Leveransmetod: ${order.delivery_type === 'delivery' ? 'Leverans' : 'Avhämtning'}
 
-${order.notes || order.special_instructions ? `Speciella önskemål:\n${order.notes || order.special_instructions}\n` : ''}
+${order.special_instructions || order.notes ? `Speciella önskemål:\n${order.special_instructions ? `🚨 VIKTIGT: ${order.special_instructions}\n` : ''}${order.notes ? `${order.notes}\n` : ''}` : ''}
 Tack för ditt köp!
 Utvecklad av Skaply
 ═══════════════════════════════════
@@ -1673,6 +1679,19 @@ Utvecklad av Skaply
     receiptText += '================================\n'
     receiptText += `Leveransmetod: ${order.delivery_type === 'delivery' ? 'Leverans' : 'Avhamtning'}\n`
     receiptText += '\n'
+    
+    // Add special instructions if they exist
+    if (order.special_instructions || order.notes) {
+      receiptText += 'Speciella önskemål:\n'
+      if (order.special_instructions) {
+        receiptText += `🚨 VIKTIGT: ${order.special_instructions}\n`
+      }
+      if (order.notes) {
+        receiptText += `${order.notes}\n`
+      }
+      receiptText += '\n'
+    }
+    
     receiptText += 'Tack for ditt kop!\n'
     receiptText += 'Utvecklad av Skaply\n'
     receiptText += '\n\n\n'
@@ -2256,7 +2275,7 @@ Utvecklad av Skaply
 
   // Send email confirmation to customer
   const sendEmailConfirmation = async (order) => {
-    addDebugLog(`Skickar e-postbekräftelse för order #${order.order_number}`, 'info')
+    addDebugLog(`Skickar e-postbekräftelse för order #${order.order_number} via SendGrid`, 'info')
     
     try {
       // Check if customer has email
@@ -2271,7 +2290,7 @@ Utvecklad av Skaply
         return
       }
 
-      // Prepare order data for email
+      // Prepare order data for SendGrid
       const orderData = {
         customerName: order.profiles?.name || order.customer_name || 'Gäst',
         customerEmail: customerEmail,
@@ -2287,35 +2306,45 @@ Utvecklad av Skaply
             console.error('Error parsing order items:', e)
             return []
           }
-        })(),
-        totalPrice: order.total_price || order.amount,
+        })().map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: `${item.price}`,
+          extras: item.extras?.join(', ') || undefined
+        })),
+        totalPrice: `${order.total_price || order.amount}`,
         location: order.location,
-        orderType: order.delivery_type === 'delivery' ? 'delivery' : 'pickup',
+        orderType: order.delivery_type === 'delivery' ? 'Leverans' : 'Avhämtning',
         phone: order.profiles?.phone || order.phone || 'Ej angivet',
         deliveryAddress: order.delivery_address,
         pickupTime: order.pickup_time,
-        notes: order.notes,
-        specialInstructions: order.special_instructions
+        specialInstructions: order.special_instructions,
+        restaurantPhone: '040-123456', // Lägg till restaurangtelefon
+        restaurantAddress: 'Restaurangadress', // Lägg till restaurangadress
+        orderDate: new Date(order.created_at).toLocaleDateString('sv-SE')
       }
 
-      addDebugLog(`Skickar e-post till ${customerEmail}`, 'info')
+      addDebugLog(`Skickar e-post till ${customerEmail} via SendGrid`, 'info')
 
-      // Send email via API
-      const response = await fetch('/api/send-order-confirmation', {
+      // Send email via SendGrid API
+      const response = await fetch('/api/sendgrid', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(orderData),
+        body: JSON.stringify({
+          action: 'send_order_confirmation',
+          orderData
+        }),
       })
 
       const result = await response.json()
 
       if (result.success) {
-        addDebugLog(`E-postbekräftelse skickad framgångsrikt till ${customerEmail}`, 'success')
+        addDebugLog(`E-postbekräftelse skickad framgångsrikt till ${customerEmail} via SendGrid`, 'success')
         showBrowserNotification(
           '📧 E-post skickad!', 
-          `Orderbekräftelse skickad till ${customerEmail}`,
+          `Orderbekräftelse skickad till ${customerEmail} via SendGrid`,
           false
         )
       } else {
@@ -2947,18 +2976,37 @@ Utvecklad av Skaply
                     </div>
 
                     {/* Visa speciella önskemål om de finns */}
-                    {(order.notes || order.special_instructions) && (
-                      <div className="mb-4">
-                        <h5 className="text-white/80 font-medium mb-2 flex items-center gap-2">
-                          📝 Speciella önskemål:
-                        </h5>
-                        <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3">
-                          <p className="text-orange-300 text-sm">
-                            {order.notes || order.special_instructions}
-                          </p>
+                    {(() => {
+                      // DEBUG: Logga vad som händer med special_instructions
+                      console.log(`🔍 Order #${order.order_number} DEBUG:`, {
+                        special_instructions: order.special_instructions,
+                        notes: order.notes,
+                        has_special_instructions: !!order.special_instructions,
+                        has_notes: !!order.notes,
+                        will_show_section: !!(order.notes || order.special_instructions)
+                      })
+                      return (order.notes || order.special_instructions) && (
+                        <div className="mb-4">
+                          <h5 className="text-white/80 font-medium mb-2 flex items-center gap-2">
+                            📝 Speciella önskemål:
+                          </h5>
+                          <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3 space-y-2">
+                            {order.special_instructions && (
+                              <div className="bg-red-500/20 border border-red-500/30 rounded p-2">
+                                <p className="text-red-300 text-sm font-medium">
+                                  🚨 VIKTIGT: {order.special_instructions}
+                                </p>
+                              </div>
+                            )}
+                            {order.notes && (
+                              <p className="text-orange-300 text-sm">
+                                {order.notes}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )
+                    })()}
 
                     <div className="space-y-3 mb-4">
                       {/* Status Actions */}
@@ -3741,9 +3789,18 @@ Utvecklad av Skaply
 
                 {/* Speciella önskemål */}
                 {(selectedOrder.notes || selectedOrder.special_instructions) && (
-                  <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3">
+                  <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3 space-y-2">
                     <h4 className="font-medium mb-2 text-orange-400 text-sm sm:text-base">📝 Speciella önskemål & kommentarer:</h4>
-                    <p className="text-orange-300 text-xs sm:text-sm break-words">{selectedOrder.notes || selectedOrder.special_instructions}</p>
+                    {selectedOrder.special_instructions && (
+                      <div className="bg-red-500/20 border border-red-500/30 rounded p-2">
+                        <p className="text-red-300 text-xs sm:text-sm font-medium break-words">
+                          🚨 VIKTIGT: {selectedOrder.special_instructions}
+                        </p>
+                      </div>
+                    )}
+                    {selectedOrder.notes && (
+                      <p className="text-orange-300 text-xs sm:text-sm break-words">{selectedOrder.notes}</p>
+                    )}
                   </div>
                 )}
 

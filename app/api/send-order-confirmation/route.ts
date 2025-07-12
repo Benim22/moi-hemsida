@@ -1,75 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sendOrderConfirmation } from '@/lib/nodemailer-one'
+import { sendOrderConfirmationSendGrid } from '@/lib/sendgrid-service'
 
 export async function POST(request: NextRequest) {
   try {
-    const orderData = await request.json()
-    
-    // Validate required fields
-    const requiredFields = [
-      'customerName', 'customerEmail', 'orderNumber', 'items', 
-      'totalPrice', 'location', 'orderType', 'phone'
-    ]
-    
-    for (const field of requiredFields) {
-      if (!orderData[field]) {
-        return NextResponse.json(
-          { success: false, error: `Missing required field: ${field}` },
-          { status: 400 }
-        )
-      }
+    const body = await request.json()
+    console.log('📧 Order confirmation request body:', body)
+
+    // Validera inkommande data
+    if (!body.customerEmail || !body.customerName || !body.orderNumber) {
+      return NextResponse.json({
+        success: false,
+        error: 'Saknade obligatoriska fält: customerEmail, customerName, orderNumber'
+      }, { status: 400 })
     }
 
-    // Validate items array
-    if (!Array.isArray(orderData.items) || orderData.items.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Items must be a non-empty array' },
-        { status: 400 }
-      )
+    // SendGrid förväntar sig ett specifikt format
+    const orderData = {
+      customerName: body.customerName,
+      customerEmail: body.customerEmail,
+      orderNumber: body.orderNumber,
+      items: body.items || [],
+      totalPrice: body.totalPrice || '0',
+      location: body.location || 'Moi Sushi',
+      orderType: body.orderType || 'Avhämtning',
+      phone: body.phone || '',
+      deliveryAddress: body.deliveryAddress,
+      pickupTime: body.pickupTime,
+      specialInstructions: body.specialInstructions,
+      restaurantPhone: body.restaurantPhone || '',
+      restaurantAddress: body.restaurantAddress || '',
+      orderDate: body.orderDate || new Date().toLocaleDateString('sv-SE')
     }
 
-    // Validate each item
-    for (const item of orderData.items) {
-      if (!item.name || !item.quantity || !item.price) {
-        return NextResponse.json(
-          { success: false, error: 'Each item must have name, quantity, and price' },
-          { status: 400 }
-        )
-      }
-    }
+    console.log('📧 Sending order confirmation via SendGrid:', {
+      to: orderData.customerEmail,
+      orderNumber: orderData.orderNumber,
+      customerName: orderData.customerName
+    })
 
-    // Konvertera data till format som nodemailer-one förväntar sig
-    const emailData = {
-      customer_name: orderData.customerName,
-      customer_email: orderData.customerEmail,
-      order_number: orderData.orderNumber,
-      items: orderData.items,
-      total_price: orderData.totalPrice,
-      delivery_method: orderData.orderType,
-      location: orderData.location,
-      special_instructions: orderData.specialInstructions || '',
-      estimated_ready_time: orderData.pickupTime || '30-45 minuter'
-    }
+    // Skicka via SendGrid
+    const result = await sendOrderConfirmationSendGrid(orderData)
 
-    const result = await sendOrderConfirmation(emailData)
-    
     if (result.success) {
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Order confirmation sent successfully via One.com SMTP',
-        messageId: result.messageId 
+      console.log('✅ Order confirmation sent successfully via SendGrid')
+      return NextResponse.json({
+        success: true,
+        message: 'Orderbekräftelse skickad via SendGrid',
+        messageId: result.messageId
       })
     } else {
-      return NextResponse.json(
-        { success: false, error: result.error },
-        { status: 500 }
-      )
+      console.error('❌ Failed to send order confirmation:', result.error)
+      return NextResponse.json({
+        success: false,
+        error: result.error
+      }, { status: 500 })
     }
+
   } catch (error) {
-    console.error('Error in send-order-confirmation API:', error)
-    return NextResponse.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    )
+    console.error('❌ Error in send-order-confirmation API:', error)
+    return NextResponse.json({
+      success: false,
+      error: 'Internt serverfel vid skickande av orderbekräftelse'
+    }, { status: 500 })
   }
 } 

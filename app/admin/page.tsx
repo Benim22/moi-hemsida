@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
 import { Loader2, Users, FileText, Settings, Gift, Plus, Edit, Trash2, AlertTriangle, Bell, BarChart3, Globe, Eye, Clock, Search, Target, TrendingUp, MapPin, Phone, Mail, Star, Save, X, Send, PauseCircle, PlayCircle, ShoppingCart, Package, Truck, CheckCircle, XCircle, AlertCircle, Filter, Download, Calendar, DollarSign, RefreshCw, ChevronDown, Menu, Monitor, Check, Upload, MessageSquare } from "lucide-react"
+import EmailManagementNew from "@/components/email-management"
 
 export default function AdminPage() {
   const { user, profile, isAdmin, loading } = useSimpleAuth()
@@ -150,7 +151,7 @@ export default function AdminPage() {
           {activeTab === 'images' && <ImageManagement />}
           {activeTab === 'users' && <UserManagement />}
           {activeTab === 'locations' && <LocationEditor />}
-          {activeTab === 'emails' && <EmailManagement />}
+          {activeTab === 'emails' && <EmailManagementNew />}
           {activeTab === 'analytics' && <AnalyticsManagement />}
           {activeTab === 'seo' && <SEOManagement />}
           {activeTab === 'feedback' && <FeedbackManagement />}

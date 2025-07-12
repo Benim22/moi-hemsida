@@ -1,55 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sendBookingConfirmation } from '@/lib/nodemailer-one'
+import { sendBookingConfirmationSendGrid } from '@/lib/sendgrid-service'
 
 export async function POST(request: NextRequest) {
   try {
-    const bookingData = await request.json()
-    
-    // Validate required fields
-    const requiredFields = [
-      'customerName', 'customerEmail', 'bookingDate', 'bookingTime', 
-      'partySize', 'location'
-    ]
-    
-    for (const field of requiredFields) {
-      if (!bookingData[field]) {
-        return NextResponse.json(
-          { success: false, error: `Missing required field: ${field}` },
-          { status: 400 }
-        )
-      }
+    const body = await request.json()
+    console.log('📧 Booking confirmation request body:', body)
+
+    // Validera inkommande data
+    if (!body.customerEmail || !body.customerName || !body.bookingDate) {
+      return NextResponse.json({
+        success: false,
+        error: 'Saknade obligatoriska fält: customerEmail, customerName, bookingDate'
+      }, { status: 400 })
     }
 
-    // Konvertera data till format som nodemailer-one förväntar sig
-    const emailData = {
-      customer_name: bookingData.customerName,
-      customer_email: bookingData.customerEmail,
-      booking_date: bookingData.bookingDate,
-      booking_time: bookingData.bookingTime,
-      party_size: bookingData.partySize,
-      location: bookingData.location,
-      special_requests: bookingData.specialRequests || ''
+    // SendGrid förväntar sig ett specifikt format
+    const bookingData = {
+      customerName: body.customerName,
+      customerEmail: body.customerEmail,
+      bookingDate: body.bookingDate,
+      bookingTime: body.bookingTime || '',
+      partySize: body.partySize || 2,
+      location: body.location || 'Moi Sushi',
+      restaurantPhone: body.restaurantPhone || '',
+      restaurantAddress: body.restaurantAddress || '',
+      specialRequests: body.specialRequests
     }
 
-    const result = await sendBookingConfirmation(emailData)
-    
+    console.log('📧 Sending booking confirmation via SendGrid:', {
+      to: bookingData.customerEmail,
+      customerName: bookingData.customerName,
+      bookingDate: bookingData.bookingDate
+    })
+
+    // Skicka via SendGrid
+    const result = await sendBookingConfirmationSendGrid(bookingData)
+
     if (result.success) {
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Booking confirmation sent successfully via One.com SMTP',
-        messageId: result.messageId 
+      console.log('✅ Booking confirmation sent successfully via SendGrid')
+      return NextResponse.json({
+        success: true,
+        message: 'Bokningsbekräftelse skickad via SendGrid',
+        messageId: result.messageId
       })
     } else {
-      return NextResponse.json(
-        { success: false, error: result.error },
-        { status: 500 }
-      )
+      console.error('❌ Failed to send booking confirmation:', result.error)
+      return NextResponse.json({
+        success: false,
+        error: result.error
+      }, { status: 500 })
     }
+
   } catch (error) {
-    console.error('Error in send-booking-confirmation API:', error)
-    return NextResponse.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    )
+    console.error('❌ Error in send-booking-confirmation API:', error)
+    return NextResponse.json({
+      success: false,
+      error: 'Internt serverfel vid skickande av bokningsbekräftelse'
+    }, { status: 500 })
   }
 } 

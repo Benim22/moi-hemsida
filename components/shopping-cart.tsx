@@ -438,6 +438,9 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [orderNumber, setOrderNumber] = useState("")
   const [showLocationDropdown, setShowLocationDropdown] = useState(false)
+  // Store order items locally to avoid them disappearing after clearCart()
+  const [orderItems, setOrderItems] = useState([])
+  const [orderTotalPrice, setOrderTotalPrice] = useState(0)
 
   // Auto-fill form when user/profile data is available
   useEffect(() => {
@@ -683,19 +686,16 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         // Don't fail the order if notification fails
       }
 
-      // Send order confirmation email using NodeMailer
+      // Send order confirmation email using SendGrid
       try {
-        const emailResponse = await fetch('/api/email/send', {
+        const emailResponse = await fetch('/api/sendgrid', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            action: 'send_template',
-            templateType: 'order_confirmation',
-            to: customerEmail,
-            location: selectedLocation.id,
-            variables: {
+            action: 'send_order_confirmation',
+            orderData: {
               customerName,
               customerEmail,
               orderNumber,
@@ -712,6 +712,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
               })),
               totalPrice: `${totalPrice}`,
               specialInstructions: specialInstructions || undefined,
+              phone: customerPhone,
               restaurantPhone: selectedLocation.phone,
               restaurantAddress: selectedLocation.address
             }
@@ -720,7 +721,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
 
         const emailResult = await emailResponse.json()
         if (emailResult.success) {
-          console.log("Order confirmation email sent successfully")
+          console.log("Order confirmation email sent successfully via SendGrid")
         } else {
           console.error("Failed to send order confirmation email:", emailResult.error)
         }
@@ -731,6 +732,10 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
 
 
 
+      // Store order data locally before clearing cart
+      setOrderItems([...items])
+      setOrderTotalPrice(totalPrice)
+      
       // Clear cart immediately after successful order
       clearCart()
       
@@ -751,8 +756,8 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
     return <OrderSuccessModal 
       orderNumber={orderNumber}
       customerName={customerName}
-      items={items}
-      totalPrice={totalPrice}
+      items={orderItems}
+      totalPrice={orderTotalPrice}
       specialInstructions={specialInstructions}
       isLoggedIn={!!user}
       onClose={() => {
