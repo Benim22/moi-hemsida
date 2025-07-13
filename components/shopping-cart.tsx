@@ -204,8 +204,7 @@ function OrderSuccessModal({
               Information om orderbekräftelse
             </p>
             <p className="text-amber-100/80 text-xs">
-              Vi har för tillfället tekniska problem med att skicka ut orderbekräftelser via email och jobbar på att få det fixat så fort som möjligt. Vi ser dock alla beställningar och påbörjar dem direkt när de läggs.
-            </p>
+            Orderbekräftelser skickas normalt via e-post, men ibland kan det uppstå leveransproblem. Vanligtvis fungerar det utan problem! Vi ser alla inkomna beställningar och behandlar dem så snart som möjligt.            </p>
           </div>
         </div>
       </div>

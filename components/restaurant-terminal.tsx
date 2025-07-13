@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
-import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle, RefreshCw, Settings, Wifi, Bluetooth, Mail, Search, Volume2, Calendar } from "lucide-react"
+import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle, RefreshCw, Settings, Wifi, Bluetooth, Mail, Search, Volume2, VolumeX, Calendar } from "lucide-react"
 import jsPDF from 'jspdf'
 
 // ePOS-Print API Declaration (since we'll load it dynamically)
@@ -590,6 +590,35 @@ export default function RestaurantTerminal() {
       setSelectedLocation(profile.location)
     }
   }, [profile?.location, selectedLocation])
+
+  // User interaction tracking for audio reactivation
+  useEffect(() => {
+    const reactivateAudio = async () => {
+      if (audioContext && audioContext.state === 'suspended') {
+        try {
+          await audioContext.resume()
+          console.log('🎵 AudioContext återaktiverat vid användarinteraktion')
+        } catch (error) {
+          console.log('🎵 Kunde inte återaktivera AudioContext:', error)
+        }
+      }
+    }
+
+    const handleUserInteraction = () => {
+      reactivateAudio()
+    }
+
+    // Lyssna på alla typer av användarinteraktioner
+    document.addEventListener('click', handleUserInteraction, { passive: true })
+    document.addEventListener('touchstart', handleUserInteraction, { passive: true })
+    document.addEventListener('keydown', handleUserInteraction, { passive: true })
+
+    return () => {
+      document.removeEventListener('click', handleUserInteraction)
+      document.removeEventListener('touchstart', handleUserInteraction)
+      document.removeEventListener('keydown', handleUserInteraction)
+    }
+  }, [audioContext])
 
   // Real-time subscriptions - ENDAST baserat på profile.location, INTE selectedLocation
   useEffect(() => {
@@ -1189,18 +1218,23 @@ export default function RestaurantTerminal() {
 
   const activateAudio = async () => {
     try {
-      console.log('🎵 Aktiverar ljud för iPad/Safari...')
+      console.log('🎵 Aktiverar ljud för alla enheter...')
       
       // Skapa och aktivera AudioContext
-      const newAudioContext = new (window.AudioContext || window.webkitAudioContext)()
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext
+      if (!AudioContextClass) {
+        throw new Error('AudioContext stöds inte i denna webbläsare')
+      }
       
-      // På Safari/iPad kan AudioContext vara suspended, så vi måste resume den
+      const newAudioContext = new AudioContextClass()
+      
+      // På Safari/iPad/iOS kan AudioContext vara suspended, så vi måste resume den
       if (newAudioContext.state === 'suspended') {
         await newAudioContext.resume()
         console.log('🎵 AudioContext resumed från suspended state')
       }
       
-      // Spela ett tyst ljud för att "unlåsa" ljudet
+      // Spela ett tyst ljud för att "unlåsa" ljudet (krävs för iOS/Safari)
       const oscillator = newAudioContext.createOscillator()
       const gainNode = newAudioContext.createGain()
       
@@ -1218,45 +1252,140 @@ export default function RestaurantTerminal() {
       setAudioEnabled(true)
       
       console.log('✅ Ljud aktiverat! AudioContext state:', newAudioContext.state)
+      console.log('🎵 Enhet:', isIOSDevice ? 'iOS/iPad' : 'Desktop/Android')
       
-      // Bekräfta med en testton
+      // Bekräfta med en testton efter kort delay
       setTimeout(() => {
         playNotificationSound()
-      }, 200)
+      }, 300)
       
-      showBrowserNotification('Ljud aktiverat! 🔊', 'Automatiska ljudnotifikationer fungerar nu', false)
+      showBrowserNotification('Ljud aktiverat! 🔊', 'Automatiska ljudnotifikationer fungerar nu på alla enheter', false)
       
     } catch (error) {
       console.error('❌ Fel vid aktivering av ljud:', error)
-      showBrowserNotification('Ljudfel', 'Kunde inte aktivera ljud. Prova igen.', false)
+      showBrowserNotification('Ljudfel', `Kunde inte aktivera ljud: ${error.message}`, false)
     }
   }
 
   const playNotificationSound = () => {
+    console.log('🚨 KRAFTFULL NOTIFIKATION: Ljud + Vibration + Visuellt!')
+    console.log('📊 Status: notiser =', notificationsEnabled, 'ljud =', audioEnabled)
+    
+    // VISUELL EFFEKT - Alltid, oavsett ljudinställningar
+    triggerVisualAlert()
+    
+    // VIBRATION - Om tillgängligt
+    triggerVibration()
+    
     if (!notificationsEnabled) {
-      console.log('🔕 Notiser är avaktiverade - hoppar över ljudnotifikation')
+      console.log('🔕 Notiser är avaktiverade - bara visuell/vibration')
       return
     }
     
     if (!audioEnabled) {
-      console.log('🔕 Ljud är inte aktiverat - hoppar över ljudnotifikation')
+      console.log('🔕 Ljud är inte aktiverat - bara visuell/vibration')
+      console.log('💡 Tips: Tryck på "Ljud Av" knappen för att aktivera ljud')
       return
     }
     
     try {
-      console.log('🔊 Spelar notifikationsljud...')
+      console.log('🔊 Spelar KRAFTFULLT notifikationsljud...')
+      console.log('🎵 AudioContext state:', audioContext?.state || 'ingen audioContext')
       
+      // KRAFTFULL LJUDSEKVENS - spela flera gånger
+      playPowerfulSoundSequence()
+      
+    } catch (error) {
+      console.log('❌ Fel med ljuduppspelning:', error)
+      console.log('🎵 Försöker med fallback-metod...')
+      playFallbackSound()
+    }
+  }
+
+  // Kraftfull ljudsekvens som spelas flera gånger
+  const playPowerfulSoundSequence = () => {
+    const playCount = 3 // Spela 3 gånger
+    let currentPlay = 0
+
+    const playNext = () => {
+      if (currentPlay >= playCount) return
+
       // Prova först med den aktiverade AudioContext
       if (audioContext && audioContext.state === 'running') {
+        console.log(`🎵 Spelar kraftfullt ljud ${currentPlay + 1}/${playCount} (AudioContext)`)
         playAdvancedSound()
+      } else if (audioContext && audioContext.state === 'suspended') {
+        console.log('🎵 AudioContext suspended - försöker återuppta...')
+        audioContext.resume().then(() => {
+          playAdvancedSound()
+        }).catch(() => {
+          console.log('🎵 Fallback till enkel ljudmetod')
+          playFallbackSound()
+        })
       } else {
-        // Fallback till enkel metod
+        console.log(`🎵 Spelar kraftfullt ljud ${currentPlay + 1}/${playCount} (Fallback)`)
         playFallbackSound()
       }
-    } catch (error) {
-      console.log('Fel med ljuduppspelning:', error)
-      // Prova fallback
-      playFallbackSound()
+
+      currentPlay++
+      
+      // Spela nästa efter 800ms
+      if (currentPlay < playCount) {
+        setTimeout(playNext, 800)
+      }
+    }
+
+    playNext()
+  }
+
+  // Visuell alert som blinkar hela skärmen
+  const triggerVisualAlert = () => {
+    console.log('💡 Aktiverar visuell alert!')
+    
+    // Skapa en fullscreen flash-overlay
+    const flashOverlay = document.createElement('div')
+    flashOverlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: linear-gradient(45deg, #ff0000, #ff6600);
+      z-index: 9999;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    `
+    
+    document.body.appendChild(flashOverlay)
+    
+    // Flash-animation
+    let flashCount = 0
+    const maxFlashes = 6
+    
+    const flash = () => {
+      if (flashCount >= maxFlashes) {
+        document.body.removeChild(flashOverlay)
+        return
+      }
+      
+      flashOverlay.style.opacity = flashCount % 2 === 0 ? '0.7' : '0'
+      flashCount++
+      
+      setTimeout(flash, 200)
+    }
+    
+    setTimeout(flash, 100)
+  }
+
+  // Vibration för mobila enheter
+  const triggerVibration = () => {
+    if ('vibrate' in navigator) {
+      console.log('📳 Aktiverar vibration!')
+      // Kraftfull vibrationsmönster: vibrera 200ms, paus 100ms, upprepa 3 gånger
+      navigator.vibrate([200, 100, 200, 100, 200, 100, 200])
+    } else {
+      console.log('📳 Vibration stöds inte på denna enhet')
     }
   }
 
@@ -2636,59 +2765,89 @@ Utvecklad av Skaply
                     </Badge>
                   )}
                 </div>
-                <div>
-                  <CardTitle className="text-xl lg:text-3xl font-bold bg-gradient-to-r from-[#e4d699] to-yellow-600 bg-clip-text text-transparent">
+                <div className="flex-1">
+                  <CardTitle className="text-xl lg:text-3xl font-bold bg-gradient-to-r from-[#e4d699] to-yellow-600 bg-clip-text text-transparent mb-2">
                     Restaurang Terminal
                   </CardTitle>
-                  <p className="text-white/70 text-sm lg:text-lg">
-                    👤 {profile?.name} • 🏢 Min plats: {getLocationName(profile?.location)} • 📱 Visar: {getLocationName(selectedLocation)} • {notificationsEnabled ? '🔔' : '🔕'} {notificationsEnabled ? 'Notiser På' : 'Notiser Av'}
-                  </p>
-                  <p className="text-white/50 text-xs lg:text-sm">
-                    {new Date().toLocaleString('sv-SE', { 
-                      weekday: 'long', 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric', 
-                      hour: '2-digit', 
-                      minute: '2-digit' 
-                    })}
-                  </p>
+                  
+                  {/* User Info Cards */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 mb-3">
+                    <div className="flex items-center gap-2 bg-black/30 rounded-lg px-3 py-2 border border-[#e4d699]/20">
+                      <div className="w-8 h-8 bg-gradient-to-br from-[#e4d699] to-yellow-600 rounded-full flex items-center justify-center">
+                        <span className="text-black font-bold text-sm">👤</span>
+                      </div>
+                      <div>
+                        <p className="text-white font-medium text-sm">{profile?.name}</p>
+                        <p className="text-white/60 text-xs">Inloggad användare</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 bg-black/30 rounded-lg px-3 py-2 border border-[#e4d699]/20">
+                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+                        <span className="text-white font-bold text-sm">🏢</span>
+                      </div>
+                      <div>
+                        <p className="text-white font-medium text-sm">{getLocationName(profile?.location)}</p>
+                        <p className="text-white/60 text-xs">Min plats</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Status Info */}
+                  <div className="flex flex-wrap items-center gap-3 text-xs lg:text-sm">
+                    <div className="flex items-center gap-1">
+                      <div className={`w-2 h-2 rounded-full ${notificationsEnabled ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
+                      <span className="text-white/70">
+                        {notificationsEnabled ? 'Notiser Aktiva' : 'Notiser Inaktiva'}
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+                      <span className="text-white/70">Visar: {getLocationName(selectedLocation)}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 rounded-full bg-yellow-400"></div>
+                      <span className="text-white/50">
+                        {new Date().toLocaleString('sv-SE', { 
+                          weekday: 'short', 
+                          month: 'short', 
+                          day: 'numeric', 
+                          hour: '2-digit', 
+                          minute: '2-digit' 
+                        })}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
               
-              {/* Mobile buttons - stacked */}
-              <div className="flex flex-col gap-2 w-full lg:w-auto">
-                <div className="grid grid-cols-2 sm:flex gap-2">
+              {/* Action Buttons - Improved Layout for iPad */}
+              <div className="flex flex-col gap-3 w-full lg:w-auto">
+                {/* Primary Actions Row */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                   {/* Notification Toggle Button */}
                   <Button 
                     onClick={notificationPermission === 'granted' ? toggleNotifications : requestNotificationPermission}
                     variant="outline" 
-                    className={`text-xs sm:text-sm ${
+                    className={`h-12 flex flex-col items-center justify-center text-xs font-medium transition-all duration-200 ${
                       notificationPermission === 'granted' 
                         ? notificationsEnabled
-                          ? 'border-green-500/40 text-green-400' 
-                          : 'border-orange-500/40 text-orange-400'
+                          ? 'border-green-500/50 bg-green-500/10 text-green-400 hover:bg-green-500/20' 
+                          : 'border-orange-500/50 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20'
                         : notificationPermission === 'denied'
-                        ? 'border-red-500/40 text-red-400'
-                        : 'border-yellow-500/40 text-yellow-400'
+                        ? 'border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/20'
+                        : 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20'
                     }`}
-                    size="sm"
                   >
-                    <Bell className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                    <span className="hidden sm:inline">
+                    <Bell className="h-5 w-5 mb-1" />
+                    <span className="text-xs leading-tight">
                       {notificationPermission === 'granted' 
                         ? notificationsEnabled ? 'Notiser På' : 'Notiser Av'
                         : notificationPermission === 'denied'
-                        ? 'Notiser Blockerade'
-                        : 'Aktivera Notiser'
-                      }
-                    </span>
-                    <span className="sm:hidden">
-                      {notificationPermission === 'granted' 
-                        ? notificationsEnabled ? 'På' : 'Av'
-                        : notificationPermission === 'denied'
-                        ? 'Block'
-                        : 'Aktiv'
+                        ? 'Blockerade'
+                        : 'Aktivera'
                       }
                     </span>
                   </Button>
@@ -2697,16 +2856,12 @@ Utvecklad av Skaply
                   <Button 
                     onClick={refreshData}
                     variant="outline" 
-                    className="border-blue-500/40 text-blue-400 hover:bg-blue-500/10 text-xs sm:text-sm"
-                    size="sm"
+                    className="h-12 flex flex-col items-center justify-center border-blue-500/50 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-all duration-200"
                     disabled={isRefreshing}
                   >
-                    <RefreshCw className={`h-3 w-3 sm:h-4 sm:w-4 mr-1 ${isRefreshing ? 'animate-spin' : ''}`} />
-                    <span className="hidden sm:inline">
-                      {isRefreshing ? 'Uppdaterar...' : 'Uppdatera'}
-                    </span>
-                    <span className="sm:hidden">
-                      {isRefreshing ? '⏳' : '🔄'}
+                    <RefreshCw className={`h-5 w-5 mb-1 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    <span className="text-xs leading-tight">
+                      {isRefreshing ? 'Laddar...' : 'Uppdatera'}
                     </span>
                   </Button>
                   
@@ -2714,54 +2869,79 @@ Utvecklad av Skaply
                   <Button 
                     onClick={() => setShowPrinterSettings(true)}
                     variant="outline" 
-                    className={`transition-all duration-200 text-xs sm:text-sm ${
+                    className={`h-12 flex flex-col items-center justify-center transition-all duration-200 ${
                       printerSettings.enabled 
                         ? printerStatus.connected 
-                          ? 'border-green-500/40 text-green-400 hover:bg-green-500/10'
-                          : 'border-orange-500/40 text-orange-400 hover:bg-orange-500/10'
-                        : 'border-gray-500/40 text-gray-400 hover:bg-gray-500/10'
+                          ? 'border-green-500/50 bg-green-500/10 text-green-400 hover:bg-green-500/20'
+                          : 'border-orange-500/50 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20'
+                        : 'border-gray-500/50 bg-gray-500/10 text-gray-400 hover:bg-gray-500/20'
                     }`}
-                    size="sm"
                     title="Skrivarinställningar"
                   >
-                    <Printer className="h-4 w-4 mr-1 sm:mr-2" />
-                    <span className="hidden sm:inline">
+                    <Printer className="h-5 w-5 mb-1" />
+                    <span className="text-xs leading-tight">
                       {printerSettings.enabled 
                         ? printerStatus.connected ? 'Skrivare OK' : 'Skrivare Fel'
                         : 'Skrivare Av'
                       }
                     </span>
-                    <span className="sm:hidden">
-                      {printerSettings.enabled 
-                        ? printerStatus.connected ? '🖨️' : '❌'
-                        : '🖨️'
-                      }
-                    </span>
                   </Button>
 
-                  {/* Audio Activation Button - Show only on iOS devices */}
-                  {isIOSDevice && (
-                    <Button 
-                      onClick={activateAudio}
-                      variant="outline" 
-                      className={`flex-1 sm:flex-none transition-all duration-200 ${
-                        audioEnabled 
-                          ? 'border-green-500/40 text-green-400 hover:bg-green-500/10' 
-                          : 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10'
-                      }`}
-                      size="sm"
-                      title="Aktivera ljud för automatiska notifikationer (krävs för iPad/Safari)"
-                      disabled={audioEnabled}
-                    >
-                      <Volume2 className="h-4 w-4 mr-1 sm:mr-2" />
-                      <span className="hidden sm:inline">
-                        {audioEnabled ? 'Ljud Aktivt' : 'Aktivera Ljud'}
-                      </span>
-                      <span className="sm:hidden">
-                        {audioEnabled ? '🔊' : '🔇'}
-                      </span>
-                    </Button>
-                  )}
+                  {/* Bookings Button */}
+                  <Button 
+                    onClick={() => setShowBookings(true)}
+                    variant="outline" 
+                    className="h-12 flex flex-col items-center justify-center border-blue-500/50 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-all duration-200 relative"
+                    title="Visa bordsbokningar"
+                  >
+                    <Calendar className="h-5 w-5 mb-1" />
+                    <span className="text-xs leading-tight">Bokningar</span>
+                    {newBookingsCount > 0 && (
+                      <Badge 
+                        variant="destructive" 
+                        className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center text-xs"
+                      >
+                        {newBookingsCount}
+                      </Badge>
+                    )}
+                  </Button>
+                </div>
+                
+                {/* Secondary Actions Row */}
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                  {/* Audio Control Button - Show on all devices */}
+                  <Button 
+                    onClick={() => {
+                      if (audioEnabled) {
+                        // Stäng av ljud
+                        setAudioEnabled(false)
+                        if (audioContext) {
+                          audioContext.close()
+                          setAudioContext(null)
+                        }
+                        showBrowserNotification('Ljud avstängt 🔇', 'Automatiska ljudnotifikationer är nu avstängda', false)
+                      } else {
+                        // Aktivera ljud
+                        activateAudio()
+                      }
+                    }}
+                    variant="outline" 
+                    className={`h-12 flex flex-col items-center justify-center transition-all duration-200 ${
+                      audioEnabled 
+                        ? 'border-green-500/50 bg-green-500/10 text-green-400 hover:bg-green-500/20' 
+                        : 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20'
+                    }`}
+                    title={audioEnabled ? 'Stäng av ljudnotifikationer' : 'Aktivera ljudnotifikationer'}
+                  >
+                    {audioEnabled ? (
+                      <Volume2 className="h-5 w-5 mb-1" />
+                    ) : (
+                      <VolumeX className="h-5 w-5 mb-1" />
+                    )}
+                    <span className="text-xs leading-tight">
+                      {audioEnabled ? 'Ljud På' : 'Ljud Av'}
+                    </span>
+                  </Button>
 
                   {/* Test Notifications Button */}
                   <Button 
@@ -2779,40 +2959,20 @@ Utvecklad av Skaply
                       console.log('✅ Testnotifikation skickad!')
                     }}
                     variant="outline" 
-                    className="flex-1 sm:flex-none border-purple-500/40 text-purple-400 hover:bg-purple-500/10 transition-all duration-200"
-                    size="sm"
+                    className="h-12 flex flex-col items-center justify-center border-purple-500/50 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 transition-all duration-200"
                     title="Testa notifikationer och ljud"
                   >
-                    <Bell className="h-4 w-4 mr-1 sm:mr-2" />
-                    <span className="hidden sm:inline">Testa Notis</span>
-                    <span className="sm:hidden">🔔</span>
+                    <Bell className="h-5 w-5 mb-1" />
+                    <span className="text-xs leading-tight">Testa Notis</span>
                   </Button>
                   
-                  {/* Bookings Button */}
-                  <Button 
-                    onClick={() => setShowBookings(true)}
-                    variant="outline" 
-                    className="flex-1 sm:flex-none border-blue-500/40 text-blue-400 hover:bg-blue-500/10 transition-all duration-200 relative"
-                    size="sm"
-                    title="Visa bordsbokningar"
-                  >
-                    <Calendar className="h-4 w-4 mr-1 sm:mr-2" />
-                    <span className="hidden sm:inline">Bordsbokningar</span>
-                    <span className="sm:hidden">📅</span>
-                    {newBookingsCount > 0 && (
-                      <Badge 
-                        variant="destructive" 
-                        className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center text-xs"
-                      >
-                        {newBookingsCount}
-                      </Badge>
-                    )}
-                  </Button>
-                  
-                  <Badge variant="outline" className="border-green-500/50 text-green-400 px-2 py-1 flex items-center">
-                    <span className="hidden sm:inline">🟢 Auto-uppdatering</span>
-                    <span className="sm:hidden">🟢 Auto</span>
-                  </Badge>
+                  {/* Status Badge */}
+                  <div className="h-12 flex flex-col items-center justify-center border border-green-500/50 bg-green-500/10 text-green-400 rounded-lg">
+                    <div className="h-5 w-5 mb-1 flex items-center justify-center">
+                      <div className="h-3 w-3 bg-green-400 rounded-full animate-pulse"></div>
+                    </div>
+                    <span className="text-xs leading-tight">Auto-uppdatering</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -4129,10 +4289,10 @@ Utvecklad av Skaply
 
         {/* Bookings Modal */}
         <Dialog open={showBookings} onOpenChange={setShowBookings}>
-          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-6xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-[#e4d699] text-xl flex items-center gap-2">
-                📅 Bordsbokningar
+                📅 Bordsbokningar ({bookings.length} totalt)
                 {newBookingsCount > 0 && (
                   <Badge variant="destructive" className="ml-2">
                     {newBookingsCount} nya
@@ -4140,6 +4300,61 @@ Utvecklad av Skaply
                 )}
               </DialogTitle>
             </DialogHeader>
+            
+            {/* Booking Filters */}
+            <div className="flex flex-wrap gap-4 mb-4 p-4 bg-black/30 rounded-lg border border-[#e4d699]/20">
+              <div className="flex items-center gap-2">
+                <label className="text-white/70 text-sm">Status:</label>
+                <select 
+                  className="bg-black/50 border border-[#e4d699]/30 text-white text-sm rounded px-2 py-1"
+                  onChange={(e) => {
+                    const status = e.target.value
+                    if (status === 'all') {
+                      fetchBookings()
+                    } else {
+                      setBookings(prev => prev.filter(b => b.status === status))
+                    }
+                  }}
+                >
+                  <option value="all">Alla</option>
+                  <option value="pending">Väntande</option>
+                  <option value="confirmed">Bekräftade</option>
+                  <option value="cancelled">Avbokade</option>
+                </select>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <label className="text-white/70 text-sm">Datum:</label>
+                <select 
+                  className="bg-black/50 border border-[#e4d699]/30 text-white text-sm rounded px-2 py-1"
+                  onChange={(e) => {
+                    const filter = e.target.value
+                    const now = new Date()
+                    
+                    if (filter === 'all') {
+                      fetchBookings()
+                    } else if (filter === 'today') {
+                      const today = now.toISOString().split('T')[0]
+                      setBookings(prev => prev.filter(b => b.date.startsWith(today)))
+                    } else if (filter === 'tomorrow') {
+                      const tomorrow = new Date(now.getTime() + 24*60*60*1000).toISOString().split('T')[0]
+                      setBookings(prev => prev.filter(b => b.date.startsWith(tomorrow)))
+                    } else if (filter === 'week') {
+                      const weekFromNow = new Date(now.getTime() + 7*24*60*60*1000)
+                      setBookings(prev => prev.filter(b => new Date(b.date) <= weekFromNow && new Date(b.date) >= now))
+                    }
+                  }}
+                >
+                  <option value="all">Alla datum</option>
+                  <option value="today">Idag</option>
+                  <option value="tomorrow">Imorgon</option>
+                  <option value="week">Nästa vecka</option>
+                </select>
+              </div>
+              
+
+            </div>
+
             <div className="space-y-4">
               {bookings.length === 0 ? (
                 <div className="text-center py-8">
@@ -4148,93 +4363,191 @@ Utvecklad av Skaply
                 </div>
               ) : (
                 <div className="grid gap-4">
-                  {bookings.map((booking) => (
-                    <Card key={booking.id} className="border border-[#e4d699]/30 bg-black/30">
-                      <CardContent className="p-4">
-                        <div className="flex justify-between items-start mb-3">
-                          <div className="flex items-center gap-2">
-                            <Badge 
-                              variant={booking.status === 'pending' ? 'destructive' : 'default'}
-                              className={booking.status === 'pending' ? '' : 'bg-green-500'}
-                            >
-                              {booking.status === 'pending' ? 'Väntande' : 
-                               booking.status === 'confirmed' ? 'Bekräftad' : 
-                               booking.status}
-                            </Badge>
-                            <span className="text-[#e4d699] font-medium">
-                              {new Date(booking.date).toLocaleDateString('sv-SE')} - {booking.time.substring(0, 5)}
+                  {bookings.map((booking) => {
+                    // Parse booking notes to extract contact info
+                    const notes = booking.notes || ''
+                    const nameMatch = notes.match(/Namn:\s*(.+)/)
+                    const emailMatch = notes.match(/Email:\s*(.+)/)
+                    const phoneMatch = notes.match(/Telefon:\s*(.+)/)
+                    const messageMatch = notes.match(/Meddelande:\s*(.+)/)
+                    
+                    const customerName = nameMatch ? nameMatch[1].trim() : 'Okänd kund'
+                    const customerEmail = emailMatch ? emailMatch[1].trim() : ''
+                    const customerPhone = phoneMatch ? phoneMatch[1].trim() : ''
+                    const customerMessage = messageMatch ? messageMatch[1].trim() : ''
+                    
+                    const bookingDate = new Date(booking.date)
+                    const isToday = bookingDate.toDateString() === new Date().toDateString()
+                    const isTomorrow = bookingDate.toDateString() === new Date(Date.now() + 24*60*60*1000).toDateString()
+                    
+                    return (
+                      <Card key={booking.id} className={`border ${isToday ? 'border-yellow-500/50 bg-yellow-500/5' : 'border-[#e4d699]/30'} bg-black/30`}>
+                        <CardContent className="p-4">
+                          <div className="flex justify-between items-start mb-3">
+                            <div className="flex items-center gap-2">
+                              <Badge 
+                                variant={booking.status === 'pending' ? 'destructive' : booking.status === 'confirmed' ? 'default' : 'secondary'}
+                                className={
+                                  booking.status === 'pending' ? 'bg-red-500' : 
+                                  booking.status === 'confirmed' ? 'bg-green-500' : 
+                                  booking.status === 'cancelled' ? 'bg-gray-500' : ''
+                                }
+                              >
+                                {booking.status === 'pending' ? '⏳ Väntande' : 
+                                 booking.status === 'confirmed' ? '✅ Bekräftad' : 
+                                 booking.status === 'cancelled' ? '❌ Avbokad' :
+                                 booking.status}
+                              </Badge>
+                              {isToday && <Badge variant="outline" className="border-yellow-500 text-yellow-400">📅 IDAG</Badge>}
+                              {isTomorrow && <Badge variant="outline" className="border-blue-500 text-blue-400">📅 IMORGON</Badge>}
+                            </div>
+                            <span className="text-white/70 text-sm font-medium">
+                              🏪 {getLocationName(booking.location)}
                             </span>
                           </div>
-                          <span className="text-white/70 text-sm">
-                            {getLocationName(booking.location)}
-                          </span>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-white font-medium mb-1">
-                              👥 {booking.guests} personer
-                            </p>
-                            <div className="text-white/70 text-sm space-y-1">
-                              {booking.notes.split('\n').map((line, index) => (
-                                <p key={index}>{line}</p>
-                              ))}
+                          
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                            {/* Booking Details */}
+                            <div className="space-y-2">
+                              <h4 className="text-[#e4d699] font-medium text-sm">📅 BOKNINGSINFO</h4>
+                              <div className="space-y-1 text-sm">
+                                <p className="text-white font-medium">
+                                  📆 {new Date(booking.date).toLocaleDateString('sv-SE', { 
+                                    weekday: 'long', 
+                                    year: 'numeric', 
+                                    month: 'long', 
+                                    day: 'numeric' 
+                                  })}
+                                </p>
+                                <p className="text-white">🕐 {booking.time.substring(0, 5)}</p>
+                                <p className="text-white">👥 {booking.guests} personer</p>
+                                <p className="text-white/50 text-xs">
+                                  ID: {booking.id.substring(0, 8)}...
+                                </p>
+                              </div>
+                            </div>
+                            
+                            {/* Customer Details */}
+                            <div className="space-y-2">
+                              <h4 className="text-[#e4d699] font-medium text-sm">👤 KUNDINFO</h4>
+                              <div className="space-y-1 text-sm">
+                                <p className="text-white font-medium">👤 {customerName}</p>
+                                {customerEmail && (
+                                  <p className="text-white/70">📧 {customerEmail}</p>
+                                )}
+                                {customerPhone && (
+                                  <p className="text-white/70">📱 {customerPhone}</p>
+                                )}
+                                {customerMessage && (
+                                  <div className="mt-2 p-3 bg-black/30 rounded border border-[#e4d699]/20">
+                                    <p className="text-white/70 text-xs font-medium mb-1">💬 Meddelande:</p>
+                                    <div className="text-white text-xs leading-relaxed whitespace-pre-wrap break-words max-h-24 overflow-y-auto">
+                                      {customerMessage}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Actions & Status */}
+                            <div className="space-y-2">
+                              <h4 className="text-[#e4d699] font-medium text-sm">⚙️ ÅTGÄRDER</h4>
+                              <div className="space-y-2">
+                                <p className="text-white/50 text-xs">
+                                  Bokad: {new Date(booking.created_at).toLocaleString('sv-SE')}
+                                </p>
+                                {booking.updated_at !== booking.created_at && (
+                                  <p className="text-white/50 text-xs">
+                                    Uppdaterad: {new Date(booking.updated_at).toLocaleString('sv-SE')}
+                                  </p>
+                                )}
+                                
+                                <div className="flex flex-col gap-2">
+                                  {booking.status === 'pending' && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-green-500/50 text-green-400 hover:bg-green-500/10"
+                                      onClick={async () => {
+                                        try {
+                                          const { error } = await supabase
+                                            .from('bookings')
+                                            .update({ 
+                                              status: 'confirmed',
+                                              updated_at: new Date().toISOString()
+                                            })
+                                            .eq('id', booking.id)
+                                          
+                                          if (!error) {
+                                            fetchBookings()
+                                          }
+                                        } catch (error) {
+                                          console.error('Error updating booking:', error)
+                                        }
+                                      }}
+                                    >
+                                      ✅ Bekräfta Bokning
+                                    </Button>
+                                  )}
+                                  
+                                  {booking.status !== 'cancelled' && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-red-500/50 text-red-400 hover:bg-red-500/10"
+                                      onClick={async () => {
+                                        if (confirm(`Är du säker på att du vill avboka denna bokning för ${customerName}?`)) {
+                                          try {
+                                            const { error } = await supabase
+                                              .from('bookings')
+                                              .update({ 
+                                                status: 'cancelled',
+                                                updated_at: new Date().toISOString()
+                                              })
+                                              .eq('id', booking.id)
+                                            
+                                            if (!error) {
+                                              fetchBookings()
+                                            }
+                                          } catch (error) {
+                                            console.error('Error cancelling booking:', error)
+                                          }
+                                        }
+                                      }}
+                                    >
+                                      ❌ Avboka
+                                    </Button>
+                                  )}
+                                  
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
+                                    onClick={async () => {
+                                      try {
+                                        const { error } = await supabase
+                                          .from('bookings')
+                                          .delete()
+                                          .eq('id', booking.id)
+                                        
+                                        if (!error) {
+                                          fetchBookings()
+                                        }
+                                      } catch (error) {
+                                        console.error('Error deleting booking:', error)
+                                      }
+                                    }}
+                                  >
+                                    🗑️ Ta Bort
+                                  </Button>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-white/50 text-xs mb-2">
-                              Bokad: {new Date(booking.created_at).toLocaleString('sv-SE')}
-                            </p>
-                            <div className="flex gap-2 justify-end">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-green-500/50 text-green-400 hover:bg-green-500/10"
-                                onClick={async () => {
-                                  try {
-                                    const { error } = await supabase
-                                      .from('bookings')
-                                      .update({ status: 'confirmed' })
-                                      .eq('id', booking.id)
-                                    
-                                    if (!error) {
-                                      fetchBookings()
-                                    }
-                                  } catch (error) {
-                                    console.error('Error updating booking:', error)
-                                  }
-                                }}
-                                disabled={booking.status === 'confirmed'}
-                              >
-                                ✅ Bekräfta
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-red-500/50 text-red-400 hover:bg-red-500/10"
-                                onClick={async () => {
-                                  try {
-                                    const { error } = await supabase
-                                      .from('bookings')
-                                      .update({ status: 'cancelled' })
-                                      .eq('id', booking.id)
-                                    
-                                    if (!error) {
-                                      fetchBookings()
-                                    }
-                                  } catch (error) {
-                                    console.error('Error cancelling booking:', error)
-                                  }
-                                }}
-                              >
-                                ❌ Avboka
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
                 </div>
               )}
             </div>
