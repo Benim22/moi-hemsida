@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ePOS Desperate Test - Empty & Method Tests</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .result { margin: 10px 0; padding: 10px; background: #f5f5f5; }
+        .error { color: red; }
+        .success { color: green; }
+        .info { color: blue; }
+        .warning { color: orange; }
+        button { padding: 10px 20px; margin: 10px 0; }
+        pre { background: #f8f8f8; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>ePOS Desperate Test - Empty & Method Tests</h1>
+    <p>Sista desperation-test för att förstå vad skrivaren förväntar sig</p>
+    
+    <div class="test-section">
+        <h3>Test 1: Empty Requests</h3>
+        <button onclick="testEmptyRequests()">Test Empty Requests</button>
+        <div id="empty-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 2: Different HTTP Methods</h3>
+        <button onclick="testDifferentMethods()">Test Different Methods</button>
+        <div id="methods-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 3: Discovery Requests</h3>
+        <button onclick="testDiscovery()">Test Discovery</button>
+        <div id="discovery-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 4: Authentication Headers</h3>
+        <button onclick="testAuthHeaders()">Test Auth Headers</button>
+        <div id="auth-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 5: Alternative Endpoints</h3>
+        <button onclick="testAlternativeEndpoints()">Test Alternative Endpoints</button>
+        <div id="alt-result" class="result"></div>
+    </div>
+
+    <script>
+        const printerIP = '192.168.1.103';
+        const serviceEndpoint = `https://${printerIP}/cgi-bin/epos/service.cgi`;
+        
+        // Test 1: Empty requests
+        async function testEmptyRequests() {
+            const resultDiv = document.getElementById('empty-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Testar Empty Requests...</div>';
+            
+            const emptyTests = [
+                { name: 'Completely empty POST', body: '' },
+                { name: 'Empty XML', body: '<?xml version="1.0" encoding="utf-8"?>' },
+                { name: 'Minimal XML', body: '<?xml version="1.0" encoding="utf-8"?><root></root>' },
+                { name: 'No body (null)', body: null },
+                { name: 'Just whitespace', body: '   \n\t   ' }
+            ];
+            
+            for (const test of emptyTests) {
+                try {
+                    console.log(`🔄 Testing ${test.name}`);
+                    const response = await fetch(serviceEndpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'text/xml; charset=utf-8'
+                        },
+                        body: test.body
+                    });
+                    
+                    const result = await response.text();
+                    const status = response.status;
+                    
+                    console.log(`📡 ${test.name} result (${status}):`, result);
+                    
+                    if (!result.includes('SchemaError')) {
+                        resultDiv.innerHTML += `<div class="success">✅ ${test.name}: Different response!</div>`;
+                        resultDiv.innerHTML += `<pre>${result}</pre>`;
+                    } else {
+                        resultDiv.innerHTML += `<div class="error">❌ ${test.name}: SchemaError</div>`;
+                    }
+                } catch (error) {
+                    console.error(`❌ ${test.name} error:`, error);
+                    resultDiv.innerHTML += `<div class="error">❌ ${test.name}: ${error.message}</div>`;
+                }
+            }
+        }
+        
+        // Test 2: Different HTTP methods
+        async function testDifferentMethods() {
+            const resultDiv = document.getElementById('methods-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Testar Different HTTP Methods...</div>';
+            
+            const methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'];
+            const testBody = '<test>method test</test>';
+            
+            for (const method of methods) {
+                try {
+                    console.log(`🔄 Testing method: ${method}`);
+                    
+                    const options = {
+                        method: method,
+                        headers: {
+                            'Content-Type': 'text/xml; charset=utf-8'
+                        }
+                    };
+                    
+                    // Only add body for methods that support it
+                    if (['POST', 'PUT', 'PATCH'].includes(method)) {
+                        options.body = testBody;
+                    }
+                    
+                    const response = await fetch(serviceEndpoint, options);
+                    const result = await response.text();
+                    const status = response.status;
+                    
+                    console.log(`📡 ${method} result (${status}):`, result);
+                    
+                    if (status !== 200 || !result.includes('SchemaError')) {
+                        resultDiv.innerHTML += `<div class="warning">⚠️ ${method}: Different response (${status})</div>`;
+                        resultDiv.innerHTML += `<pre>${result}</pre>`;
+                    } else {
+                        resultDiv.innerHTML += `<div class="error">❌ ${method}: SchemaError</div>`;
+                    }
+                } catch (error) {
+                    console.error(`❌ ${method} error:`, error);
+                    if (error.message.includes('CORS')) {
+                        resultDiv.innerHTML += `<div class="warning">⚠️ ${method}: CORS blocked</div>`;
+                    } else {
+                        resultDiv.innerHTML += `<div class="error">❌ ${method}: ${error.message}</div>`;
+                    }
+                }
+            }
+        }
+        
+        // Test 3: Discovery requests
+        async function testDiscovery() {
+            const resultDiv = document.getElementById('discovery-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Testar Discovery Requests...</div>';
+            
+            const discoveryUrls = [
+                `https://${printerIP}/cgi-bin/epos/service.cgi?`,
+                `https://${printerIP}/cgi-bin/epos/service.cgi?help`,
+                `https://${printerIP}/cgi-bin/epos/service.cgi?info`,
+                `https://${printerIP}/cgi-bin/epos/service.cgi?format`,
+                `https://${printerIP}/cgi-bin/epos/service.cgi?schema`,
+                `https://${printerIP}/cgi-bin/epos/service.cgi?wsdl`,
+                `https://${printerIP}/cgi-bin/epos/service.cgi?version`,
+                `https://${printerIP}/cgi-bin/epos/service.cgi?status`,
+                `https://${printerIP}/cgi-bin/epos/service.cgi?devid`,
+                `https://${printerIP}/cgi-bin/epos/service.cgi?example`
+            ];
+            
+            for (const url of discoveryUrls) {
+                try {
+                    console.log(`🔄 Testing discovery: ${url}`);
+                    const response = await fetch(url, {
+                        method: 'GET'
+                    });
+                    
+                    const result = await response.text();
+                    const status = response.status;
+                    
+                    console.log(`📡 Discovery result (${status}):`, result);
+                    
+                    if (result && result.trim() !== '') {
+                        resultDiv.innerHTML += `<div class="success">✅ ${url}: Got response!</div>`;
+                        resultDiv.innerHTML += `<pre>${result}</pre>`;
+                    } else {
+                        resultDiv.innerHTML += `<div class="info">ℹ️ ${url}: Empty response</div>`;
+                    }
+                } catch (error) {
+                    console.error(`❌ Discovery error:`, error);
+                    resultDiv.innerHTML += `<div class="error">❌ ${url}: ${error.message}</div>`;
+                }
+            }
+        }
+        
+        // Test 4: Authentication headers
+        async function testAuthHeaders() {
+            const resultDiv = document.getElementById('auth-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Testar Authentication Headers...</div>';
+            
+            const testXml = `<?xml version="1.0" encoding="utf-8"?>
+<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+    <text>Auth test</text>
+    <cut/>
+</epos-print>`;
+            
+            const authTests = [
+                {
+                    name: 'Basic Auth (admin/admin)',
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('admin:admin'),
+                        'Content-Type': 'text/xml; charset=utf-8'
+                    }
+                },
+                {
+                    name: 'Basic Auth (epson/epson)',
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('epson:epson'),
+                        'Content-Type': 'text/xml; charset=utf-8'
+                    }
+                },
+                {
+                    name: 'User-Agent header',
+                    headers: {
+                        'User-Agent': 'ePOS-Print/1.0',
+                        'Content-Type': 'text/xml; charset=utf-8'
+                    }
+                },
+                {
+                    name: 'X-Requested-With',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Content-Type': 'text/xml; charset=utf-8'
+                    }
+                },
+                {
+                    name: 'Accept header',
+                    headers: {
+                        'Accept': 'text/xml, application/xml, */*',
+                        'Content-Type': 'text/xml; charset=utf-8'
+                    }
+                }
+            ];
+            
+            for (const test of authTests) {
+                try {
+                    console.log(`🔄 Testing ${test.name}`);
+                    const response = await fetch(serviceEndpoint, {
+                        method: 'POST',
+                        headers: test.headers,
+                        body: testXml
+                    });
+                    
+                    const result = await response.text();
+                    const status = response.status;
+                    
+                    console.log(`📡 ${test.name} result (${status}):`, result);
+                    
+                    if (status === 401 || status === 403) {
+                        resultDiv.innerHTML += `<div class="warning">⚠️ ${test.name}: Auth response (${status})</div>`;
+                        resultDiv.innerHTML += `<pre>${result}</pre>`;
+                    } else if (!result.includes('SchemaError')) {
+                        resultDiv.innerHTML += `<div class="success">✅ ${test.name}: Different response!</div>`;
+                        resultDiv.innerHTML += `<pre>${result}</pre>`;
+                    } else {
+                        resultDiv.innerHTML += `<div class="error">❌ ${test.name}: SchemaError</div>`;
+                    }
+                } catch (error) {
+                    console.error(`❌ ${test.name} error:`, error);
+                    resultDiv.innerHTML += `<div class="error">❌ ${test.name}: ${error.message}</div>`;
+                }
+            }
+        }
+        
+        // Test 5: Alternative endpoints
+        async function testAlternativeEndpoints() {
+            const resultDiv = document.getElementById('alt-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Testar Alternative Endpoints...</div>';
+            
+            const endpoints = [
+                `https://${printerIP}/cgi-bin/epos/service.cgi`,
+                `https://${printerIP}/cgi-bin/epos/print.cgi`,
+                `https://${printerIP}/cgi-bin/epos/device.cgi`,
+                `https://${printerIP}/cgi-bin/epos/status.cgi`,
+                `https://${printerIP}/cgi-bin/epos/config.cgi`,
+                `https://${printerIP}/cgi-bin/epos/command.cgi`,
+                `https://${printerIP}/cgi-bin/epos/printer.cgi`,
+                `https://${printerIP}/cgi-bin/epos/api.cgi`,
+                `https://${printerIP}/cgi-bin/epos/webapi.cgi`,
+                `https://${printerIP}/cgi-bin/epos/tm.cgi`,
+                `https://${printerIP}/cgi-bin/epos/receipt.cgi`,
+                `https://${printerIP}/cgi-bin/epos/pos.cgi`
+            ];
+            
+            const testXml = `<?xml version="1.0" encoding="utf-8"?>
+<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+    <text>Alt endpoint test</text>
+    <cut/>
+</epos-print>`;
+            
+            for (const endpoint of endpoints) {
+                try {
+                    console.log(`🔄 Testing endpoint: ${endpoint}`);
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'text/xml; charset=utf-8'
+                        },
+                        body: testXml
+                    });
+                    
+                    const result = await response.text();
+                    const status = response.status;
+                    
+                    console.log(`📡 ${endpoint} result (${status}):`, result);
+                    
+                    if (status === 404) {
+                        resultDiv.innerHTML += `<div class="info">ℹ️ ${endpoint}: Not found</div>`;
+                    } else if (!result.includes('SchemaError')) {
+                        resultDiv.innerHTML += `<div class="success">✅ ${endpoint}: Different response!</div>`;
+                        resultDiv.innerHTML += `<pre>${result}</pre>`;
+                    } else {
+                        resultDiv.innerHTML += `<div class="error">❌ ${endpoint}: SchemaError</div>`;
+                    }
+                } catch (error) {
+                    console.error(`❌ ${endpoint} error:`, error);
+                    if (error.message.includes('CORS')) {
+                        resultDiv.innerHTML += `<div class="warning">⚠️ ${endpoint}: CORS blocked</div>`;
+                    } else {
+                        resultDiv.innerHTML += `<div class="error">❌ ${endpoint}: ${error.message}</div>`;
+                    }
+                }
+            }
+        }
+        
+        // Auto-run alla test
+        async function runDesperateTests() {
+            console.log('🚨 Starting desperate ePOS tests...');
+            
+            await testEmptyRequests();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testDifferentMethods();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testDiscovery();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testAuthHeaders();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testAlternativeEndpoints();
+            
+            console.log('🏁 All desperate tests completed');
+        }
+        
+        // Auto-start after page load
+        window.addEventListener('load', () => {
+            setTimeout(runDesperateTests, 1000);
+        });
+    </script>
+</body>
+</html> 

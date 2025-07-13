@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ePOS Breakthrough Test - Successful Methods</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .result { margin: 10px 0; padding: 10px; background: #f5f5f5; }
+        .error { color: red; }
+        .success { color: green; }
+        .info { color: blue; }
+        .warning { color: orange; }
+        button { padding: 10px 20px; margin: 10px 0; }
+        pre { background: #f8f8f8; padding: 10px; overflow-x: auto; }
+        .hex { font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>ePOS Breakthrough Test - Successful Methods</h1>
+    <p>Fokuserar på GET, OPTIONS, HEAD som gav 200 OK responses</p>
+    
+    <div class="test-section">
+        <h3>Test 1: Detailed GET Analysis</h3>
+        <button onclick="testDetailedGET()">Test Detailed GET</button>
+        <div id="get-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 2: OPTIONS Method Analysis</h3>
+        <button onclick="testOptionsAnalysis()">Test OPTIONS Analysis</button>
+        <div id="options-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 3: HEAD Method Analysis</h3>
+        <button onclick="testHeadAnalysis()">Test HEAD Analysis</button>
+        <div id="head-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 4: Binary Response Analysis</h3>
+        <button onclick="testBinaryAnalysis()">Test Binary Analysis</button>
+        <div id="binary-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 5: Minimal Valid XML Hunt</h3>
+        <button onclick="testMinimalXMLHunt()">Test Minimal XML Hunt</button>
+        <div id="xml-result" class="result"></div>
+    </div>
+
+    <script>
+        const printerIP = '192.168.1.103';
+        const serviceEndpoint = `https://${printerIP}/cgi-bin/epos/service.cgi`;
+        
+        // Test 1: Detailed GET analysis
+        async function testDetailedGET() {
+            const resultDiv = document.getElementById('get-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Analyzing GET responses in detail...</div>';
+            
+            try {
+                console.log('🔄 Testing GET with full response analysis');
+                const response = await fetch(serviceEndpoint, {
+                    method: 'GET'
+                });
+                
+                const status = response.status;
+                const statusText = response.statusText;
+                const headers = {};
+                
+                // Extract all headers
+                for (const [key, value] of response.headers.entries()) {
+                    headers[key] = value;
+                }
+                
+                const result = await response.text();
+                
+                console.log(`📡 GET result (${status} ${statusText}):`, result);
+                console.log('📡 GET headers:', headers);
+                
+                resultDiv.innerHTML += `<div class="success">✅ GET Response Details:</div>`;
+                resultDiv.innerHTML += `<div><strong>Status:</strong> ${status} ${statusText}</div>`;
+                resultDiv.innerHTML += `<div><strong>Headers:</strong></div>`;
+                resultDiv.innerHTML += `<pre>${JSON.stringify(headers, null, 2)}</pre>`;
+                resultDiv.innerHTML += `<div><strong>Body Length:</strong> ${result.length} chars</div>`;
+                
+                if (result.length > 0) {
+                    resultDiv.innerHTML += `<div><strong>Body (text):</strong></div>`;
+                    resultDiv.innerHTML += `<pre>${result}</pre>`;
+                    
+                    // Try to parse as JSON
+                    try {
+                        const json = JSON.parse(result);
+                        resultDiv.innerHTML += `<div><strong>Body (JSON):</strong></div>`;
+                        resultDiv.innerHTML += `<pre>${JSON.stringify(json, null, 2)}</pre>`;
+                    } catch (e) {
+                        resultDiv.innerHTML += `<div>Body is not valid JSON</div>`;
+                    }
+                } else {
+                    resultDiv.innerHTML += `<div class="warning">⚠️ Empty response body</div>`;
+                }
+                
+            } catch (error) {
+                console.error('❌ GET error:', error);
+                resultDiv.innerHTML += `<div class="error">❌ GET failed: ${error.message}</div>`;
+            }
+        }
+        
+        // Test 2: OPTIONS analysis
+        async function testOptionsAnalysis() {
+            const resultDiv = document.getElementById('options-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Analyzing OPTIONS responses...</div>';
+            
+            try {
+                console.log('🔄 Testing OPTIONS with full analysis');
+                const response = await fetch(serviceEndpoint, {
+                    method: 'OPTIONS'
+                });
+                
+                const status = response.status;
+                const statusText = response.statusText;
+                const headers = {};
+                
+                // Extract all headers
+                for (const [key, value] of response.headers.entries()) {
+                    headers[key] = value;
+                }
+                
+                const result = await response.text();
+                
+                console.log(`📡 OPTIONS result (${status} ${statusText}):`, result);
+                console.log('📡 OPTIONS headers:', headers);
+                
+                resultDiv.innerHTML += `<div class="success">✅ OPTIONS Response Details:</div>`;
+                resultDiv.innerHTML += `<div><strong>Status:</strong> ${status} ${statusText}</div>`;
+                resultDiv.innerHTML += `<div><strong>Headers:</strong></div>`;
+                resultDiv.innerHTML += `<pre>${JSON.stringify(headers, null, 2)}</pre>`;
+                
+                // Check for CORS headers
+                if (headers['access-control-allow-methods']) {
+                    resultDiv.innerHTML += `<div class="success">✅ Allowed Methods: ${headers['access-control-allow-methods']}</div>`;
+                }
+                if (headers['access-control-allow-headers']) {
+                    resultDiv.innerHTML += `<div class="success">✅ Allowed Headers: ${headers['access-control-allow-headers']}</div>`;
+                }
+                
+                resultDiv.innerHTML += `<div><strong>Body Length:</strong> ${result.length} chars</div>`;
+                if (result.length > 0) {
+                    resultDiv.innerHTML += `<div><strong>Body:</strong></div>`;
+                    resultDiv.innerHTML += `<pre>${result}</pre>`;
+                }
+                
+            } catch (error) {
+                console.error('❌ OPTIONS error:', error);
+                resultDiv.innerHTML += `<div class="error">❌ OPTIONS failed: ${error.message}</div>`;
+            }
+        }
+        
+        // Test 3: HEAD analysis
+        async function testHeadAnalysis() {
+            const resultDiv = document.getElementById('head-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Analyzing HEAD responses...</div>';
+            
+            try {
+                console.log('🔄 Testing HEAD with full analysis');
+                const response = await fetch(serviceEndpoint, {
+                    method: 'HEAD'
+                });
+                
+                const status = response.status;
+                const statusText = response.statusText;
+                const headers = {};
+                
+                // Extract all headers
+                for (const [key, value] of response.headers.entries()) {
+                    headers[key] = value;
+                }
+                
+                console.log(`📡 HEAD result (${status} ${statusText})`);
+                console.log('📡 HEAD headers:', headers);
+                
+                resultDiv.innerHTML += `<div class="success">✅ HEAD Response Details:</div>`;
+                resultDiv.innerHTML += `<div><strong>Status:</strong> ${status} ${statusText}</div>`;
+                resultDiv.innerHTML += `<div><strong>Headers:</strong></div>`;
+                resultDiv.innerHTML += `<pre>${JSON.stringify(headers, null, 2)}</pre>`;
+                
+                // HEAD shouldn't have body, but let's check
+                const result = await response.text();
+                if (result.length > 0) {
+                    resultDiv.innerHTML += `<div class="warning">⚠️ HEAD has body (${result.length} chars)</div>`;
+                    resultDiv.innerHTML += `<pre>${result}</pre>`;
+                } else {
+                    resultDiv.innerHTML += `<div class="info">ℹ️ HEAD has no body (as expected)</div>`;
+                }
+                
+            } catch (error) {
+                console.error('❌ HEAD error:', error);
+                resultDiv.innerHTML += `<div class="error">❌ HEAD failed: ${error.message}</div>`;
+            }
+        }
+        
+        // Test 4: Binary response analysis
+        async function testBinaryAnalysis() {
+            const resultDiv = document.getElementById('binary-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Analyzing binary responses...</div>';
+            
+            try {
+                console.log('🔄 Testing binary response analysis');
+                const response = await fetch(serviceEndpoint, {
+                    method: 'GET'
+                });
+                
+                const arrayBuffer = await response.arrayBuffer();
+                const uint8Array = new Uint8Array(arrayBuffer);
+                
+                console.log('📡 Binary data:', uint8Array);
+                
+                resultDiv.innerHTML += `<div class="success">✅ Binary Analysis:</div>`;
+                resultDiv.innerHTML += `<div><strong>Buffer Length:</strong> ${arrayBuffer.byteLength} bytes</div>`;
+                
+                if (arrayBuffer.byteLength > 0) {
+                    // Convert to hex string
+                    const hexString = Array.from(uint8Array)
+                        .map(b => b.toString(16).padStart(2, '0'))
+                        .join(' ');
+                    
+                    resultDiv.innerHTML += `<div><strong>Hex Data:</strong></div>`;
+                    resultDiv.innerHTML += `<pre class="hex">${hexString}</pre>`;
+                    
+                    // Try to interpret as ASCII
+                    const asciiString = Array.from(uint8Array)
+                        .map(b => b >= 32 && b <= 126 ? String.fromCharCode(b) : '.')
+                        .join('');
+                    
+                    resultDiv.innerHTML += `<div><strong>ASCII Interpretation:</strong></div>`;
+                    resultDiv.innerHTML += `<pre>${asciiString}</pre>`;
+                } else {
+                    resultDiv.innerHTML += `<div class="info">ℹ️ No binary data</div>`;
+                }
+                
+            } catch (error) {
+                console.error('❌ Binary analysis error:', error);
+                resultDiv.innerHTML += `<div class="error">❌ Binary analysis failed: ${error.message}</div>`;
+            }
+        }
+        
+        // Test 5: Minimal valid XML hunt
+        async function testMinimalXMLHunt() {
+            const resultDiv = document.getElementById('xml-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Hunting for minimal valid XML...</div>';
+            
+            const xmlTests = [
+                // Try the exact XML that should work according to Epson docs
+                {
+                    name: 'Official Epson format',
+                    xml: `<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+    <s:Body>
+        <epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+            <text>Official test</text>
+            <cut/>
+        </epos-print>
+    </s:Body>
+</s:Envelope>`
+                },
+                // Try what the printer's response format suggests
+                {
+                    name: 'Response format reverse',
+                    xml: `<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+    <soapenv:Body>
+        <epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+            <text>Reverse format test</text>
+            <cut/>
+        </epos-print>
+    </soapenv:Body>
+</soapenv:Envelope>`
+                },
+                // Try minimal possible XML
+                {
+                    name: 'Minimal possible',
+                    xml: `<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print"/>`
+                },
+                // Try just one element
+                {
+                    name: 'Single element',
+                    xml: `<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+    <text>Single element test</text>
+</epos-print>`
+                },
+                // Try without namespace
+                {
+                    name: 'No namespace',
+                    xml: `<epos-print>
+    <text>No namespace test</text>
+    <cut/>
+</epos-print>`
+                }
+            ];
+            
+            for (const test of xmlTests) {
+                try {
+                    console.log(`🔄 Testing ${test.name}`);
+                    const response = await fetch(serviceEndpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'text/xml; charset=utf-8'
+                        },
+                        body: test.xml
+                    });
+                    
+                    const result = await response.text();
+                    const status = response.status;
+                    
+                    console.log(`📡 ${test.name} result (${status}):`, result);
+                    
+                    if (result.includes('success="true"')) {
+                        resultDiv.innerHTML += `<div class="success">✅ ${test.name}: SUCCESS!</div>`;
+                        resultDiv.innerHTML += `<pre>${result}</pre>`;
+                        resultDiv.innerHTML += `<div><strong>Working XML:</strong></div>`;
+                        resultDiv.innerHTML += `<pre>${test.xml}</pre>`;
+                        return; // Stop on first success
+                    } else if (!result.includes('SchemaError')) {
+                        resultDiv.innerHTML += `<div class="warning">⚠️ ${test.name}: Different error</div>`;
+                        resultDiv.innerHTML += `<pre>${result}</pre>`;
+                    } else {
+                        resultDiv.innerHTML += `<div class="error">❌ ${test.name}: SchemaError</div>`;
+                    }
+                } catch (error) {
+                    console.error(`❌ ${test.name} error:`, error);
+                    resultDiv.innerHTML += `<div class="error">❌ ${test.name}: ${error.message}</div>`;
+                }
+            }
+        }
+        
+        // Auto-run alla test
+        async function runBreakthroughTests() {
+            console.log('🚀 Starting breakthrough ePOS tests...');
+            
+            await testDetailedGET();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testOptionsAnalysis();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testHeadAnalysis();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testBinaryAnalysis();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testMinimalXMLHunt();
+            
+            console.log('✅ All breakthrough tests completed');
+        }
+        
+        // Auto-start after page load
+        window.addEventListener('load', () => {
+            setTimeout(runBreakthroughTests, 1000);
+        });
+    </script>
+</body>
+</html> 

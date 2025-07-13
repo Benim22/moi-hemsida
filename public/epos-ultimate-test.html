@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ePOS Ultimate Test - Form Data & URL Parameters</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .result { margin: 10px 0; padding: 10px; background: #f5f5f5; }
+        .error { color: red; }
+        .success { color: green; }
+        .info { color: blue; }
+        button { padding: 10px 20px; margin: 10px 0; }
+        pre { background: #f8f8f8; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>ePOS Ultimate Test - Form Data & URL Parameters</h1>
+    <p>Testar olika metoder att skicka data till skrivaren baserat på officiell dokumentation</p>
+    
+    <div class="test-section">
+        <h3>Test 1: URL Parameters</h3>
+        <button onclick="testURLParameters()">Test URL Parameters</button>
+        <div id="url-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 2: Form Data</h3>
+        <button onclick="testFormData()">Test Form Data</button>
+        <div id="form-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 3: Mixed Method</h3>
+        <button onclick="testMixedMethod()">Test Mixed Method</button>
+        <div id="mixed-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 4: Raw ESC/POS</h3>
+        <button onclick="testRawESCPOS()">Test Raw ESC/POS</button>
+        <div id="raw-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 5: Different Content-Types</h3>
+        <button onclick="testDifferentContentTypes()">Test Different Content-Types</button>
+        <div id="content-result" class="result"></div>
+    </div>
+
+    <script>
+        const printerIP = '192.168.1.103';
+        const serviceEndpoint = `https://${printerIP}/cgi-bin/epos/service.cgi`;
+        
+        // Test 1: URL Parameters approach
+        async function testURLParameters() {
+            const resultDiv = document.getElementById('url-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Testar URL Parameters...</div>';
+            
+            const testData = [
+                // Method 1: devid som parameter
+                {
+                    name: 'devid parameter',
+                    url: `${serviceEndpoint}?devid=TM-m30III-H`,
+                    body: `<?xml version="1.0" encoding="utf-8"?>
+<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+    <text>URL param test</text>
+    <feed line="1"/>
+    <cut/>
+</epos-print>`
+                },
+                // Method 2: Multiple parameters
+                {
+                    name: 'Multiple parameters',
+                    url: `${serviceEndpoint}?devid=TM-m30III-H&timeout=10000&method=print`,
+                    body: `<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+    <text>Multiple params test</text>
+    <cut/>
+</epos-print>`
+                },
+                // Method 3: Action parameter
+                {
+                    name: 'Action parameter',
+                    url: `${serviceEndpoint}?action=print&devid=TM-m30III-H`,
+                    body: `<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+    <text>Action param test</text>
+    <cut/>
+</epos-print>`
+                }
+            ];
+            
+            for (const test of testData) {
+                try {
+                    console.log(`🔄 Testing ${test.name}: ${test.url}`);
+                    const response = await fetch(test.url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'text/xml; charset=utf-8'
+                        },
+                        body: test.body
+                    });
+                    
+                    const result = await response.text();
+                    const status = response.status;
+                    
+                    console.log(`📡 ${test.name} result (${status}):`, result);
+                    
+                    if (result.includes('success="true"')) {
+                        resultDiv.innerHTML += `<div class="success">✅ ${test.name}: SUCCESS!</div>`;
+                        resultDiv.innerHTML += `<pre>${result}</pre>`;
+                        return; // Stop on first success
+                    } else {
+                        const error = result.includes('SchemaError') ? 'SchemaError' : 'Unknown error';
+                        resultDiv.innerHTML += `<div class="error">❌ ${test.name}: ${error}</div>`;
+                    }
+                } catch (error) {
+                    console.error(`❌ ${test.name} error:`, error);
+                    resultDiv.innerHTML += `<div class="error">❌ ${test.name}: ${error.message}</div>`;
+                }
+            }
+        }
+        
+        // Test 2: Form Data approach
+        async function testFormData() {
+            const resultDiv = document.getElementById('form-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Testar Form Data...</div>';
+            
+            const testData = [
+                // Method 1: FormData with XML
+                {
+                    name: 'FormData with XML',
+                    body: (() => {
+                        const formData = new FormData();
+                        formData.append('devid', 'TM-m30III-H');
+                        formData.append('timeout', '10000');
+                        formData.append('data', `<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+    <text>FormData test</text>
+    <cut/>
+</epos-print>`);
+                        return formData;
+                    })(),
+                    headers: {}
+                },
+                // Method 2: URL-encoded form data
+                {
+                    name: 'URL-encoded form',
+                    body: new URLSearchParams({
+                        devid: 'TM-m30III-H',
+                        timeout: '10000',
+                        data: `<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+    <text>URL-encoded test</text>
+    <cut/>
+</epos-print>`
+                    }),
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    }
+                },
+                // Method 3: JSON approach
+                {
+                    name: 'JSON approach',
+                    body: JSON.stringify({
+                        devid: 'TM-m30III-H',
+                        timeout: 10000,
+                        data: `<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+    <text>JSON test</text>
+    <cut/>
+</epos-print>`
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                }
+            ];
+            
+            for (const test of testData) {
+                try {
+                    console.log(`🔄 Testing ${test.name}`);
+                    const response = await fetch(serviceEndpoint, {
+                        method: 'POST',
+                        headers: test.headers,
+                        body: test.body
+                    });
+                    
+                    const result = await response.text();
+                    const status = response.status;
+                    
+                    console.log(`📡 ${test.name} result (${status}):`, result);
+                    
+                    if (result.includes('success="true"')) {
+                        resultDiv.innerHTML += `<div class="success">✅ ${test.name}: SUCCESS!</div>`;
+                        resultDiv.innerHTML += `<pre>${result}</pre>`;
+                        return; // Stop on first success
+                    } else {
+                        const error = result.includes('SchemaError') ? 'SchemaError' : 'Unknown error';
+                        resultDiv.innerHTML += `<div class="error">❌ ${test.name}: ${error}</div>`;
+                    }
+                } catch (error) {
+                    console.error(`❌ ${test.name} error:`, error);
+                    resultDiv.innerHTML += `<div class="error">❌ ${test.name}: ${error.message}</div>`;
+                }
+            }
+        }
+        
+        // Test 3: Mixed method - URL params + XML body
+        async function testMixedMethod() {
+            const resultDiv = document.getElementById('mixed-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Testar Mixed Method...</div>';
+            
+            const xmlData = `<?xml version="1.0" encoding="utf-8"?>
+<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+    <text>Mixed method test</text>
+    <feed line="1"/>
+    <cut/>
+</epos-print>`;
+            
+            const url = `${serviceEndpoint}?devid=TM-m30III-H&timeout=10000`;
+            
+            try {
+                console.log('🔄 Testing mixed method:', url);
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'text/xml; charset=utf-8',
+                        'SOAPAction': 'print'
+                    },
+                    body: xmlData
+                });
+                
+                const result = await response.text();
+                const status = response.status;
+                
+                console.log(`📡 Mixed method result (${status}):`, result);
+                
+                if (result.includes('success="true"')) {
+                    resultDiv.innerHTML += `<div class="success">✅ Mixed method: SUCCESS!</div>`;
+                    resultDiv.innerHTML += `<pre>${result}</pre>`;
+                } else {
+                    const error = result.includes('SchemaError') ? 'SchemaError' : 'Unknown error';
+                    resultDiv.innerHTML += `<div class="error">❌ Mixed method: ${error}</div>`;
+                    resultDiv.innerHTML += `<pre>${result}</pre>`;
+                }
+            } catch (error) {
+                console.error('❌ Mixed method error:', error);
+                resultDiv.innerHTML += `<div class="error">❌ Mixed method: ${error.message}</div>`;
+            }
+        }
+        
+        // Test 4: Raw ESC/POS commands
+        async function testRawESCPOS() {
+            const resultDiv = document.getElementById('raw-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Testar Raw ESC/POS...</div>';
+            
+            // ESC/POS commands as hex
+            const escPosCommands = [
+                // ESC @ (Initialize)
+                0x1B, 0x40,
+                // Text "TEST PRINT"
+                0x54, 0x45, 0x53, 0x54, 0x20, 0x50, 0x52, 0x49, 0x4E, 0x54,
+                // LF (Line feed)
+                0x0A,
+                // ESC d (Feed and cut)
+                0x1B, 0x64, 0x02,
+                // ESC i (Cut)
+                0x1B, 0x69
+            ];
+            
+            const binaryData = new Uint8Array(escPosCommands);
+            
+            try {
+                console.log('🔄 Testing raw ESC/POS');
+                const response = await fetch(serviceEndpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/octet-stream'
+                    },
+                    body: binaryData
+                });
+                
+                const result = await response.text();
+                const status = response.status;
+                
+                console.log(`📡 Raw ESC/POS result (${status}):`, result);
+                
+                if (result.includes('success="true"')) {
+                    resultDiv.innerHTML += `<div class="success">✅ Raw ESC/POS: SUCCESS!</div>`;
+                    resultDiv.innerHTML += `<pre>${result}</pre>`;
+                } else {
+                    const error = result.includes('SchemaError') ? 'SchemaError' : 'Unknown error';
+                    resultDiv.innerHTML += `<div class="error">❌ Raw ESC/POS: ${error}</div>`;
+                    resultDiv.innerHTML += `<pre>${result}</pre>`;
+                }
+            } catch (error) {
+                console.error('❌ Raw ESC/POS error:', error);
+                resultDiv.innerHTML += `<div class="error">❌ Raw ESC/POS: ${error.message}</div>`;
+            }
+        }
+        
+        // Test 5: Different content types
+        async function testDifferentContentTypes() {
+            const resultDiv = document.getElementById('content-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Testar Different Content-Types...</div>';
+            
+            const xmlData = `<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+    <text>Content-type test</text>
+    <cut/>
+</epos-print>`;
+            
+            const contentTypes = [
+                'text/xml',
+                'application/xml',
+                'text/plain',
+                'application/x-www-form-urlencoded',
+                'multipart/form-data',
+                'application/soap+xml'
+            ];
+            
+            for (const contentType of contentTypes) {
+                try {
+                    console.log(`🔄 Testing content-type: ${contentType}`);
+                    const response = await fetch(serviceEndpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': contentType
+                        },
+                        body: xmlData
+                    });
+                    
+                    const result = await response.text();
+                    const status = response.status;
+                    
+                    console.log(`📡 ${contentType} result (${status}):`, result);
+                    
+                    if (result.includes('success="true"')) {
+                        resultDiv.innerHTML += `<div class="success">✅ ${contentType}: SUCCESS!</div>`;
+                        resultDiv.innerHTML += `<pre>${result}</pre>`;
+                        return; // Stop on first success
+                    } else {
+                        const error = result.includes('SchemaError') ? 'SchemaError' : 'Unknown error';
+                        resultDiv.innerHTML += `<div class="error">❌ ${contentType}: ${error}</div>`;
+                    }
+                } catch (error) {
+                    console.error(`❌ ${contentType} error:`, error);
+                    resultDiv.innerHTML += `<div class="error">❌ ${contentType}: ${error.message}</div>`;
+                }
+            }
+        }
+        
+        // Auto-run alla test
+        async function runAllTests() {
+            console.log('🚀 Starting comprehensive ePOS tests...');
+            
+            await testURLParameters();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testFormData();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testMixedMethod();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testRawESCPOS();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testDifferentContentTypes();
+            
+            console.log('✅ All tests completed');
+        }
+        
+        // Auto-start after page load
+        window.addEventListener('load', () => {
+            setTimeout(runAllTests, 1000);
+        });
+    </script>
+</body>
+</html> 
