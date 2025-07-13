@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
-import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle, RefreshCw, Settings, Wifi, Bluetooth, Mail, Search, Volume2 } from "lucide-react"
+import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle, RefreshCw, Settings, Wifi, Bluetooth, Mail, Search, Volume2, Calendar } from "lucide-react"
 import jsPDF from 'jspdf'
 
 // ePOS-Print API Declaration (since we'll load it dynamically)
@@ -25,7 +25,6 @@ declare global {
 const DEFAULT_PRINTER_SETTINGS = {
   enabled: true, // Enable by default for iPad use
   autoprintEnabled: true, // Enable auto-print for webhook orders
-  autoemailEnabled: true,
   printerIP: '192.168.1.103',
   printerPort: '80', // Use HTTP port 80 for ePOS-Print
   connectionType: 'wifi', // Use Wi-Fi HTTP for iPad compatibility
@@ -69,6 +68,16 @@ export default function RestaurantTerminal() {
   const [debugLogs, setDebugLogs] = useState([])
   const [eposLoaded, setEposLoaded] = useState(false)
   const [printingOrders, setPrintingOrders] = useState(new Set())
+  
+  // Bookings state
+  const [bookings, setBookings] = useState([])
+  const [showBookings, setShowBookings] = useState(false)
+  const [newBookingsCount, setNewBookingsCount] = useState(0)
+  
+  // Delay notification state
+  const [delayOrder, setDelayOrder] = useState(null)
+  const [delayMinutes, setDelayMinutes] = useState(15)
+  const [sendDelayEmail, setSendDelayEmail] = useState(true)
   const [autoPrintedOrders, setAutoPrintedOrders] = useState(new Set())
   
   // Global variabel för extra skydd mot duplicering
@@ -598,21 +607,14 @@ export default function RestaurantTerminal() {
 
     // Subscribe to new orders
     const handleOrderInsert = (payload) => {
-      console.log('🔔 NY BESTÄLLNING MOTTAGEN:', payload.new)
-      console.log('🔔 Order location:', payload.new.location)
-      console.log('🔔 User location:', profile.location)
-      console.log('🔔 User_id:', payload.new.user_id)
-      console.log('🔔 Customer_name:', payload.new.customer_name)
-      console.log('🔔 Special_instructions:', payload.new.special_instructions) // DEBUG
-      console.log('🔔 Notes:', payload.new.notes) // DEBUG
+
       
       // Kontrollera om denna order ska visas för denna location
       // Använd profile.location (användarens faktiska location) istället för selectedLocation (filter)
       const shouldShow = profile.location === 'all' || payload.new.location === profile.location
       
       if (!shouldShow) {
-        console.log('🔔 Order inte för denna location, hoppar över notifikation')
-        console.log('🔔 Debug: profile.location =', profile.location, ', order.location =', payload.new.location)
+
         return
       }
       
@@ -626,13 +628,7 @@ export default function RestaurantTerminal() {
       const notificationTitle = 'Ny beställning!'
       const notificationBody = `Order #${payload.new.order_number} från ${customerLabel} - ${payload.new.total_price || payload.new.amount} kr`
       
-      console.log('🔔 Visar notifikation:', { 
-        title: notificationTitle, 
-        body: notificationBody,
-        isAnonymous: isAnonymous,
-        customer_name: payload.new.customer_name,
-        location: payload.new.location
-      })
+
       showBrowserNotification(notificationTitle, notificationBody, true) // true för ordernotifikation
       playNotificationSound()
 
@@ -644,37 +640,25 @@ export default function RestaurantTerminal() {
         // 1. Kontrollera Set-baserade kontrollen
         if (autoPrintedOrders.has(payload.new.id)) {
           addDebugLog(`⚠️ DUBBLERING BLOCKERAD (Set): Order #${payload.new.order_number} redan utskriven`, 'warning')
-          console.log('🚫 DUBBLERING BLOCKERAD (Set):', payload.new.id)
+  
           return
         }
         
         // 2. Kontrollera tid-baserade kontrollen (förhindra samma order inom 10 sekunder)
         if (lastPrintedOrderId === payload.new.id && lastPrintedTime && (now - lastPrintedTime) < 10000) {
           addDebugLog(`⚠️ DUBBLERING BLOCKERAD (Tid): Order #${payload.new.order_number} utskriven för ${Math.round((now - lastPrintedTime)/1000)}s sedan`, 'warning')
-          console.log('🚫 DUBBLERING BLOCKERAD (Tid):', {
-            orderId: payload.new.id,
-            lastPrintedTime: lastPrintedTime,
-            timeDiff: now - lastPrintedTime
-          })
+
           return
         }
 
         const printTimestamp = Date.now()
         addDebugLog(`🖨️ STARTAR automatisk utskrift för order #${payload.new.order_number} (ID: ${payload.new.id}) - Timestamp: ${printTimestamp}`, 'info')
-        console.log('🖨️ AUTOMATISK UTSKRIFT STARTAR:', {
-          orderId: payload.new.id,
-          orderNumber: payload.new.order_number,
-          printTimestamp: printTimestamp,
-          currentAutoPrintedOrders: Array.from(autoPrintedOrders),
-          lastPrintedOrderId: lastPrintedOrderId,
-          lastPrintedTime: lastPrintedTime,
-          timestamp: new Date().toISOString()
-        })
+
         
         // Markera som utskriven OMEDELBART med båda metoderna
         setAutoPrintedOrders(prev => {
           const newSet = new Set([...prev, payload.new.id])
-          console.log('📝 Lagt till i autoPrintedOrders:', payload.new.id, 'Total antal:', newSet.size)
+  
           return newSet
         })
         
@@ -682,22 +666,16 @@ export default function RestaurantTerminal() {
         setLastPrintedTime(now)
         
         setTimeout(() => {
-          console.log('⏰ Utför automatisk utskrift för order:', payload.new.id, 'efter timeout')
+
           printBackendReceiptWithLoading(payload.new)
         }, 1500) // Kort fördröjning för att säkerställa att data är redo
       }
 
-      // AUTOMATISK E-POSTUTSKICK för nya beställningar
-      if (printerSettings.autoemailEnabled) {
-        addDebugLog(`Automatisk e-postutskick aktiverad för order #${payload.new.order_number}`, 'info')
-        setTimeout(() => {
-          sendEmailConfirmation(payload.new)
-        }, 2000) // Lite längre fördröjning för e-post
-      }
+
     }
 
     const handleOrderUpdate = (payload) => {
-      console.log('🔄 ORDER UPPDATERAD (ingen notis):', payload.new)
+
       setOrders(prev => prev.map(order => 
         order.id === payload.new.id ? payload.new : order
       ))
@@ -706,11 +684,11 @@ export default function RestaurantTerminal() {
 
     // Skapa unik kanal för denna användare för att undvika konflikter
     const channelName = `restaurant-orders-${user.id}-${Date.now()}`
-    console.log('📡 Skapar unik kanal:', channelName)
+    
     
     let ordersSubscription
     if (profile.location === 'all') {
-      console.log('📡 Prenumererar på ALLA orders (user location: all)')
+      
       // För "all" location, lyssna på alla orders utan filter
       ordersSubscription = supabase
         .channel(channelName)
@@ -842,9 +820,55 @@ export default function RestaurantTerminal() {
         }
       })
 
+    // Subscribe to bookings changes
+    const handleBookingInsert = (payload) => {
+      console.log('📅 NY BOKNING MOTTAGEN:', payload.new)
+      
+      // Kontrollera om bokningen ska visas för denna location
+      const shouldShow = profile.location === 'all' || payload.new.location === profile.location
+      
+      if (shouldShow) {
+        console.log('✅ Bokning matchar location - uppdaterar lista')
+        fetchBookings() // Refresh bookings list
+        
+        // Show notification for new booking
+        showBrowserNotification(
+          `📅 Ny bordsbokning - ${getLocationName(payload.new.location)}`,
+          `${payload.new.guests} personer den ${new Date(payload.new.date).toLocaleDateString('sv-SE')}`,
+          true
+        )
+        playNotificationSound()
+      }
+    }
+
+    const bookingsSubscription = supabase
+      .channel(`bookings-${user.id}-${Date.now()}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'bookings'
+      }, handleBookingInsert)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'bookings'
+      }, (payload) => {
+        console.log('📅 BOKNING UPPDATERAD:', payload.new)
+        fetchBookings() // Refresh bookings list
+      })
+      .subscribe((status) => {
+        console.log('📅 Bookings prenumeration status:', status)
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Prenumeration på bookings aktiv!')
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Fel vid prenumeration på bookings')
+        }
+      })
+
     return () => {
       ordersSubscription.unsubscribe()
       notificationsSubscription.unsubscribe()
+      bookingsSubscription.unsubscribe()
     }
   }, [user, profile?.location])
 
@@ -855,6 +879,7 @@ export default function RestaurantTerminal() {
       fetchNotifications()
       requestNotificationPermission()
       fetchAvailableUsers()
+      fetchBookings()
       
       // Rensa auto-printed orders vid uppstart för att förhindra gamla blockeringar
       setAutoPrintedOrders(new Set())
@@ -879,6 +904,7 @@ export default function RestaurantTerminal() {
       console.log('🔄 Automatisk uppdatering av orders...')
       fetchOrders()
       fetchNotifications()
+      fetchBookings()
     }, 30000) // 30 sekunder
 
     return () => {
@@ -924,6 +950,8 @@ export default function RestaurantTerminal() {
   }, [])
 
   const fetchOrders = async () => {
+    if (!profile) return
+    
     try {
       let query = supabase
         .from('orders')
@@ -947,23 +975,6 @@ export default function RestaurantTerminal() {
 
       if (error) throw error
       
-      // Lägg till debug-information för att se vad som kommer från databasen
-      console.log('📦 Hämtade beställningar för location:', profile.location)
-      console.log('📦 Antal beställningar:', data?.length || 0)
-      console.log('📦 Beställningar:', data?.map(order => ({
-        id: order.id,
-        order_number: order.order_number,
-        location: order.location,
-        status: order.status,
-        customer_name: order.customer_name,
-        profile_name: order.profiles?.name,
-        final_name: order.profiles?.name || order.customer_name || 'Gäst',
-        special_instructions: order.special_instructions, // DEBUG
-        notes: order.notes, // DEBUG
-        has_special_instructions: !!order.special_instructions, // DEBUG
-        has_notes: !!order.notes // DEBUG
-      })))
-      
       setOrders(data || [])
     } catch (error) {
       console.error('Error fetching orders:', error)
@@ -973,33 +984,31 @@ export default function RestaurantTerminal() {
   }
 
   const fetchNotifications = async () => {
+    if (!profile) return
+    
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('notifications')
         .select('*')
         .eq('user_role', 'admin')
         .eq('read', false)
         .order('created_at', { ascending: false })
-        .limit(50) // Hämta fler för att ha tillräckligt efter deduplicering
+
+      // Filtrera på location direkt i query för bättre prestanda
+      if (profile.location !== 'all') {
+        // För specifik location, använd jsonb operator för att filtrera på metadata.location
+        query = query.eq('metadata->>location', profile.location)
+      }
+
+      const { data, error } = await query.limit(20) // Begränsa till 20 för bättre prestanda
 
       if (error) throw error
-      
-      // Filtrera notifikationer baserat på location (strikt filtrering)
-      const filteredNotifications = data?.filter(notification => {
-        if (profile.location === 'all') {
-          // Användare med "all" location ser alla admin-notifikationer
-          return true
-        } else {
-          // Användare med specifik location ser endast notifikationer för sin exakta location
-          return notification.metadata?.location && notification.metadata.location === profile.location
-        }
-      }) || []
       
       // Deduplicera notifikationer baserat på order_id - visa bara EN notifikation per beställning
       const uniqueNotifications = []
       const seenOrderIds = new Set()
       
-      for (const notification of filteredNotifications) {
+      for (const notification of data || []) {
         const orderId = notification.metadata?.order_id
         if (orderId && !seenOrderIds.has(orderId)) {
           seenOrderIds.add(orderId)
@@ -1010,12 +1019,7 @@ export default function RestaurantTerminal() {
         }
       }
       
-      console.log('📢 Hämtade notifikationer för location:', profile.location)
-      console.log('📢 Totalt antal notifikationer från DB:', data?.length || 0)
-      console.log('📢 Filtrerade notifikationer:', filteredNotifications.length)
-      console.log('📢 Unika notifikationer (deduplicated):', uniqueNotifications.length)
-      
-      setNotifications(uniqueNotifications.slice(0, 10)) // Begränsa till 10 efter deduplicering
+      setNotifications(uniqueNotifications.slice(0, 10)) // Visa max 10 notifikationer
     } catch (error) {
       console.error('Error fetching notifications:', error)
     }
@@ -1170,7 +1174,8 @@ export default function RestaurantTerminal() {
       await Promise.all([
         fetchOrders(),
         fetchNotifications(),
-        fetchAvailableUsers()
+        fetchAvailableUsers(),
+        fetchBookings()
       ])
       
       showBrowserNotification('Data uppdaterad', 'Beställningar och notifikationer har uppdaterats', false)
@@ -2317,96 +2322,7 @@ Utvecklad av Skaply
   }
 
   // Send email confirmation to customer
-  const sendEmailConfirmation = async (order) => {
-    addDebugLog(`Skickar e-postbekräftelse för order #${order.order_number} via SendGrid`, 'info')
-    
-    try {
-      // Check if customer has email
-      const customerEmail = order.profiles?.email || order.customer_email
-      if (!customerEmail) {
-        addDebugLog('Ingen e-postadress tillgänglig för kunden', 'warning')
-        showBrowserNotification(
-          'Ingen e-postadress', 
-          `Kunden för order #${order.order_number} har ingen registrerad e-postadress`,
-          false
-        )
-        return
-      }
 
-      // Prepare order data for SendGrid
-      const orderData = {
-        customerName: order.profiles?.name || order.customer_name || 'Gäst',
-        customerEmail: customerEmail,
-        orderNumber: order.order_number,
-        items: (() => {
-          try {
-            const items = order.cart_items || order.items
-            if (typeof items === 'string') {
-              return JSON.parse(items)
-            }
-            return Array.isArray(items) ? items : []
-          } catch (e) {
-            console.error('Error parsing order items:', e)
-            return []
-          }
-        })().map(item => ({
-          name: item.name,
-          quantity: item.quantity,
-          price: `${item.price}`,
-          extras: item.extras?.join(', ') || undefined
-        })),
-        totalPrice: `${order.total_price || order.amount}`,
-        location: order.location,
-        orderType: order.delivery_type === 'delivery' ? 'Leverans' : 'Avhämtning',
-        phone: order.profiles?.phone || order.phone || 'Ej angivet',
-        deliveryAddress: order.delivery_address,
-        pickupTime: order.pickup_time,
-        specialInstructions: order.special_instructions,
-        restaurantPhone: '040-123456', // Lägg till restaurangtelefon
-        restaurantAddress: 'Restaurangadress', // Lägg till restaurangadress
-        orderDate: new Date(order.created_at).toLocaleDateString('sv-SE')
-      }
-
-      addDebugLog(`Skickar e-post till ${customerEmail} via SendGrid`, 'info')
-
-      // Send email via SendGrid API
-      const response = await fetch('/api/sendgrid', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'send_order_confirmation',
-          orderData
-        }),
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        addDebugLog(`E-postbekräftelse skickad framgångsrikt till ${customerEmail} via SendGrid`, 'success')
-        showBrowserNotification(
-          '📧 E-post skickad!', 
-          `Orderbekräftelse skickad till ${customerEmail} via SendGrid`,
-          false
-        )
-      } else {
-        addDebugLog(`Fel vid e-postutskick: ${result.error}`, 'error')
-        showBrowserNotification(
-          '❌ E-postfel', 
-          `Kunde inte skicka e-post: ${result.error}`,
-          false
-        )
-      }
-    } catch (error) {
-      addDebugLog(`Fel vid e-postutskick: ${error.message}`, 'error')
-      showBrowserNotification(
-        '❌ E-postfel', 
-        `Kunde inte skicka orderbekräftelse: ${error.message}`,
-        false
-      )
-    }
-  }
 
   // Fetch available users from profiles table
   const fetchAvailableUsers = async () => {
@@ -2552,6 +2468,99 @@ Utvecklad av Skaply
     }
   }
 
+  // Fetch bookings from database
+  const fetchBookings = async () => {
+    if (!profile) return
+    
+    try {
+      const { data, error } = await supabase
+        .from('bookings')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (error) throw error
+      
+      // Filter bookings based on location (same logic as orders)
+      const filteredBookings = data?.filter(booking => {
+        if (profile.location === 'all') {
+          return true
+        } else {
+          return booking.location === profile.location
+        }
+      }) || []
+      
+      setBookings(filteredBookings)
+      
+      // Count new bookings (created in last 24 hours and status pending)
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      const newBookings = filteredBookings.filter(booking => 
+        booking.status === 'pending' && new Date(booking.created_at) > oneDayAgo
+      )
+      setNewBookingsCount(newBookings.length)
+
+    } catch (error) {
+      console.error('Error fetching bookings:', error)
+    }
+  }
+
+  // Remove notification by marking it as read
+  const removeNotification = async (notificationId) => {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('id', notificationId)
+
+      if (error) throw error
+
+      // Remove from local state immediately for better UX
+      setNotifications(prev => prev.filter(n => n.id !== notificationId))
+    } catch (error) {
+      console.error('Error removing notification:', error)
+    }
+  }
+
+  // Handle delay notification
+  const handleDelayNotification = async () => {
+    if (!delayOrder) return
+
+    try {
+      addDebugLog(`Skickar förseningsmeddelande för order #${delayOrder.order_number}`, 'info')
+      
+      const response = await fetch('/api/orders/delay-notification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderId: delayOrder.id,
+          delayMinutes: delayMinutes,
+          sendEmail: sendDelayEmail
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        addDebugLog(`✅ Förseningsmeddelande skickat för order #${delayOrder.order_number}`, 'success')
+        showBrowserNotification(
+          '⏰ Förseningsmeddelande skickat',
+          `Kunden har informerats om ${delayMinutes} minuters försening`,
+          false
+        )
+        setDelayOrder(null)
+        // Refresh orders to show updated time
+        fetchOrders()
+      } else {
+        throw new Error(result.error || 'Unknown error')
+      }
+    } catch (error) {
+      console.error('❌ Fel vid delay-notifikation:', error)
+      addDebugLog(`❌ Fel vid delay-notifikation: ${error.message}`, 'error')
+    }
+  }
+
   // Filter orders based on selected filters
   const filteredOrders = orders.filter(order => {
     // Location filter
@@ -2691,13 +2700,13 @@ Utvecklad av Skaply
                       {printerSettings.enabled 
                         ? printerStatus.connected ? 'Skrivare OK' : 'Skrivare Fel'
                         : 'Skrivare Av'
-                      } • {printerSettings.autoemailEnabled ? 'E-post På' : 'E-post Av'}
+                      }
                     </span>
                     <span className="sm:hidden">
                       {printerSettings.enabled 
                         ? printerStatus.connected ? '🖨️' : '❌'
                         : '🖨️'
-                      }{printerSettings.autoemailEnabled ? '📧' : ''}
+                      }
                     </span>
                   </Button>
 
@@ -2748,6 +2757,27 @@ Utvecklad av Skaply
                     <Bell className="h-4 w-4 mr-1 sm:mr-2" />
                     <span className="hidden sm:inline">Testa Notis</span>
                     <span className="sm:hidden">🔔</span>
+                  </Button>
+                  
+                  {/* Bookings Button */}
+                  <Button 
+                    onClick={() => setShowBookings(true)}
+                    variant="outline" 
+                    className="flex-1 sm:flex-none border-blue-500/40 text-blue-400 hover:bg-blue-500/10 transition-all duration-200 relative"
+                    size="sm"
+                    title="Visa bordsbokningar"
+                  >
+                    <Calendar className="h-4 w-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">Bordsbokningar</span>
+                    <span className="sm:hidden">📅</span>
+                    {newBookingsCount > 0 && (
+                      <Badge 
+                        variant="destructive" 
+                        className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center text-xs"
+                      >
+                        {newBookingsCount}
+                      </Badge>
+                    )}
                   </Button>
                   
                   <Badge variant="outline" className="border-green-500/50 text-green-400 px-2 py-1 flex items-center">
@@ -2941,6 +2971,39 @@ Utvecklad av Skaply
                           <p className="text-sm text-white/60">
                             🕒 {new Date(order.created_at).toLocaleString('sv-SE')}
                           </p>
+                          {(() => {
+                            // Visa endast förseningsinformation om ordern har fått en manuell fördröjning
+                            if (!order.estimated_delivery_time) {
+                              return null // Ingen manuell fördröjning satt
+                            }
+                            
+                            const now = new Date()
+                            const orderTime = new Date(order.created_at)
+                            const estimatedTime = new Date(order.estimated_delivery_time)
+                            
+                            // Kontrollera om estimated_delivery_time är satt (indikerar manuell fördröjning)
+                            // Alla orders med estimated_delivery_time har fått en manuell fördröjning
+                            const delayMinutes = Math.max(0, Math.floor((now.getTime() - estimatedTime.getTime()) / 60000))
+                            
+                            // Beräkna hur mycket extra tid som sattes (från när fördröjningen skickades)
+                            const orderAge = Math.floor((now.getTime() - orderTime.getTime()) / 60000)
+                            const estimatedAge = Math.floor((estimatedTime.getTime() - orderTime.getTime()) / 60000)
+                            
+                            if (delayMinutes > 0) {
+                              return (
+                                <p className="text-sm text-red-400 font-medium">
+                                  ⚠️ Försenad: {delayMinutes} min (ny tid satt)
+                                </p>
+                              )
+                            } else {
+                              const timeUntilReady = Math.max(0, Math.floor((estimatedTime.getTime() - now.getTime()) / 60000))
+                              return (
+                                <p className="text-sm text-yellow-400 font-medium">
+                                  ⏰ Fördröjd: klar om {timeUntilReady} min
+                                </p>
+                              )
+                            }
+                          })()}
                         </div>
                       </div>
                       <Badge className={`${getStatusColor(order.status)} text-white font-medium px-3 py-1 text-sm`}>
@@ -3066,14 +3129,7 @@ Utvecklad av Skaply
 
                     {/* Visa speciella önskemål om de finns */}
                     {(() => {
-                      // DEBUG: Logga vad som händer med special_instructions
-                      console.log(`🔍 Order #${order.order_number} DEBUG:`, {
-                        special_instructions: order.special_instructions,
-                        notes: order.notes,
-                        has_special_instructions: !!order.special_instructions,
-                        has_notes: !!order.notes,
-                        will_show_section: !!(order.notes || order.special_instructions)
-                      })
+
                       return (order.notes || order.special_instructions) && (
                         <div className="mb-4">
                           <h5 className="text-white/80 font-medium mb-2 flex items-center gap-2">
@@ -3180,18 +3236,14 @@ Utvecklad av Skaply
                         <Button 
                           size="sm" 
                           variant="outline"
-                          onClick={() => sendEmailConfirmation(order)}
-                          className="border-blue-500/50 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500 shadow-lg text-xs sm:text-sm"
-                          disabled={!order.profiles?.email && !order.customer_email}
-                          title={order.profiles?.email || order.customer_email ? `Skicka e-postbekräftelse till ${order.profiles?.email || order.customer_email}` : 'Ingen e-postadress tillgänglig'}
+                          onClick={() => setDelayOrder(order)}
+                          className="border-orange-500/50 text-orange-400 hover:bg-orange-500/10 hover:border-orange-500 shadow-lg text-xs sm:text-sm"
+                          title="Meddela kund om försening"
                         >
-                          <span className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2">📧</span>
-                          <span className="hidden sm:inline">
-                            {order.profiles?.email || order.customer_email ? '📧 E-post' : '❌ Ingen e-post'}
-                          </span>
-                          <span className="sm:hidden">📧</span>
+                          <span className="hidden sm:inline">⏰ Fördröjning</span>
+                          <span className="sm:hidden">⏰</span>
                         </Button>
-                        
+
                         <Button 
                           size="sm" 
                           variant="outline"
@@ -3242,12 +3294,26 @@ Utvecklad av Skaply
                           </p>
                         )}
                       </div>
-                      <span className="text-sm sm:text-lg flex-shrink-0">
-                        {notification.type === 'order' && '🍱'}
-                        {notification.type === 'system' && 'ℹ️'}
-                        {notification.type === 'booking' && '📅'}
-                        {notification.type === 'promotion' && '🎁'}
-                      </span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-sm sm:text-lg">
+                          {notification.type === 'order' && '🍱'}
+                          {notification.type === 'system' && 'ℹ️'}
+                          {notification.type === 'booking' && '📅'}
+                          {notification.type === 'promotion' && '🎁'}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0 text-white/40 hover:text-red-400 hover:bg-red-500/10"
+                          onClick={(e) => {
+                            e.stopPropagation() // Förhindra att kortet klickas
+                            removeNotification(notification.id)
+                          }}
+                          title="Ta bort notis"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -3417,19 +3483,7 @@ Utvecklad av Skaply
                     />
                   </div>
 
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
-                    <div className="flex-1">
-                      <Label className="text-white font-medium text-sm sm:text-base">Automatisk e-postutskick</Label>
-                      <p className="text-white/60 text-xs sm:text-sm">Skicka orderbekräftelser automatiskt via e-post för nya beställningar</p>
-                    </div>
-                    <Switch
-                      checked={printerSettings.autoemailEnabled}
-                      onCheckedChange={(checked) => {
-                        setPrinterSettings(prev => ({ ...prev, autoemailEnabled: checked }))
-                        addDebugLog(`Automatisk e-postutskick ${checked ? 'aktiverad' : 'avaktiverad'}`, checked ? 'success' : 'warning')
-                      }}
-                    />
-                  </div>
+
 
 
 
@@ -3587,35 +3641,7 @@ Utvecklad av Skaply
                       <span className="sm:hidden">Print</span>
                     </Button>
 
-                    <Button
-                      onClick={() => {
-                        const testOrder = {
-                          order_number: 'TEST-EMAIL-' + Date.now(),
-                          customer_name: 'Test Kund',
-                          phone: '070-123 45 67',
-                          email: 'test@example.com', // Test email
-                          profiles: { email: 'test@example.com', name: 'Test Kund' },
-                          cart_items: [
-                            { name: 'Test Sushi', quantity: 2, price: 89 },
-                            { name: 'Test Pokébowl', quantity: 1, price: 129 }
-                          ],
-                          total_price: 307,
-                          delivery_type: 'delivery',
-                          location: 'malmo',
-                          created_at: new Date().toISOString()
-                        }
-                        sendEmailConfirmation(testOrder)
-                      }}
-                      variant="outline"
-                      className="border-purple-500/40 text-purple-400 hover:bg-purple-500/10 text-xs sm:text-sm"
-                      size="sm"
-                    >
-                      <span className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2">📧</span>
-                      <span className="hidden sm:inline">Testa e-post</span>
-                      <span className="sm:hidden">Email</span>
-                    </Button>
-
-                                          <Button
+<Button
                         onClick={clearDebugLogs}
                       variant="outline"
                       className="border-red-500/40 text-red-400 hover:bg-red-500/10 text-xs sm:text-sm"
@@ -3935,21 +3961,7 @@ Utvecklad av Skaply
                     <Printer className="h-4 w-4 mr-2" />
                     {printerSettings.enabled && printerStatus.connected ? '🖨️ Epson' : '🎭 Simulator'}
                   </Button>
-                  <Button 
-                    onClick={() => sendEmailConfirmation(selectedOrder)} 
-                    variant="outline"
-                    disabled={!selectedOrder.profiles?.email && !selectedOrder.customer_email}
-                    className={`text-sm ${
-                      selectedOrder.profiles?.email || selectedOrder.customer_email
-                        ? 'border-blue-500/50 text-blue-400 hover:bg-blue-500/10'
-                        : 'border-gray-500/50 text-gray-500 cursor-not-allowed'
-                    }`}
-                    size="sm"
-                    title={selectedOrder.profiles?.email || selectedOrder.customer_email ? `Skicka e-postbekräftelse till ${selectedOrder.profiles?.email || selectedOrder.customer_email}` : 'Ingen e-postadress tillgänglig'}
-                  >
-                    <span className="h-4 w-4 mr-2">📧</span>
-                    {selectedOrder.profiles?.email || selectedOrder.customer_email ? '📧 E-post' : '❌ Ingen e-post'}
-                  </Button>
+
                 </div>
               </div>
             </DialogContent>
@@ -4005,6 +4017,200 @@ Utvecklad av Skaply
           </DialogContent>
         </Dialog>
 
+        {/* Delay Notification Modal */}
+        <Dialog open={!!delayOrder} onOpenChange={() => setDelayOrder(null)}>
+          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-[#e4d699] text-xl">
+                ⏰ Meddela försening
+              </DialogTitle>
+            </DialogHeader>
+            {delayOrder && (
+              <div className="space-y-4">
+                <div className="bg-black/30 rounded-lg p-4 border border-[#e4d699]/20">
+                  <p className="text-white/80 mb-2">
+                    <strong>Order:</strong> #{delayOrder.order_number}
+                  </p>
+                  <p className="text-white/80 mb-2">
+                    <strong>Kund:</strong> {delayOrder.customer_name}
+                  </p>
+                  <p className="text-white/80">
+                    <strong>Email:</strong> {delayOrder.customer_email}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <Label htmlFor="delay-minutes" className="text-white">
+                    Fördröjning (minuter)
+                  </Label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[10, 15, 30, 45].map(minutes => (
+                      <Button
+                        key={minutes}
+                        variant={delayMinutes === minutes ? "default" : "outline"}
+                        className={delayMinutes === minutes ? "bg-[#e4d699] text-black" : ""}
+                        onClick={() => setDelayMinutes(minutes)}
+                        size="sm"
+                      >
+                        {minutes} min
+                      </Button>
+                    ))}
+                  </div>
+                  <Input
+                    id="delay-minutes"
+                    type="number"
+                    value={delayMinutes}
+                    onChange={(e) => setDelayMinutes(parseInt(e.target.value) || 15)}
+                    min="5"
+                    max="120"
+                    className="bg-black/50 border-[#e4d699]/30 text-white"
+                  />
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="send-email"
+                    checked={sendDelayEmail}
+                    onCheckedChange={setSendDelayEmail}
+                  />
+                  <Label htmlFor="send-email" className="text-white">
+                    Skicka e-postmeddelande till kund
+                  </Label>
+                </div>
+
+                <div className="flex gap-3">
+                  <Button 
+                    onClick={() => setDelayOrder(null)}
+                    variant="outline" 
+                    className="flex-1 border-gray-500/50 text-gray-400"
+                  >
+                    Avbryt
+                  </Button>
+                  <Button 
+                    onClick={handleDelayNotification}
+                    className="flex-1 bg-orange-500 text-white hover:bg-orange-600"
+                  >
+                    ⏰ Skicka meddelande
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Bookings Modal */}
+        <Dialog open={showBookings} onOpenChange={setShowBookings}>
+          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-4xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-[#e4d699] text-xl flex items-center gap-2">
+                📅 Bordsbokningar
+                {newBookingsCount > 0 && (
+                  <Badge variant="destructive" className="ml-2">
+                    {newBookingsCount} nya
+                  </Badge>
+                )}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {bookings.length === 0 ? (
+                <div className="text-center py-8">
+                  <Calendar className="h-16 w-16 text-gray-500 mx-auto mb-4" />
+                  <p className="text-gray-400">Inga bordsbokningar hittades</p>
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {bookings.map((booking) => (
+                    <Card key={booking.id} className="border border-[#e4d699]/30 bg-black/30">
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="flex items-center gap-2">
+                            <Badge 
+                              variant={booking.status === 'pending' ? 'destructive' : 'default'}
+                              className={booking.status === 'pending' ? '' : 'bg-green-500'}
+                            >
+                              {booking.status === 'pending' ? 'Väntande' : 
+                               booking.status === 'confirmed' ? 'Bekräftad' : 
+                               booking.status}
+                            </Badge>
+                            <span className="text-[#e4d699] font-medium">
+                              {new Date(booking.date).toLocaleDateString('sv-SE')} - {booking.time.substring(0, 5)}
+                            </span>
+                          </div>
+                          <span className="text-white/70 text-sm">
+                            {getLocationName(booking.location)}
+                          </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-white font-medium mb-1">
+                              👥 {booking.guests} personer
+                            </p>
+                            <div className="text-white/70 text-sm space-y-1">
+                              {booking.notes.split('\n').map((line, index) => (
+                                <p key={index}>{line}</p>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-white/50 text-xs mb-2">
+                              Bokad: {new Date(booking.created_at).toLocaleString('sv-SE')}
+                            </p>
+                            <div className="flex gap-2 justify-end">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-green-500/50 text-green-400 hover:bg-green-500/10"
+                                onClick={async () => {
+                                  try {
+                                    const { error } = await supabase
+                                      .from('bookings')
+                                      .update({ status: 'confirmed' })
+                                      .eq('id', booking.id)
+                                    
+                                    if (!error) {
+                                      fetchBookings()
+                                    }
+                                  } catch (error) {
+                                    console.error('Error updating booking:', error)
+                                  }
+                                }}
+                                disabled={booking.status === 'confirmed'}
+                              >
+                                ✅ Bekräfta
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-500/50 text-red-400 hover:bg-red-500/10"
+                                onClick={async () => {
+                                  try {
+                                    const { error } = await supabase
+                                      .from('bookings')
+                                      .update({ status: 'cancelled' })
+                                      .eq('id', booking.id)
+                                    
+                                    if (!error) {
+                                      fetchBookings()
+                                    }
+                                  } catch (error) {
+                                    console.error('Error cancelling booking:', error)
+                                  }
+                                }}
+                              >
+                                ❌ Avboka
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
 
       </div>
     </div>

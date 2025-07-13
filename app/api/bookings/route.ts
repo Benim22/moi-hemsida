@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { sendBookingConfirmationSendGrid } from '@/lib/sendgrid-service'
 
 // Debug environment variables
 console.log('Environment check:')
@@ -165,13 +166,91 @@ export async function POST(request: NextRequest) {
     console.log('Booking saved successfully with ID:', booking.id)
     console.log('===================================')
 
-    // Return success - email is disabled for now
+    // Send booking confirmation email via SendGrid
+    let emailResult = { success: false, error: 'Email not attempted' }
+    try {
+      console.log('📧 Sending booking confirmation email via SendGrid...')
+      
+      const locationNames = {
+        'malmo': 'Malmö',
+        'trelleborg': 'Trelleborg', 
+        'ystad': 'Ystad'
+      }
+      
+      const locationPhones = {
+        'malmo': '040-123 456',
+        'trelleborg': '0410-123 456',
+        'ystad': '0411-123 456'
+      }
+      
+      const locationAddresses = {
+        'malmo': 'Storgatan 1, 211 34 Malmö',
+        'trelleborg': 'Algatan 1, 231 31 Trelleborg',
+        'ystad': 'Stora Östergatan 1, 271 34 Ystad'
+      }
+
+      emailResult = await sendBookingConfirmationSendGrid({
+        customerName: bookingData.customerName,
+        customerEmail: bookingData.customerEmail,
+        bookingDate: bookingDate.toLocaleDateString('sv-SE'),
+        bookingTime: bookingTime.substring(0, 5), // Remove seconds
+        partySize: parseInt(bookingData.guests),
+        location: locationNames[dbLocation] || bookingData.location,
+        restaurantPhone: locationPhones[dbLocation] || '040-123 456',
+        restaurantAddress: locationAddresses[dbLocation] || 'Moi Sushi',
+        specialRequests: bookingData.message
+      })
+
+      if (emailResult.success) {
+        console.log('✅ Booking confirmation email sent successfully')
+      } else {
+        console.error('❌ Failed to send booking confirmation email:', emailResult.error)
+      }
+    } catch (emailError) {
+      console.error('❌ Error sending booking confirmation email:', emailError)
+      emailResult = { success: false, error: emailError.message }
+    }
+
+    // Send notification to restaurant staff via notifications table
+    try {
+      console.log('📢 Creating staff notification for booking...')
+      
+      const { error: notificationError } = await supabase
+        .from('notifications')
+        .insert({
+          type: 'booking',
+          title: `Ny bordsbokning - ${locationNames[dbLocation] || bookingData.location}`,
+          message: `${bookingData.customerName} har bokat bord för ${bookingData.guests} personer den ${bookingDate.toLocaleDateString('sv-SE')} kl ${bookingTime.substring(0, 5)}`,
+          user_role: 'admin',
+          metadata: {
+            location: dbLocation,
+            booking_id: booking.id,
+            customer_name: bookingData.customerName,
+            customer_email: bookingData.customerEmail,
+            customer_phone: bookingData.customerPhone,
+            booking_date: bookingDate.toLocaleDateString('sv-SE'),
+            booking_time: bookingTime.substring(0, 5),
+            party_size: parseInt(bookingData.guests),
+            special_requests: bookingData.message,
+            created_by: 'booking_system'
+          }
+        })
+
+      if (notificationError) {
+        console.error('❌ Error creating staff notification:', notificationError)
+      } else {
+        console.log('✅ Staff notification created successfully')
+      }
+    } catch (notificationError) {
+      console.error('❌ Error creating staff notification:', notificationError)
+    }
+
     return NextResponse.json({ 
       success: true, 
       message: 'Booking saved successfully to database',
       bookingId: booking.id,
-      emailSent: false,
-      emailError: 'Email system temporarily disabled'
+      emailSent: emailResult.success,
+      emailError: emailResult.success ? undefined : emailResult.error
     })
 
   } catch (error) {

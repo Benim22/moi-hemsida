@@ -317,7 +317,7 @@ class Analytics {
           this.isTracking = false
         }
       } else {
-        console.log('📊 Spårade händelse:', eventType, eventName)
+        // Event tracked successfully
       }
     } catch (error) {
       console.warn('Analytics: Event error:', error)
