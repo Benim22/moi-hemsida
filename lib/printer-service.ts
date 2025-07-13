@@ -123,99 +123,37 @@ export class ProductionPrinterService {
 
   // Generera print XML med korrekt format
   private generatePrintXML(order: Order): string {
-    const printCommands = this.generatePrintCommands(order)
-    
-    return `<?xml version="1.0" encoding="utf-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:epos="http://www.epson-pos.com/schemas/2011/03/epos-print">
-    <soapenv:Header/>
-    <soapenv:Body>
-        <epos:request>
-            <epos:parameter devid="${this.config.model}" timeout="${this.config.timeout}"/>
-            <epos:printdata>
-                <epos:epos-print>
-                    ${printCommands}
-                </epos:epos-print>
-            </epos:printdata>
-        </epos:request>
-    </soapenv:Body>
-</soapenv:Envelope>`
-  }
-
-  // Generera print-kommandon för kvittot
-  private generatePrintCommands(order: Order): string {
+    // Official ePOS-Print XML format based on Epson documentation
     const date = new Date(order.created_at).toLocaleString('sv-SE')
     const location = this.getLocationName(order.location)
     
-    let commands = `
-                    <epos:text align="center" width="2" height="2">MOI SUSHI</epos:text>
-                    <epos:feed line="1"/>
-                    <epos:text align="center">${location}</epos:text>
-                    <epos:feed line="1"/>
-                    <epos:text>================================</epos:text>
-                    <epos:feed line="1"/>
-                    <epos:text size="1">ORDER: #${order.order_number}</epos:text>
-                    <epos:feed line="1"/>
-                    <epos:text>Datum: ${date}</epos:text>
-                    <epos:feed line="1"/>`
-
-    // Kundinfo
-    if (order.customer_name) {
-      commands += `
-                    <epos:text>Kund: ${order.customer_name}</epos:text>
-                    <epos:feed line="1"/>`
-    }
-    
-    if (order.phone) {
-      commands += `
-                    <epos:text>Tel: ${order.phone}</epos:text>
-                    <epos:feed line="1"/>`
-    }
-
-    // Leveransmetod
-    if (order.delivery_method) {
-      commands += `
-                    <epos:text>Leverans: ${order.delivery_method}</epos:text>
-                    <epos:feed line="1"/>`
-    }
-
-    commands += `
-                    <epos:text>================================</epos:text>
-                    <epos:feed line="1"/>`
-
-    // Meny-items
-    for (const item of order.cart_items) {
-      const itemTotal = item.quantity * item.price
-      commands += `
-                    <epos:text>${item.quantity}x ${item.name}</epos:text>
-                    <epos:feed line="1"/>
-                    <epos:text align="right">${itemTotal} SEK</epos:text>
-                    <epos:feed line="1"/>`
-    }
-
-    commands += `
-                    <epos:text>--------------------------------</epos:text>
-                    <epos:feed line="1"/>
-                    <epos:text size="1">TOTAL: ${order.total_amount} SEK</epos:text>
-                    <epos:feed line="2"/>`
-
-    // Anteckningar
-    if (order.notes) {
-      commands += `
-                    <epos:text>Anteckningar:</epos:text>
-                    <epos:feed line="1"/>
-                    <epos:text>${order.notes}</epos:text>
-                    <epos:feed line="2"/>`
-    }
-
-    commands += `
-                    <epos:text align="center">Tack för ditt köp!</epos:text>
-                    <epos:feed line="1"/>
-                    <epos:text align="center">www.moisushi.se</epos:text>
-                    <epos:feed line="3"/>
-                    <epos:cut/>`
-
-    return commands
+    return `<?xml version="1.0" encoding="utf-8"?>
+<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+  <text align="center" width="2" height="2">MOI SUSHI&#10;</text>
+  <text align="center">${location}&#10;</text>
+  <text>================================&#10;</text>
+  <text>ORDER: #${order.order_number}&#10;</text>
+  <text>Datum: ${date}&#10;</text>
+  ${order.customer_name ? `<text>Kund: ${order.customer_name}&#10;</text>` : ''}
+  ${order.phone ? `<text>Tel: ${order.phone}&#10;</text>` : ''}
+  ${order.delivery_method ? `<text>Leverans: ${order.delivery_method}&#10;</text>` : ''}
+  <text>================================&#10;</text>
+  ${order.cart_items.map(item => {
+    const itemTotal = item.quantity * item.price
+    return `<text>${item.quantity}x ${item.name}&#10;</text><text align="right">${itemTotal} SEK&#10;</text>`
+  }).join('')}
+  <text>--------------------------------&#10;</text>
+  <text width="2" height="2">TOTAL: ${order.total_amount} SEK&#10;</text>
+  <feed line="1"/>
+  ${order.notes ? `<text>Anteckningar:&#10;</text><text>${order.notes}&#10;</text><feed line="1"/>` : ''}
+  <text align="center">Tack för ditt köp!&#10;</text>
+  <text align="center">www.moisushi.se&#10;</text>
+  <feed line="3"/>
+  <cut/>
+</epos-print>`
   }
+
+
 
   // Hjälpfunktion för location-namn
   private getLocationName(location?: string): string {
