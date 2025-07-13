@@ -7,22 +7,70 @@ interface SendGridSettings {
   enabled: boolean
 }
 
-// Get SendGrid settings from database
+// Get SendGrid settings from database and environment variables
 const getSendGridSettings = async (): Promise<SendGridSettings> => {
-  const { data: settings } = await supabase
-    .from('email_settings')
-    .select('*')
-    .in('setting_key', ['sendgrid_api_key', 'sendgrid_from_email', 'sendgrid_enabled'])
+  try {
+    // Always try environment variable first (best practice for production)
+    const envApiKey = process.env.SENDGRID_API_KEY
+    console.log('🔍 SendGrid Environment Check:', {
+      hasEnvKey: !!envApiKey,
+      envKeyLength: envApiKey?.length || 0,
+      envKeyPrefix: envApiKey?.substring(0, 10) || 'N/A',
+      vercelEnv: process.env.VERCEL_ENV || 'unknown'
+    })
 
-  const settingsMap = {}
-  settings?.forEach(setting => {
-    settingsMap[setting.setting_key] = setting.setting_value
-  })
+    // If environment variable exists and looks valid, use it
+    if (envApiKey && envApiKey.startsWith('SG.')) {
+      console.log('✅ Using SendGrid API key from environment variables')
+      return {
+        apiKey: envApiKey,
+        fromEmail: 'Moi Sushi & Pokébowl <info@moisushi.se>',
+        enabled: true
+      }
+    }
 
-  return {
-    apiKey: settingsMap.sendgrid_api_key || process.env.SENDGRID_API_KEY || '',
-    fromEmail: settingsMap.sendgrid_from_email || 'Moi Sushi <info@moisushi.se>',
-    enabled: settingsMap.sendgrid_enabled === 'true' || true
+    // Fallback to database settings
+    console.log('📋 Environment key not found, checking database...')
+    const { data: settings, error } = await supabase
+      .from('email_settings')
+      .select('*')
+      .in('setting_key', ['sendgrid_api_key', 'sendgrid_from_email', 'sendgrid_enabled'])
+
+    if (error) {
+      console.error('❌ Database error when fetching SendGrid settings:', error)
+      // Still try environment variable as last resort
+      return {
+        apiKey: envApiKey || '',
+        fromEmail: 'Moi Sushi & Pokébowl <info@moisushi.se>',
+        enabled: !!envApiKey
+      }
+    }
+
+    const settingsMap = {}
+    settings?.forEach(setting => {
+      settingsMap[setting.setting_key] = setting.setting_value
+    })
+
+    console.log('📊 Database settings found:', {
+      hasDbKey: !!settingsMap.sendgrid_api_key,
+      fromEmail: settingsMap.sendgrid_from_email || 'default',
+      enabled: settingsMap.sendgrid_enabled
+    })
+
+    return {
+      apiKey: settingsMap.sendgrid_api_key || envApiKey || '',
+      fromEmail: settingsMap.sendgrid_from_email || 'Moi Sushi & Pokébowl <info@moisushi.se>',
+      enabled: settingsMap.sendgrid_enabled === 'true' || !!envApiKey
+    }
+  } catch (error) {
+    console.error('❌ Critical error in getSendGridSettings:', error)
+    // Emergency fallback to environment only
+    const envApiKey = process.env.SENDGRID_API_KEY
+    return {
+      apiKey: envApiKey || '',
+      fromEmail: 'Moi Sushi & Pokébowl <info@moisushi.se>',
+      enabled: !!envApiKey
+    }
   }
 }
 
