@@ -102,14 +102,14 @@ export const sendEmailViaSendGrid = async (emailData: {
             : 'Moi Sushi'
         },
         content: [
-          {
-            type: 'text/html',
-            value: emailData.html
-          },
           ...(emailData.text ? [{
             type: 'text/plain',
             value: emailData.text
-          }] : [])
+          }] : []),
+          {
+            type: 'text/html',
+            value: emailData.html
+          }
         ]
       })
     })
