@@ -635,6 +635,7 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
       const orderData = {
         user_id: user?.id || ANONYMOUS_USER_ID,
         customer_name: customerName, // Lägg till kundnamn
+        customer_email: customerEmail, // Lägg till kund-email
         items: items,
         total_price: totalPrice,
         amount: totalPrice, // För kompatibilitet

@@ -2279,7 +2279,7 @@ Utvecklad av Skaply
     
     try {
       // Check if customer has email
-      const customerEmail = order.profiles?.email || order.email
+      const customerEmail = order.profiles?.email || order.customer_email
       if (!customerEmail) {
         addDebugLog('Ingen e-postadress tillgänglig för kunden', 'warning')
         showBrowserNotification(
@@ -3093,12 +3093,12 @@ Utvecklad av Skaply
                           variant="outline"
                           onClick={() => sendEmailConfirmation(order)}
                           className="border-blue-500/50 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500 shadow-lg text-xs sm:text-sm"
-                          disabled={!order.profiles?.email && !order.email}
-                          title={order.profiles?.email || order.email ? `Skicka e-postbekräftelse till ${order.profiles?.email || order.email}` : 'Ingen e-postadress tillgänglig'}
+                          disabled={!order.profiles?.email && !order.customer_email}
+                          title={order.profiles?.email || order.customer_email ? `Skicka e-postbekräftelse till ${order.profiles?.email || order.customer_email}` : 'Ingen e-postadress tillgänglig'}
                         >
                           <span className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2">📧</span>
                           <span className="hidden sm:inline">
-                            {order.profiles?.email || order.email ? '📧 E-post' : '❌ Ingen e-post'}
+                            {order.profiles?.email || order.customer_email ? '📧 E-post' : '❌ Ingen e-post'}
                           </span>
                           <span className="sm:hidden">📧</span>
                         </Button>
@@ -3662,9 +3662,9 @@ Utvecklad av Skaply
                 <div className="bg-black/30 rounded-lg p-3 sm:p-4 border border-[#e4d699]/20">
                   <h4 className="font-medium mb-2 text-[#e4d699] text-sm sm:text-base">👤 Kundinfo:</h4>
                   <div className="space-y-1 text-xs sm:text-sm">
-                    <p><span className="text-white/70">Namn:</span> {selectedOrder.profiles?.name || selectedOrder.customer_name || 'Gäst'}</p>
-                    <p><span className="text-white/70">Email:</span> {selectedOrder.profiles?.email || selectedOrder.email || 'Ej angiven'}</p>
-                    <p><span className="text-white/70">Telefon:</span> {selectedOrder.profiles?.phone || selectedOrder.phone || 'Ej angiven'}</p>
+                    <p><span className="text-white/70">Namn:</span> {selectedOrder.customer_name || selectedOrder.profiles?.name || 'Gäst'}</p>
+                    <p><span className="text-white/70">Email:</span> {selectedOrder.customer_email || selectedOrder.profiles?.email || 'Ej angiven'}</p>
+                    <p><span className="text-white/70">Telefon:</span> {selectedOrder.phone || selectedOrder.profiles?.phone || 'Ej angiven'}</p>
                   </div>
                 </div>
                 
@@ -3831,17 +3831,17 @@ Utvecklad av Skaply
                   <Button 
                     onClick={() => sendEmailConfirmation(selectedOrder)} 
                     variant="outline"
-                    disabled={!selectedOrder.profiles?.email && !selectedOrder.email}
+                    disabled={!selectedOrder.profiles?.email && !selectedOrder.customer_email}
                     className={`text-sm ${
-                      selectedOrder.profiles?.email || selectedOrder.email
+                      selectedOrder.profiles?.email || selectedOrder.customer_email
                         ? 'border-blue-500/50 text-blue-400 hover:bg-blue-500/10'
                         : 'border-gray-500/50 text-gray-500 cursor-not-allowed'
                     }`}
                     size="sm"
-                    title={selectedOrder.profiles?.email || selectedOrder.email ? `Skicka e-postbekräftelse till ${selectedOrder.profiles?.email || selectedOrder.email}` : 'Ingen e-postadress tillgänglig'}
+                    title={selectedOrder.profiles?.email || selectedOrder.customer_email ? `Skicka e-postbekräftelse till ${selectedOrder.profiles?.email || selectedOrder.customer_email}` : 'Ingen e-postadress tillgänglig'}
                   >
                     <span className="h-4 w-4 mr-2">📧</span>
-                    {selectedOrder.profiles?.email || selectedOrder.email ? '📧 E-post' : '❌ Ingen e-post'}
+                    {selectedOrder.profiles?.email || selectedOrder.customer_email ? '📧 E-post' : '❌ Ingen e-post'}
                   </Button>
                 </div>
               </div>
