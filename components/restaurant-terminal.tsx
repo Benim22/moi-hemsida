@@ -3898,52 +3898,7 @@ Utvecklad av Skaply
           </DialogContent>
         </Dialog>
 
-        {/* HTTPS Setup Guide för produktion */}
-        {window.location.protocol === 'https:' && window.location.hostname !== 'localhost' && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <h3 className="font-bold text-blue-800 mb-2">🔐 HTTPS-konfiguration för iPad (Produktionsmiljö)</h3>
-            <div className="text-sm text-blue-700 space-y-2">
-              <p><strong>Steg 1:</strong> Logga in på skrivaren på <code>http://192.168.1.103</code></p>
-              <p><strong>Steg 2:</strong> Gå till TCP/IP → Security → Aktivera SSL/TLS</p>
-              <p><strong>Steg 3:</strong> Skapa självsignerat certifikat (Common Name: 192.168.1.103)</p>
-              <p><strong>Steg 4:</strong> Aktivera HTTPS-port (443)</p>
-              <p><strong>Steg 5:</strong> Gå till <code>https://192.168.1.103</code> och acceptera säkerhetsvarningen</p>
-              <p><strong>Steg 6:</strong> Testa anslutning nedan</p>
-            </div>
-          </div>
-        )}
 
-        {/* Printer Connection Status */}
-        <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-          <h3 className="font-bold text-gray-800 mb-2">🖨️ Skrivare: Epson TM-T20III</h3>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">IP-adress:</span>
-              <span className="font-mono text-sm">{printerSettings.printerIP}:{printerSettings.printerPort}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Anslutning:</span>
-              <span className={`text-sm font-medium ${
-                printerStatus.connected ? 'text-green-600' : 'text-red-600'
-              }`}>
-                {printerStatus.connected ? '✅ Ansluten' : '❌ Ej ansluten'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Miljö:</span>
-              <span className="text-sm font-mono">
-                {window.location.protocol === 'https:' && window.location.hostname !== 'localhost' 
-                  ? '🔐 HTTPS (iPad Bridge)' 
-                  : '🏠 Localhost'}
-              </span>
-            </div>
-            {printerStatus.error && (
-              <div className="bg-red-50 border border-red-200 rounded p-2 mt-2">
-                <p className="text-red-600 text-sm">{printerStatus.error}</p>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
     </div>
   )
