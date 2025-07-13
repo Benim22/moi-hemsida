@@ -30,7 +30,7 @@ let printerSettings = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { action, printerIP, printerPort, order } = body
+    const { action, printerIP, printerPort, order, useSSL } = body
 
     // Handle different actions
     switch (action) {
@@ -50,12 +50,12 @@ export async function POST(request: NextRequest) {
         })
 
       case 'test':
-        return await testConnection(printerIP || printerSettings.printerIP, printerPort || parseInt(printerSettings.printerPort))
+        return await testConnection(printerIP || printerSettings.printerIP, printerPort || parseInt(printerSettings.printerPort), useSSL)
 
       case 'print':
         console.log(`📝 BACKEND: Utskrift begärd för order #${order?.order_number} - Timestamp: ${Date.now()}`)
         const { bridgeMode } = body
-        return await printReceipt(order, printerIP || printerSettings.printerIP, printerPort || parseInt(printerSettings.printerPort), bridgeMode)
+        return await printReceipt(order, printerIP || printerSettings.printerIP, printerPort || parseInt(printerSettings.printerPort), bridgeMode, useSSL)
 
       default:
         return NextResponse.json({
@@ -72,42 +72,66 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function testConnection(ip: string, port: number) {
+async function testConnection(ip: string, port: number, useSSL: boolean = false) {
   try {
-    console.log(`Testing connection to ${ip}:${port}`)
+    console.log(`Testing connection to ${ip}:${port}${useSSL ? ' (SSL)' : ''}`)
     console.log(`Environment: ${process.env.NODE_ENV}, Platform: ${process.platform}`)
     
-    // Remove production simulation - always try to connect for real
-    const printer = new ThermalPrinter({
-      type: PrinterTypes.EPSON,
-      interface: `tcp://${ip}:${port}`,
-      characterSet: CharacterSet.PC858_EURO,
-      removeSpecialCharacters: false,
-      lineCharacter: "-",
-      breakLine: BreakLine.WORD,
-      options: {
-        timeout: 10000, // Increased timeout for production
-        retries: 3      // Add retries for unstable connections
+    if (useSSL || port === 443) {
+      // Test SSL/HTTPS connection
+      console.log(`🔐 Testing SSL connection to ${ip}:${port}`)
+      
+      const response = await fetch(`https://${ip}:${port}/`, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'MOI-SUSHI/1.0'
+        },
+        signal: AbortSignal.timeout(10000)
+      })
+      
+      if (response.ok || response.status === 404) {
+        console.log(`✅ SSL connection successful: ${ip}:${port}`)
+        return NextResponse.json({
+          success: true,
+          connected: true,
+          message: `SSL-anslutning till ${ip}:${port} framgångsrik`
+        })
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
-    })
-
-    // Test if we can connect
-    const isConnected = await printer.isPrinterConnected()
-    
-    if (isConnected) {
-      console.log(`✅ Successfully connected to printer at ${ip}:${port}`)
-      return NextResponse.json({
-        success: true,
-        connected: true,
-        message: `Anslutning till ${ip}:${port} framgångsrik`
-      })
     } else {
-      console.log(`❌ Failed to connect to printer at ${ip}:${port}`)
-      return NextResponse.json({
-        success: false,
-        connected: false,
-        error: `Kan inte ansluta till skrivaren på ${ip}:${port}`
+      // Test TCP connection
+      const printer = new ThermalPrinter({
+        type: PrinterTypes.EPSON,
+        interface: `tcp://${ip}:${port}`,
+        characterSet: CharacterSet.PC858_EURO,
+        removeSpecialCharacters: false,
+        lineCharacter: "-",
+        breakLine: BreakLine.WORD,
+        options: {
+          timeout: 10000, // Increased timeout for production
+          retries: 3      // Add retries for unstable connections
+        }
       })
+
+      // Test if we can connect
+      const isConnected = await printer.isPrinterConnected()
+      
+      if (isConnected) {
+        console.log(`✅ Successfully connected to printer at ${ip}:${port}`)
+        return NextResponse.json({
+          success: true,
+          connected: true,
+          message: `Anslutning till ${ip}:${port} framgångsrik`
+        })
+      } else {
+        console.log(`❌ Failed to connect to printer at ${ip}:${port}`)
+        return NextResponse.json({
+          success: false,
+          connected: false,
+          error: `Kan inte ansluta till skrivaren på ${ip}:${port}`
+        })
+      }
     }
   } catch (error) {
     console.error(`❌ Connection error to ${ip}:${port}:`, error)
@@ -133,10 +157,122 @@ async function testConnection(ip: string, port: number) {
   }
 }
 
-async function printReceipt(order: any, ip: string, port: number, bridgeMode: boolean = false) {
+async function printViaSSL(order: any, ip: string, port: number) {
+  try {
+    console.log(`🔐 SSL Printing to ${ip}:${port}`)
+    
+    // Generate ESC/POS commands for the receipt
+    const escPosCommands = generateESCPOSCommands(order)
+    
+    // Try different SSL endpoints
+    const endpoints = [
+      `/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000`,
+      `/cgi-bin/epos/service.cgi`,
+      `/pos/print`,
+      `/print`,
+      `/`
+    ]
+    
+    let lastError = null
+    
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`🔄 Trying SSL endpoint: ${endpoint}`)
+        
+        const response = await fetch(`https://${ip}:${port}${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            'User-Agent': 'MOI-SUSHI/1.0',
+            'Accept': '*/*'
+          },
+          body: escPosCommands,
+          signal: AbortSignal.timeout(15000)
+        })
+        
+        if (response.ok) {
+          console.log(`✅ SSL printing successful via ${endpoint}`)
+          return NextResponse.json({
+            success: true,
+            message: `SSL-utskrift framgångsrik via ${endpoint}`
+          })
+        } else {
+          lastError = new Error(`HTTP ${response.status}: ${response.statusText}`)
+          console.log(`❌ SSL endpoint ${endpoint} failed: ${response.status}`)
+        }
+      } catch (endpointError) {
+        lastError = endpointError
+        console.log(`❌ SSL endpoint ${endpoint} error: ${endpointError.message}`)
+      }
+    }
+    
+    // If all endpoints failed, throw the last error
+    throw lastError || new Error('All SSL endpoints failed')
+    
+  } catch (error) {
+    console.error(`❌ SSL printing failed: ${error.message}`)
+    return NextResponse.json({
+      success: false,
+      error: `SSL-utskrift misslyckades: ${error.message}`
+    })
+  }
+}
+
+function generateESCPOSCommands(order: any): string {
+  let commands = ''
+  
+  // Initialize printer
+  commands += '\x1B\x40' // ESC @
+  
+  // Center align and print header
+  commands += '\x1B\x61\x01' // ESC a 1 (center)
+  commands += '\x1D\x21\x11' // GS ! 17 (double width and height)
+  commands += 'MOI SUSHI\n'
+  commands += '& POKE BOWL\n'
+  commands += '\x1D\x21\x00' // GS ! 0 (normal size)
+  commands += '================================\n\n'
+  
+  // Left align for order details
+  commands += '\x1B\x61\x00' // ESC a 0 (left)
+  commands += `Order: #${order.order_number}\n`
+  commands += `Datum: ${new Date().toLocaleDateString('sv-SE')}\n`
+  commands += `Tid: ${new Date().toLocaleTimeString('sv-SE')}\n\n`
+  
+  // Items
+  commands += 'BESTÄLLNING:\n'
+  commands += '--------------------------------\n'
+  
+  if (order.cart_items && order.cart_items.length > 0) {
+    order.cart_items.forEach(item => {
+      commands += `${item.quantity}x ${item.name}\n`
+      commands += `    ${item.price} kr\n`
+    })
+  }
+  
+  commands += '--------------------------------\n'
+  commands += `TOTALT: ${order.total_amount} kr\n\n`
+  
+  // Footer
+  commands += '\x1B\x61\x01' // Center align
+  commands += 'Tack för din beställning!\n'
+  commands += 'moisushi.se\n\n'
+  
+  // Cut paper
+  commands += '\x1D\x56\x00' // GS V 0 (full cut)
+  
+  return commands
+}
+
+async function printReceipt(order: any, ip: string, port: number, bridgeMode: boolean = false, useSSL: boolean = false) {
   try {
     console.log(`Printing receipt to ${ip}:${port}${bridgeMode ? ' (iPad Bridge mode)' : ''}`)
     console.log('Order data:', JSON.stringify(order, null, 2))
+    
+    // Check for SSL mode first
+    if (useSSL || port === 443) {
+      console.log('🔐 SSL mode: Using HTTPS connection to printer')
+      return await printViaSSL(order, ip, port)
+    }
     
     // iPad Bridge mode - always use TCP for backend
     if (bridgeMode) {

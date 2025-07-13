@@ -330,15 +330,29 @@ export default function RestaurantTerminal() {
       return
     }
 
-    // In production, always use simulated connection
+    // In production, test backend connection instead of simulating
     if (window.location.protocol === 'https:' && window.location.hostname !== 'localhost') {
-      addDebugLog('🎭 Produktionsmiljö detekterad - använder simulerad anslutning', 'info')
-      setPrinterStatus(prev => ({ 
-        ...prev, 
-        connected: true, 
-        error: null,
-        message: 'Simulerad anslutning (produktionsmiljö)'
-      }))
+      addDebugLog('🌐 Produktionsmiljö detekterad - testar backend anslutning', 'info')
+      
+      // Test actual backend connection instead of simulating
+      const backendConnected = await testBackendPrinterConnection()
+      if (backendConnected) {
+        addDebugLog('✅ Backend anslutning framgångsrik i produktionsmiljö', 'success')
+        setPrinterStatus(prev => ({ 
+          ...prev, 
+          connected: true, 
+          error: null,
+          message: 'Backend anslutning verifierad'
+        }))
+      } else {
+        addDebugLog('❌ Backend anslutning misslyckades i produktionsmiljö', 'error')
+        setPrinterStatus(prev => ({ 
+          ...prev, 
+          connected: false, 
+          error: 'Backend anslutning misslyckades',
+          message: 'Kontrollera skrivare och nätverksanslutning'
+        }))
+      }
       return
     }
 
@@ -2024,21 +2038,24 @@ Utvecklad av Skaply
       
       addDebugLog(`🌍 Miljö: ${isLocalhost ? 'Localhost' : isProduction ? 'Produktion (iPad Bridge)' : 'Utveckling'}`, 'info')
 
-              // SSL Bridge mode for production - use HTTPS directly to printer
+              // Production mode - use backend API for reliable printing
         if (isProduction) {
-          addDebugLog('🔐 SSL Bridge-läge: Skickar HTTPS-kommando direkt till skrivaren', 'info')
+          addDebugLog('🌐 Produktionsmiljö: Använder backend API för utskrift', 'info')
           try {
-            await printHTTPToPrinter(order)
-            return
+            const backendSuccess = await printBackendReceipt(order)
+            if (backendSuccess) {
+              addDebugLog('✅ Backend utskrift framgångsrik', 'success')
+              return
+            } else {
+              throw new Error('Backend utskrift misslyckades')
+            }
           } catch (error) {
-            addDebugLog(`❌ SSL Bridge misslyckades: ${error.message}`, 'error')
-            addDebugLog('💡 Tips: Kontrollera att SSL-certifikat är skapat och betrott på skrivaren', 'warning')
-            // Fallback to simulator
-        const receipt = generateMockEPOSReceipt(order)
-        simulatePrintReceipt(receipt, order)
-        return
+            addDebugLog(`❌ Backend utskrift misslyckades: ${error.message}`, 'error')
+            addDebugLog('💡 Tips: Kontrollera skrivare IP och nätverksanslutning', 'warning')
+            // Don't fallback to simulator in production - show error instead
+            throw error
           }
-      }
+        }
 
       // Simulator mode
       if (!printerSettings.enabled || printerSettings.debugMode) {
