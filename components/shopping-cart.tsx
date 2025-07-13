@@ -188,7 +188,26 @@ function OrderSuccessModal({
 
       {/* Success Message */}
       <h2 className="text-2xl font-bold text-[#e4d699] mb-2">Tack för din beställning!</h2>
-      <p className="text-white/80 mb-6">Din beställning har tagits emot och kommer att förberedas snart.</p>
+      <p className="text-white/80 mb-4">Din beställning har tagits emot och kommer att förberedas snart.</p>
+
+      {/* Email Problem Notice */}
+      <div className="w-full max-w-md bg-amber-600/10 border border-amber-600/30 rounded-lg p-4 mb-6">
+        <div className="flex items-start space-x-3">
+          <div className="flex-shrink-0">
+            <svg className="w-5 h-5 text-amber-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <p className="text-amber-200 text-sm font-medium mb-1">
+              Information om orderbekräftelse
+            </p>
+            <p className="text-amber-100/80 text-xs">
+              Vi har för tillfället tekniska problem med att skicka ut orderbekräftelser via email och jobbar på att få det fixat så fort som möjligt. Vi ser dock alla beställningar och påbörjar dem direkt när de läggs.
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Order Details */}
       <div className="w-full max-w-md bg-black/30 rounded-lg p-4 border border-[#e4d699]/20 mb-6">
@@ -257,7 +276,7 @@ function OrderSuccessModal({
         <h4 className="font-medium text-blue-400 mb-2">Nästa steg:</h4>
         <ul className="text-sm text-white/80 space-y-1">
           <li>• Vi förbereder din beställning</li>
-          <li>• Du får en bekräftelse via e-post</li>
+          <li>• Vi skickar bekräftelse via e-post (tekniska problem för tillfället)</li>
           <li>• Betala när du hämtar i restaurangen</li>
           <li>• Visa detta ordernummer vid avhämtning</li>
         </ul>
