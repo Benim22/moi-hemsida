@@ -57,6 +57,11 @@ export async function POST(request: NextRequest) {
         const { bridgeMode } = body
         return await printReceipt(order, printerIP || printerSettings.printerIP, printerPort || parseInt(printerSettings.printerPort), bridgeMode, useSSL)
 
+      case 'print_xml':
+        console.log(`📝 BACKEND: XML utskrift begärd - Timestamp: ${Date.now()}`)
+        const { xml } = body
+        return await printXMLToPrinter(xml, printerIP || printerSettings.printerIP, printerPort || parseInt(printerSettings.printerPort), useSSL)
+
       default:
         return NextResponse.json({
           success: false,
@@ -153,6 +158,57 @@ async function testConnection(ip: string, port: number, useSSL: boolean = false)
       success: false,
       connected: false,
       error: errorMessage
+    })
+  }
+}
+
+async function printXMLToPrinter(xml: string, ip: string, port: number, useSSL: boolean = false) {
+  try {
+    console.log(`🔐 XML Printing to ${ip}:${port}${useSSL ? ' (SSL)' : ''}`)
+    console.log(`📄 XML Content: ${xml.substring(0, 200)}...`)
+    
+    const protocol = useSSL || port === 443 ? 'https' : 'http';
+    const endpoint = '/cgi-bin/epos/service.cgi';
+    const url = `${protocol}://${ip}:${port}${endpoint}`;
+    
+    console.log(`🔄 Sending XML to: ${url}`)
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/xml; charset=utf-8',
+        'Accept': 'text/xml, application/xml, */*',
+        'User-Agent': 'MOI-SUSHI-ePOS/1.0'
+      },
+      body: xml,
+      signal: AbortSignal.timeout(15000)
+    })
+    
+    const result = await response.text()
+    console.log(`📡 Printer response (${response.status}): ${result}`)
+    
+    if (response.ok && !result.includes('SchemaError')) {
+      console.log('✅ XML printing successful')
+      return NextResponse.json({
+        success: true,
+        message: 'XML-utskrift framgångsrik',
+        response: result
+      })
+    } else {
+      console.log(`❌ XML printing failed: ${result}`)
+      return NextResponse.json({
+        success: false,
+        error: `XML-utskrift misslyckades: ${result}`,
+        details: { status: response.status, response: result }
+      })
+    }
+    
+  } catch (error) {
+    console.error(`❌ XML printing error: ${error.message}`)
+    return NextResponse.json({
+      success: false,
+      error: `XML-utskrift fel: ${error.message}`,
+      details: error.message
     })
   }
 }

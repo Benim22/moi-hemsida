@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ePOS Real Test - Riktig XML Implementation</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .result { margin: 10px 0; padding: 10px; background: #f5f5f5; }
+        .error { color: red; }
+        .success { color: green; }
+        .info { color: blue; }
+        .warning { color: orange; }
+        button { padding: 10px 20px; margin: 10px 0; }
+        pre { background: #f8f8f8; padding: 10px; overflow-x: auto; }
+        input { padding: 5px; margin: 5px; }
+        .settings { background: #e8f4f8; padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>ePOS Real Test - Riktig XML Implementation</h1>
+    <p>Testar den riktiga ePOS SDK:n med korrekt XML-schema för Epson TM-T20III</p>
+    
+    <div class="settings">
+        <h3>Skrivarinställningar</h3>
+        <label>IP-adress: <input type="text" id="printerIP" value="192.168.1.103"></label><br>
+        <label>Port: <input type="number" id="printerPort" value="80"></label><br>
+        <label><input type="checkbox" id="useSSL"> Använd SSL (HTTPS)</label><br>
+        <button onclick="saveSettings()">Spara inställningar</button>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 1: Anslutningstest</h3>
+        <button onclick="testConnection()">Testa anslutning</button>
+        <div id="connection-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 2: Enkel textutskrift</h3>
+        <button onclick="testSimplePrint()">Testa enkel utskrift</button>
+        <div id="simple-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 3: Fullständigt kvitto</h3>
+        <button onclick="testFullReceipt()">Testa fullständigt kvitto</button>
+        <div id="receipt-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 4: Backend Proxy Test</h3>
+        <button onclick="testBackendProxy()">Testa backend proxy</button>
+        <div id="backend-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 5: Genererad XML</h3>
+        <button onclick="showGeneratedXML()">Visa genererad XML</button>
+        <div id="xml-result" class="result"></div>
+    </div>
+
+    <!-- Ladda ePOS SDK -->
+    <script src="/epos-2.js"></script>
+    <script>
+        let printerSettings = {
+            ip: '192.168.1.103',
+            port: 80,
+            useSSL: false
+        };
+        
+        function saveSettings() {
+            printerSettings.ip = document.getElementById('printerIP').value;
+            printerSettings.port = parseInt(document.getElementById('printerPort').value);
+            printerSettings.useSSL = document.getElementById('useSSL').checked;
+            
+            console.log('Inställningar sparade:', printerSettings);
+            alert('Inställningar sparade!');
+        }
+        
+        function loadSettings() {
+            document.getElementById('printerIP').value = printerSettings.ip;
+            document.getElementById('printerPort').value = printerSettings.port;
+            document.getElementById('useSSL').checked = printerSettings.useSSL;
+        }
+        
+        // Test 1: Anslutningstest
+        async function testConnection() {
+            const resultDiv = document.getElementById('connection-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Testar anslutning...</div>';
+            
+            try {
+                const epos = new window.epos.ePOSDevice();
+                
+                epos.connect(printerSettings.ip, printerSettings.port, (result) => {
+                    if (result === 'OK') {
+                        resultDiv.innerHTML = '<div class="success">✅ Anslutning framgångsrik!</div>';
+                        console.log('Anslutning OK');
+                    } else {
+                        resultDiv.innerHTML = `<div class="error">❌ Anslutning misslyckades: ${result}</div>`;
+                        console.log('Anslutning misslyckades:', result);
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Anslutningsfel:', error);
+                resultDiv.innerHTML = `<div class="error">❌ Anslutningsfel: ${error.message}</div>`;
+            }
+        }
+        
+        // Test 2: Enkel textutskrift
+        async function testSimplePrint() {
+            const resultDiv = document.getElementById('simple-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Testar enkel utskrift...</div>';
+            
+            try {
+                const epos = new window.epos.ePOSDevice();
+                
+                epos.connect(printerSettings.ip, printerSettings.port, (result) => {
+                    if (result === 'OK') {
+                        console.log('Anslutning OK för utskrift');
+                        
+                        const printer = epos.createDevice('local_printer', epos.DEVICE_TYPE_PRINTER, {}, (device, code) => {
+                            if (code === 'OK') {
+                                console.log('Skrivare skapad OK');
+                                
+                                // Skapa enkel utskrift
+                                const builder = new window.epos.ePOSBuilder();
+                                builder.addTextAlign(builder.ALIGN_CENTER);
+                                builder.addTextSize(1, 1);
+                                builder.addText('TEST UTSKRIFT\n');
+                                builder.addText('Moi Sushi & Poke Bowl\n');
+                                builder.addFeedLine(2);
+                                builder.addText('Detta är en testutskrift\n');
+                                builder.addText('från den nya ePOS SDK\n');
+                                builder.addFeedLine(3);
+                                builder.addCut();
+                                
+                                // Skicka till skrivaren
+                                device.builder = builder;
+                                device.send((response) => {
+                                    if (response.success) {
+                                        resultDiv.innerHTML = '<div class="success">✅ Enkel utskrift framgångsrik!</div>';
+                                        console.log('Utskrift framgångsrik:', response);
+                                    } else {
+                                        resultDiv.innerHTML = `<div class="error">❌ Utskrift misslyckades: ${response.message || response.code}</div>`;
+                                        console.log('Utskrift misslyckades:', response);
+                                    }
+                                });
+                                
+                            } else {
+                                resultDiv.innerHTML = `<div class="error">❌ Kunde inte skapa skrivare: ${code}</div>`;
+                            }
+                        });
+                        
+                    } else {
+                        resultDiv.innerHTML = `<div class="error">❌ Anslutning misslyckades: ${result}</div>`;
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Utskriftsfel:', error);
+                resultDiv.innerHTML = `<div class="error">❌ Utskriftsfel: ${error.message}</div>`;
+            }
+        }
+        
+        // Test 3: Fullständigt kvitto
+        async function testFullReceipt() {
+            const resultDiv = document.getElementById('receipt-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Testar fullständigt kvitto...</div>';
+            
+            try {
+                const epos = new window.epos.ePOSDevice();
+                
+                epos.connect(printerSettings.ip, printerSettings.port, (result) => {
+                    if (result === 'OK') {
+                        console.log('Anslutning OK för kvitto');
+                        
+                        const printer = epos.createDevice('local_printer', epos.DEVICE_TYPE_PRINTER, {}, (device, code) => {
+                            if (code === 'OK') {
+                                console.log('Skrivare skapad OK för kvitto');
+                                
+                                // Skapa fullständigt kvitto
+                                const builder = new window.epos.ePOSBuilder();
+                                
+                                // Header
+                                builder.addTextAlign(builder.ALIGN_CENTER);
+                                builder.addTextSize(1, 1);
+                                builder.addText('MOI SUSHI & POKE BOWL\n');
+                                builder.addTextSize(0, 0);
+                                builder.addText('================================\n');
+                                
+                                // Order info
+                                builder.addTextAlign(builder.ALIGN_LEFT);
+                                builder.addText('Order: #TEST-001\n');
+                                builder.addText('Datum: ' + new Date().toLocaleString('sv-SE') + '\n');
+                                builder.addText('Kund: Test Kund\n');
+                                builder.addText('Telefon: 0123-456789\n');
+                                builder.addText('--------------------------------\n');
+                                
+                                // Items
+                                builder.addText('2x Lax Nigiri\n');
+                                builder.addTextAlign(builder.ALIGN_RIGHT);
+                                builder.addText('160 kr\n');
+                                builder.addTextAlign(builder.ALIGN_LEFT);
+                                
+                                builder.addText('1x California Roll\n');
+                                builder.addTextAlign(builder.ALIGN_RIGHT);
+                                builder.addText('95 kr\n');
+                                builder.addTextAlign(builder.ALIGN_LEFT);
+                                
+                                builder.addText('1x Poke Bowl Lax\n');
+                                builder.addTextAlign(builder.ALIGN_RIGHT);
+                                builder.addText('135 kr\n');
+                                builder.addTextAlign(builder.ALIGN_LEFT);
+                                
+                                // Total
+                                builder.addText('================================\n');
+                                builder.addTextAlign(builder.ALIGN_RIGHT);
+                                builder.addTextSize(1, 1);
+                                builder.addText('TOTALT: 390 kr\n');
+                                builder.addTextSize(0, 0);
+                                
+                                // Footer
+                                builder.addTextAlign(builder.ALIGN_CENTER);
+                                builder.addText('--------------------------------\n');
+                                builder.addText('Tack för din beställning!\n');
+                                builder.addText('MOI SUSHI & POKE BOWL\n');
+                                builder.addText('www.moisushi.se\n');
+                                builder.addFeedLine(3);
+                                builder.addCut();
+                                
+                                // Skicka till skrivaren
+                                device.builder = builder;
+                                device.send((response) => {
+                                    if (response.success) {
+                                        resultDiv.innerHTML = '<div class="success">✅ Kvitto utskrift framgångsrik!</div>';
+                                        console.log('Kvitto utskrift framgångsrik:', response);
+                                    } else {
+                                        resultDiv.innerHTML = `<div class="error">❌ Kvitto utskrift misslyckades: ${response.message || response.code}</div>`;
+                                        console.log('Kvitto utskrift misslyckades:', response);
+                                    }
+                                });
+                                
+                            } else {
+                                resultDiv.innerHTML = `<div class="error">❌ Kunde inte skapa skrivare: ${code}</div>`;
+                            }
+                        });
+                        
+                    } else {
+                        resultDiv.innerHTML = `<div class="error">❌ Anslutning misslyckades: ${result}</div>`;
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Kvitto fel:', error);
+                resultDiv.innerHTML = `<div class="error">❌ Kvitto fel: ${error.message}</div>`;
+            }
+        }
+        
+        // Test 4: Backend Proxy Test
+        async function testBackendProxy() {
+            const resultDiv = document.getElementById('backend-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Testar backend proxy...</div>';
+            
+            try {
+                const testXML = `<?xml version="1.0" encoding="utf-8"?>
+<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+    <text align="center">BACKEND PROXY TEST</text>
+    <text>Moi Sushi & Poke Bowl</text>
+    <feed line="2"/>
+    <text>Detta är en test via backend proxy</text>
+    <feed line="3"/>
+    <cut type="feed"/>
+</epos-print>`;
+                
+                const response = await fetch('/api/printer', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action: 'print_xml',
+                        printerIP: printerSettings.ip,
+                        printerPort: printerSettings.port,
+                        xml: testXML,
+                        useSSL: printerSettings.useSSL
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    resultDiv.innerHTML = '<div class="success">✅ Backend proxy utskrift framgångsrik!</div>';
+                    console.log('Backend proxy framgångsrik:', result);
+                } else {
+                    resultDiv.innerHTML = `<div class="error">❌ Backend proxy misslyckades: ${result.error}</div>`;
+                    console.log('Backend proxy misslyckades:', result);
+                }
+                
+            } catch (error) {
+                console.error('Backend proxy fel:', error);
+                resultDiv.innerHTML = `<div class="error">❌ Backend proxy fel: ${error.message}</div>`;
+            }
+        }
+        
+        // Test 5: Visa genererad XML
+        async function showGeneratedXML() {
+            const resultDiv = document.getElementById('xml-result');
+            resultDiv.innerHTML = '<div class="info">🔄 Genererar XML...</div>';
+            
+            try {
+                const builder = new window.epos.ePOSBuilder();
+                
+                // Skapa test XML
+                builder.addTextAlign(builder.ALIGN_CENTER);
+                builder.addTextSize(1, 1);
+                builder.addText('MOI SUSHI & POKE BOWL\n');
+                builder.addTextSize(0, 0);
+                builder.addText('================================\n');
+                builder.addTextAlign(builder.ALIGN_LEFT);
+                builder.addText('Order: #TEST-001\n');
+                builder.addText('Datum: ' + new Date().toLocaleString('sv-SE') + '\n');
+                builder.addText('--------------------------------\n');
+                builder.addText('1x Test Item\n');
+                builder.addTextAlign(builder.ALIGN_RIGHT);
+                builder.addText('100 kr\n');
+                builder.addTextAlign(builder.ALIGN_LEFT);
+                builder.addText('================================\n');
+                builder.addTextAlign(builder.ALIGN_RIGHT);
+                builder.addTextSize(1, 1);
+                builder.addText('TOTALT: 100 kr\n');
+                builder.addTextAlign(builder.ALIGN_CENTER);
+                builder.addTextSize(0, 0);
+                builder.addText('Tack för din beställning!\n');
+                builder.addFeedLine(3);
+                builder.addCut();
+                
+                const xml = builder.toString();
+                
+                resultDiv.innerHTML = `
+                    <div class="success">✅ XML genererad framgångsrikt!</div>
+                    <h4>Genererad XML:</h4>
+                    <pre>${xml}</pre>
+                `;
+                
+                console.log('Genererad XML:', xml);
+                
+            } catch (error) {
+                console.error('XML generering fel:', error);
+                resultDiv.innerHTML = `<div class="error">❌ XML generering fel: ${error.message}</div>`;
+            }
+        }
+        
+        // Ladda inställningar vid start
+        window.addEventListener('load', () => {
+            loadSettings();
+            console.log('ePOS Real Test laddad');
+        });
+    </script>
+</body>
+</html> 

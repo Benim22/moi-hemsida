@@ -2144,86 +2144,93 @@ Utvecklad av Skaply
           setPrinterStatus(prev => ({ ...prev, connected: true, error: null }))
           
           try {
-            const printer = epos.createDevice('local_printer', epos.DEVICE_TYPE_PRINTER)
-            
-            // Generate text receipt for Epson TM-T20III
-            const textReceipt = generatePlainTextReceipt(order)
-            
-            // Use ePOS Builder for proper ESC/POS formatting
-            const builder = new window.epos.ePOSBuilder()
-            
-            // Initialize printer
-            builder.addTextAlign(builder.ALIGN_CENTER)
-            
-            // Add header
-            builder.addTextSize(2, 1)
-            builder.addText('Moi Sushi & Poke Bowl\n')
-            builder.addTextSize(1, 1)
-            builder.addText('================================\n')
-            
-            // Order details
-            builder.addTextAlign(builder.ALIGN_LEFT)
-            builder.addText(`Order: #${order.order_number}\n`)
-            builder.addText(`Datum: ${new Date(order.created_at).toLocaleString('sv-SE')}\n`)
-            builder.addText(`Kund: ${order.profiles?.name || order.customer_name || 'Gast'}\n`)
-            
-            const phone = order.profiles?.phone || order.phone
-            if (phone) {
-              builder.addText(`Telefon: ${phone}\n`)
-            }
-            
-            builder.addText('--------------------------------\n')
-            
-            // Items
-            const items = order.cart_items || order.items
-            const itemsArray = typeof items === 'string' ? JSON.parse(items) : items || []
-            
-            itemsArray.forEach(item => {
-              const itemTotal = (item.price || 0) * (item.quantity || 1)
-              builder.addText(`${item.quantity}x ${item.name}\n`)
-              builder.addTextAlign(builder.ALIGN_RIGHT)
-              builder.addText(`${itemTotal.toFixed(0)} kr\n`)
-              builder.addTextAlign(builder.ALIGN_LEFT)
-              
-              // Extras
-              if (item.extras?.length) {
-                item.extras.forEach(extra => {
-                  const extraTotal = (extra.price || 0) * (item.quantity || 1)
-                  builder.addText(`  + ${extra.name} +${extraTotal.toFixed(0)} kr\n`)
+            const printer = epos.createDevice('local_printer', epos.DEVICE_TYPE_PRINTER, {}, (device, code) => {
+              if (code === 'OK') {
+                addDebugLog('✅ Skrivare skapad framgångsrikt', 'success')
+                
+                // Use ePOS Builder for proper XML formatting
+                const builder = new window.epos.ePOSBuilder()
+                
+                // Header
+                builder.addTextAlign(builder.ALIGN_CENTER)
+                builder.addTextSize(1, 1)
+                builder.addText('MOI SUSHI & POKE BOWL\n')
+                builder.addTextSize(0, 0)
+                builder.addText('================================\n')
+                
+                // Order details
+                builder.addTextAlign(builder.ALIGN_LEFT)
+                builder.addText(`Order: #${order.order_number}\n`)
+                builder.addText(`Datum: ${new Date(order.created_at).toLocaleString('sv-SE')}\n`)
+                builder.addText(`Kund: ${order.profiles?.name || order.customer_name || 'Gast'}\n`)
+                
+                const phone = order.profiles?.phone || order.phone
+                if (phone) {
+                  builder.addText(`Telefon: ${phone}\n`)
+                }
+                
+                builder.addText('--------------------------------\n')
+                
+                // Items
+                const items = order.cart_items || order.items
+                const itemsArray = typeof items === 'string' ? JSON.parse(items) : items || []
+                
+                itemsArray.forEach(item => {
+                  const itemTotal = (item.price || 0) * (item.quantity || 1)
+                  builder.addText(`${item.quantity}x ${item.name}\n`)
+                  builder.addTextAlign(builder.ALIGN_RIGHT)
+                  builder.addText(`${itemTotal.toFixed(0)} kr\n`)
+                  builder.addTextAlign(builder.ALIGN_LEFT)
+                  
+                  // Extras
+                  if (item.extras?.length) {
+                    item.extras.forEach(extra => {
+                      const extraTotal = (extra.price || 0) * (item.quantity || 1)
+                      builder.addText(`  + ${extra.name} +${extraTotal.toFixed(0)} kr\n`)
+                    })
+                  }
                 })
-              }
-            })
-            
-            // Total
-            builder.addText('================================\n')
-            builder.addTextAlign(builder.ALIGN_RIGHT)
-            builder.addTextSize(2, 1)
-            builder.addText(`TOTALT: ${order.total_price || order.amount} kr\n`)
-            builder.addTextSize(1, 1)
-            builder.addTextAlign(builder.ALIGN_CENTER)
-            builder.addText('\n')
-            builder.addText(`Leveransmetod: ${order.delivery_type === 'delivery' ? 'Leverans' : 'Avhamtning'}\n`)
-            builder.addText('\nTack for ditt kop!\n')
-            builder.addText('Utvecklad av Skaply\n')
-            builder.addText('\n')
-            
-            // Cut paper
-            builder.addCut(builder.CUT_FEED)
-            
-            printer.addCommand(builder.toString())
-            
-            printer.send((result) => {
-              if (result.success) {
-                addDebugLog(`✅ Kvitto utskrivet på Epson TM-T20III för order #${order.order_number}`, 'success')
-                setPrinterStatus(prev => ({ ...prev, lastTest: new Date() }))
-                showBrowserNotification(
-                  '🖨️ Kvitto utskrivet!', 
-                  `Order #${order.order_number} utskrivet på Epson TM-T20III`,
-                  false
-                )
+                
+                // Total
+                builder.addText('================================\n')
+                builder.addTextAlign(builder.ALIGN_RIGHT)
+                builder.addTextSize(1, 1)
+                builder.addText(`TOTALT: ${order.total_price || order.amount} kr\n`)
+                builder.addTextSize(0, 0)
+                builder.addTextAlign(builder.ALIGN_CENTER)
+                builder.addText('\n')
+                builder.addText(`Leveransmetod: ${order.delivery_type === 'delivery' ? 'Leverans' : 'Avhamtning'}\n`)
+                builder.addText('\nTack för ditt köp!\n')
+                builder.addText('MOI SUSHI & POKE BOWL\n')
+                builder.addText('www.moisushi.se\n')
+                builder.addFeedLine(3)
+                
+                // Cut paper
+                builder.addCut(builder.CUT_FEED)
+                
+                // Set builder on device and send
+                device.builder = builder
+                device.send((result) => {
+                  if (result.success) {
+                    addDebugLog(`✅ Kvitto utskrivet på Epson TM-T20III för order #${order.order_number}`, 'success')
+                    setPrinterStatus(prev => ({ ...prev, lastTest: new Date() }))
+                    showBrowserNotification(
+                      '🖨️ Kvitto utskrivet!', 
+                      `Order #${order.order_number} utskrivet på Epson TM-T20III`,
+                      false
+                    )
+                  } else {
+                    addDebugLog(`❌ Utskriftsfel på Epson: ${result.code} - ${result.status}`, 'error')
+                    setPrinterStatus(prev => ({ ...prev, error: `Epson fel: ${result.code}` }))
+                    
+                    // Fallback to simulator
+                    const receipt = generateMockEPOSReceipt(order)
+                    simulatePrintReceipt(receipt, order)
+                  }
+                })
               } else {
-                addDebugLog(`❌ Utskriftsfel på Epson: ${result.code} - ${result.status}`, 'error')
-                setPrinterStatus(prev => ({ ...prev, error: `Epson fel: ${result.code}` }))
+                addDebugLog(`❌ Kunde inte skapa skrivare: ${code}`, 'error')
+                setPrinterStatus(prev => ({ ...prev, error: `Skrivare skapande fel: ${code}` }))
                 
                 // Fallback to simulator
                 const receipt = generateMockEPOSReceipt(order)
