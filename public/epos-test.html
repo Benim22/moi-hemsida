@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ePOS Direct HTTPS Test - Print Commands</title>
+    <title>ePOS Direct HTTPS Test - Device Formats</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
@@ -11,34 +11,41 @@
         .error { color: red; }
         .success { color: green; }
         button { padding: 10px 20px; margin: 10px 0; }
+        .progress { color: blue; }
     </style>
 </head>
 <body>
-    <h1>ePOS Direct HTTPS Test - Print Commands</h1>
-    <p>Testing olika XML-format med faktiska print-kommandon</p>
+    <h1>ePOS Direct HTTPS Test - Device Formats</h1>
+    <p>Testing XML-format med device-specifikationer (DeviceNotFound → behöver device!)</p>
     
     <div class="test-section">
-        <h3>Test 1: Basic Print Command</h3>
+        <h3>Test 1: SOAP med Device ID</h3>
         <button onclick="testFormat1()">Test Format 1</button>
         <div id="result1" class="result"></div>
-    </div>
-    
+        </div>
+        
     <div class="test-section">
-        <h3>Test 2: SOAP Wrapped Print</h3>
+        <h3>Test 2: Print med Device Parameter</h3>
         <button onclick="testFormat2()">Test Format 2</button>
         <div id="result2" class="result"></div>
-    </div>
-    
+        </div>
+        
     <div class="test-section">
-        <h3>Test 3: Print with Parameters</h3>
+        <h3>Test 3: EposDevice Format</h3>
         <button onclick="testFormat3()">Test Format 3</button>
         <div id="result3" class="result"></div>
-    </div>
-    
+        </div>
+        
     <div class="test-section">
-        <h3>Test 4: Complete Print Document</h3>
+        <h3>Test 4: Simple Print Request</h3>
         <button onclick="testFormat4()">Test Format 4</button>
         <div id="result4" class="result"></div>
+        </div>
+        
+    <div class="test-section">
+        <h3>Test 5: Status Request</h3>
+        <button onclick="testFormat5()">Test Format 5</button>
+        <div id="result5" class="result"></div>
     </div>
 
     <script>
@@ -52,7 +59,7 @@
             const defaultHeaders = {
                 'Content-Type': 'application/soap+xml; charset=utf-8',
                 'Accept': 'application/soap+xml, application/xml, text/xml',
-                'SOAPAction': ''
+                'SOAPAction': 'print'
             };
             
             try {
@@ -82,17 +89,25 @@
         
         async function testFormat1() {
             const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
-    <text>Hello World Test</text>
-    <feed line="1"/>
-    <cut/>
-</epos-print>`;
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:epos="http://www.epson-pos.com/schemas/2011/03/epos-print">
+    <soap:Body>
+        <epos:printRequest>
+            <epos:devid>local_printer</epos:devid>
+            <epos:epos-print>
+                <epos:text>SOAP Device Test</epos:text>
+                <epos:feed line="1"/>
+                <epos:cut/>
+            </epos:epos-print>
+        </epos:printRequest>
+    </soap:Body>
+</soap:Envelope>`;
             
-            const result = await testPrinterFormat('Format 1 - Basic Print', xml);
+            const result = await testPrinterFormat('Format 1 - SOAP Device', xml);
             document.getElementById('result1').innerHTML = `
-                <strong>Format 1 - Basic Print Command:</strong><br>
+                <strong>Format 1 - SOAP med Device ID:</strong><br>
                 ${result.success ? 
-                    `<span class="success">✅ SUCCESS! Print command accepted</span>` : 
+                    `<span class="success">✅ SUCCESS! SOAP device print accepted</span>` : 
                     `<span class="error">❌ ERROR: ${result.error}</span>`
                 }<br>
                 <small>Response: ${result.response}</small>
@@ -101,22 +116,17 @@
         
         async function testFormat2() {
             const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
-               xmlns:epos="http://www.epson-pos.com/schemas/2011/03/epos-print">
-    <soap:Body>
-        <epos:epos-print>
-            <epos:text>SOAP Wrapped Test</epos:text>
-            <epos:feed line="1"/>
-            <epos:cut/>
-        </epos:epos-print>
-    </soap:Body>
-</soap:Envelope>`;
+<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print" devid="local_printer">
+    <text>Device Parameter Test</text>
+    <feed line="1"/>
+    <cut/>
+</epos-print>`;
             
-            const result = await testPrinterFormat('Format 2 - SOAP Wrapped', xml);
+            const result = await testPrinterFormat('Format 2 - Device Parameter', xml);
             document.getElementById('result2').innerHTML = `
-                <strong>Format 2 - SOAP Wrapped Print:</strong><br>
+                <strong>Format 2 - Print med Device Parameter:</strong><br>
                 ${result.success ? 
-                    `<span class="success">✅ SUCCESS! SOAP print command accepted</span>` : 
+                    `<span class="success">✅ SUCCESS! Device parameter accepted</span>` : 
                     `<span class="error">❌ ERROR: ${result.error}</span>`
                 }<br>
                 <small>Response: ${result.response}</small>
@@ -125,19 +135,26 @@
         
         async function testFormat3() {
             const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
-    <text lang="sv" smooth="true">Moi Sushi Test</text>
-    <feed line="2"/>
-    <text align="center">Kvitto Test</text>
-    <feed line="1"/>
-    <cut type="feed"/>
-</epos-print>`;
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+    <soap:Body>
+        <printjob xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+            <devid>TM-T20III</devid>
+            <printdata>
+                <epos-print>
+                    <text>EposDevice Test</text>
+                    <feed line="1"/>
+                    <cut/>
+                </epos-print>
+            </printdata>
+        </printjob>
+    </soap:Body>
+</soap:Envelope>`;
             
-            const result = await testPrinterFormat('Format 3 - With Parameters', xml);
+            const result = await testPrinterFormat('Format 3 - EposDevice', xml);
             document.getElementById('result3').innerHTML = `
-                <strong>Format 3 - Print with Parameters:</strong><br>
+                <strong>Format 3 - EposDevice Format:</strong><br>
                 ${result.success ? 
-                    `<span class="success">✅ SUCCESS! Parametrized print accepted</span>` : 
+                    `<span class="success">✅ SUCCESS! EposDevice format accepted</span>` : 
                     `<span class="error">❌ ERROR: ${result.error}</span>`
                 }<br>
                 <small>Response: ${result.response}</small>
@@ -146,35 +163,42 @@
         
         async function testFormat4() {
             const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
-    <text>=============================</text>
-    <feed line="1"/>
-    <text align="center" width="2" height="2">MOI SUSHI</text>
-    <feed line="1"/>
-    <text>=============================</text>
-    <feed line="1"/>
-    <text>Test Order #12345</text>
-    <feed line="1"/>
-    <text>Datum: 2024-01-15 14:30</text>
-    <feed line="2"/>
-    <text>1x California Roll     120 SEK</text>
-    <feed line="1"/>
-    <text>1x Lax Nigiri         80 SEK</text>
-    <feed line="1"/>
-    <text>-----------------------------</text>
-    <feed line="1"/>
-    <text>Total:                200 SEK</text>
-    <feed line="2"/>
-    <text>Tack för ditt köp!</text>
-    <feed line="3"/>
-    <cut/>
-</epos-print>`;
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+    <soap:Body>
+        <print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+            <text>Simple Test</text>
+            <feed line="1"/>
+            <cut/>
+        </print>
+    </soap:Body>
+</soap:Envelope>`;
             
-            const result = await testPrinterFormat('Format 4 - Complete Receipt', xml);
+            const result = await testPrinterFormat('Format 4 - Simple Print', xml);
             document.getElementById('result4').innerHTML = `
-                <strong>Format 4 - Complete Print Document:</strong><br>
+                <strong>Format 4 - Simple Print Request:</strong><br>
                 ${result.success ? 
-                    `<span class="success">✅ SUCCESS! Complete receipt printed!</span>` : 
+                    `<span class="success">✅ SUCCESS! Simple print accepted</span>` : 
+                    `<span class="error">❌ ERROR: ${result.error}</span>`
+                }<br>
+                <small>Response: ${result.response}</small>
+            `;
+        }
+        
+        async function testFormat5() {
+            const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+    <soap:Body>
+        <status xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print"/>
+    </soap:Body>
+</soap:Envelope>`;
+            
+            const result = await testPrinterFormat('Format 5 - Status', xml, {
+                'SOAPAction': 'status'
+            });
+            document.getElementById('result5').innerHTML = `
+                <strong>Format 5 - Status Request:</strong><br>
+                ${result.success ? 
+                    `<span class="success">✅ SUCCESS! Status request accepted</span>` : 
                     `<span class="error">❌ ERROR: ${result.error}</span>`
                 }<br>
                 <small>Response: ${result.response}</small>

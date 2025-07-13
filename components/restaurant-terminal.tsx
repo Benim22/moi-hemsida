@@ -2038,9 +2038,28 @@ Utvecklad av Skaply
       
       addDebugLog(`🌍 Miljö: ${isLocalhost ? 'Localhost' : isProduction ? 'Produktion (iPad Bridge)' : 'Utveckling'}`, 'info')
 
-              // Production mode - use backend API for reliable printing
+              // Production mode - try new direct HTTPS method first, then fallback to backend
         if (isProduction) {
-          addDebugLog('🌐 Produktionsmiljö: Använder backend API för utskrift', 'info')
+          addDebugLog('🌐 Produktionsmiljö: Provar direkt HTTPS-anslutning till skrivaren', 'info')
+          
+          // Try direct HTTPS to printer first
+          try {
+            const { printerService } = await import('@/lib/printer-service')
+            const result = await printerService.printReceipt(order)
+            
+            if (result.success) {
+              addDebugLog('✅ Direkt HTTPS-utskrift framgångsrik', 'success')
+              return
+            } else {
+              addDebugLog(`⚠️ Direkt HTTPS-utskrift misslyckades: ${result.error}`, 'warning')
+              addDebugLog('🔄 Prövar backend API som fallback...', 'info')
+            }
+          } catch (error) {
+            addDebugLog(`⚠️ Direkt HTTPS-utskrift kraschade: ${error.message}`, 'warning')
+            addDebugLog('🔄 Prövar backend API som fallback...', 'info')
+          }
+          
+          // Fallback to backend API
           try {
             const backendSuccess = await printBackendReceipt(order)
             if (backendSuccess) {
