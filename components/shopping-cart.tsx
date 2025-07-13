@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { useCart, type CartItem as CartItemType } from "@/context/cart-context"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 // Sequential order number generation
 const generateOrderNumber = async () => {
   try {
@@ -437,6 +438,246 @@ export function ShoppingCart() {
   )
 }
 
+interface ExtraItem {
+  id: string
+  name: string
+  price: number
+  category: string
+  image_url?: string
+}
+
+function ExtrasDialog({ 
+  isOpen, 
+  onClose, 
+  onContinue 
+}: { 
+  isOpen: boolean
+  onClose: () => void
+  onContinue: () => void
+}) {
+  const [extrasItems, setExtrasItems] = useState<ExtraItem[]>([])
+  const [selectedExtras, setSelectedExtras] = useState<{[key: string]: number}>({})
+  const [isLoading, setIsLoading] = useState(true)
+  const { addItem } = useCart()
+  const { toast } = useToast()
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchExtrasItems()
+    }
+  }, [isOpen])
+
+  const fetchExtrasItems = async () => {
+    try {
+      setIsLoading(true)
+      const { data, error } = await supabase
+        .from('menu_items')
+        .select('id, name, price, category, image_url')
+        .in('category', ['Såser', 'Drycker', 'Smått och Gott'])
+        .order('category', { ascending: true })
+        .order('price', { ascending: true })
+
+      if (error) throw error
+      setExtrasItems(data || [])
+    } catch (error) {
+      console.error('Error fetching extras items:', error)
+      toast({
+        title: "Fel",
+        description: "Kunde inte hämta tillbehör. Försök igen.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleAddExtra = (item: ExtraItem) => {
+    setSelectedExtras(prev => ({
+      ...prev,
+      [item.id]: (prev[item.id] || 0) + 1
+    }))
+  }
+
+  const handleRemoveExtra = (itemId: string) => {
+    setSelectedExtras(prev => {
+      const newExtras = { ...prev }
+      if (newExtras[itemId] > 1) {
+        newExtras[itemId] -= 1
+      } else {
+        delete newExtras[itemId]
+      }
+      return newExtras
+    })
+  }
+
+  const handleContinueToCheckout = () => {
+    // Lägg till valda extras till korgen
+    Object.entries(selectedExtras).forEach(([itemId, quantity]) => {
+      const item = extrasItems.find(i => i.id === itemId)
+      if (item) {
+        for (let i = 0; i < quantity; i++) {
+          // Create a simple hash from UUID for cart compatibility
+          const hash = item.id.split('-').join('').slice(0, 8)
+          const numericId = parseInt(hash, 16) % 999999999
+          
+          addItem({
+            id: numericId,
+            name: item.name,
+            price: parseFloat(item.price.toString()),
+            image: item.image_url || "/placeholder.svg",
+            category: item.category
+          })
+        }
+      }
+    })
+
+    const totalExtras = Object.values(selectedExtras).reduce((sum, qty) => sum + qty, 0)
+    if (totalExtras > 0) {
+      toast({
+        title: "Tillägg tillagda!",
+        description: `${totalExtras} tillägg har lagts till i din kundvagn.`,
+        variant: "default",
+      })
+    }
+
+    onContinue()
+  }
+
+  const groupedItems = extrasItems.reduce((acc, item) => {
+    if (!acc[item.category]) {
+      acc[item.category] = []
+    }
+    acc[item.category].push(item)
+    return acc
+  }, {} as {[key: string]: ExtraItem[]})
+
+  const getTotalExtrasPrice = () => {
+    return Object.entries(selectedExtras).reduce((total, [itemId, quantity]) => {
+      const item = extrasItems.find(i => i.id === itemId)
+      if (item) {
+        return total + (parseFloat(item.price.toString()) * quantity)
+      }
+      return total
+    }, 0)
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-black border-[#e4d699]/30 text-white">
+        <DialogHeader>
+          <DialogTitle className="text-2xl font-bold text-[#e4d699] text-center">
+            🍱 Vill du köpa till något extra?
+          </DialogTitle>
+          <p className="text-white/70 text-center mt-2">
+            Förbättra din upplevelse med våra populära tillbehör
+          </p>
+        </DialogHeader>
+        
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#e4d699]"></div>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {Object.entries(groupedItems).map(([category, items]) => (
+              <div key={category} className="space-y-4">
+                <h3 className="text-xl font-semibold text-[#e4d699] flex items-center gap-2">
+                  {category === 'Såser' && '🌶️'} 
+                  {category === 'Drycker' && '🥤'} 
+                  {category === 'Smått och Gott' && '🥟'}
+                  {category}
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {items.map((item) => (
+                    <div key={item.id} className="bg-black/30 rounded-lg p-4 border border-[#e4d699]/20 hover:border-[#e4d699]/40 transition-all">
+                      <div className="flex items-start gap-3">
+                        <div className="h-16 w-16 rounded-md overflow-hidden flex-shrink-0 bg-black/30 border border-[#e4d699]/10">
+                          <img
+                            src={item.image_url || "/placeholder.svg"}
+                            alt={item.name}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-medium text-white text-sm break-words">
+                            {item.name}
+                          </h4>
+                          <p className="text-[#e4d699] font-semibold text-lg">
+                            {item.price} kr
+                          </p>
+                          
+                          <div className="flex items-center gap-2 mt-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleRemoveExtra(item.id)}
+                              disabled={!selectedExtras[item.id]}
+                              className="h-8 w-8 p-0 border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                            >
+                              <Minus className="h-4 w-4" />
+                            </Button>
+                            
+                            <span className="text-white font-medium min-w-[2ch] text-center">
+                              {selectedExtras[item.id] || 0}
+                            </span>
+                            
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleAddExtra(item)}
+                              className="h-8 w-8 p-0 border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            
+            <div className="sticky bottom-0 bg-black/80 backdrop-blur-sm border-t border-[#e4d699]/20 p-4 flex items-center justify-between">
+              <div className="text-white">
+                {Object.keys(selectedExtras).length > 0 && (
+                  <p className="text-lg">
+                    <span className="text-white/70">Tillägg totalt: </span>
+                    <span className="text-[#e4d699] font-bold">{getTotalExtrasPrice()} kr</span>
+                  </p>
+                )}
+              </div>
+              
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedExtras({})
+                    onContinue()
+                  }}
+                  className="border-gray-500/30 text-gray-300 hover:bg-gray-500/10"
+                >
+                  Hoppa över
+                </Button>
+                
+                <Button
+                  onClick={handleContinueToCheckout}
+                  className="bg-[#e4d699] text-black hover:bg-[#e4d699]/90 font-semibold px-6"
+                >
+                  {Object.keys(selectedExtras).length > 0 ? 'Lägg till & fortsätt' : 'Fortsätt'}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function CheckoutView({ onBack }: { onBack: () => void }) {
   const { items, totalPrice, clearCart, setIsCartOpen } = useCart()
   const { toast } = useToast()
@@ -460,6 +701,10 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
   // Store order items locally to avoid them disappearing after clearCart()
   const [orderItems, setOrderItems] = useState([])
   const [orderTotalPrice, setOrderTotalPrice] = useState(0)
+  
+  // Extras dialog states
+  const [showExtrasDialog, setShowExtrasDialog] = useState(true) // Show immediately when checkout opens
+  const [extrasDialogCompleted, setExtrasDialogCompleted] = useState(false)
 
   // Auto-fill form when user/profile data is available
   useEffect(() => {
@@ -483,6 +728,17 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
     }
     generateNumber()
   }, [])
+
+  // Handle extras dialog
+  const handleExtrasDialogClose = () => {
+    setShowExtrasDialog(false)
+    setExtrasDialogCompleted(true)
+  }
+
+  const handleExtrasDialogContinue = () => {
+    setShowExtrasDialog(false)
+    setExtrasDialogCompleted(true)
+  }
 
   // Helper functions for pickup time
   const getTodayDate = () => {
@@ -888,6 +1144,17 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
           Bekräfta beställning
         </Button>
       </div>
+    )
+  }
+
+  // Show extras dialog first
+  if (showExtrasDialog) {
+    return (
+      <ExtrasDialog
+        isOpen={showExtrasDialog}
+        onClose={handleExtrasDialogClose}
+        onContinue={handleExtrasDialogContinue}
+      />
     )
   }
 

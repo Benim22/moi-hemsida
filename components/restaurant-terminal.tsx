@@ -2463,6 +2463,52 @@ Utvecklad av Skaply
     }
   }
 
+  // Fetch order details from notification
+  const fetchOrderFromNotification = async (orderId) => {
+    try {
+      // First check if order exists in current orders array
+      const existingOrder = orders.find(order => order.id === orderId)
+      if (existingOrder) {
+        console.log('🔍 Hittade order i lokal cache:', existingOrder)
+        setSelectedOrder(existingOrder)
+        return
+      }
+      
+      // If not found locally, fetch from database
+      console.log('🔍 Hämtar order från databas för order_id:', orderId)
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          profiles:customer_id (
+            id,
+            name,
+            email,
+            phone
+          )
+        `)
+        .eq('id', orderId)
+        .single()
+      
+      if (error) {
+        console.error('❌ Fel vid hämtning av order:', error)
+        addDebugLog(`Fel vid hämtning av order: ${error.message}`, 'error')
+        return
+      }
+      
+      if (data) {
+        console.log('✅ Order hämtad från databas:', data)
+        setSelectedOrder(data)
+      } else {
+        console.log('❌ Order hittades inte i databas')
+        addDebugLog('Order hittades inte i databas', 'warning')
+      }
+    } catch (error) {
+      console.error('❌ Fel vid hämtning av order från notifikation:', error)
+      addDebugLog(`Fel vid hämtning av order: ${error.message}`, 'error')
+    }
+  }
+
   // Filter orders based on selected filters
   const filteredOrders = orders.filter(order => {
     // Location filter
@@ -3125,7 +3171,20 @@ Utvecklad av Skaply
             <h3 className="text-base sm:text-lg font-medium mb-4 text-white">Senaste Notiser</h3>
             <div className="space-y-3">
               {notifications.slice(0, 5).map(notification => (
-                <Card key={notification.id} className="border border-[#e4d699]/30 bg-black/30">
+                <Card 
+                  key={notification.id} 
+                  className={`border border-[#e4d699]/30 bg-black/30 transition-all duration-200 ${
+                    notification.metadata?.order_id 
+                      ? 'cursor-pointer hover:bg-black/50 hover:border-[#e4d699]/50 hover:scale-105' 
+                      : ''
+                  }`}
+                  onClick={() => {
+                    if (notification.metadata?.order_id) {
+                      console.log('🔍 Klickade på notifikation med order_id:', notification.metadata.order_id)
+                      fetchOrderFromNotification(notification.metadata.order_id)
+                    }
+                  }}
+                >
                   <CardContent className="p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
@@ -3134,6 +3193,11 @@ Utvecklad av Skaply
                         <p className="text-xs text-white/40 mt-2">
                           {new Date(notification.created_at).toLocaleString('sv-SE')}
                         </p>
+                        {notification.metadata?.order_id && (
+                          <p className="text-xs text-[#e4d699]/80 mt-1">
+                            👆 Klicka för att visa order-detaljer
+                          </p>
+                        )}
                       </div>
                       <span className="text-sm sm:text-lg flex-shrink-0">
                         {notification.type === 'order' && '🍱'}
