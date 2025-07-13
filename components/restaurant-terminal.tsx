@@ -1407,41 +1407,46 @@ export default function RestaurantTerminal() {
     const items = order.cart_items || order.items
     const itemsArray = typeof items === 'string' ? JSON.parse(items) : items || []
     
-    let receiptText = `
-═══════════════════════════════════
-      Moi Sushi & Poké Bowl
-═══════════════════════════════════
-Order: #${order.order_number}
-Datum: ${new Date(order.created_at).toLocaleString('sv-SE')}
-Kund: ${order.profiles?.name || order.customer_name || 'Gäst'}
-${order.profiles?.phone || order.phone ? `Telefon: ${order.profiles?.phone || order.phone}` : ''}
-Plats: ${getLocationName(order.location)}
-───────────────────────────────────
-
-BESTÄLLDA VAROR:
+    let receiptText = `MOI SUSHI & POKE BOWL
+--------------------------------
+ORDER: #${order.order_number}
+DATUM: ${new Date(order.created_at).toLocaleString('sv-SE')}
+KUND: ${order.profiles?.name || order.customer_name || 'Gäst'}
+${order.profiles?.phone || order.phone ? `TEL: ${order.profiles?.phone || order.phone}` : ''}
+HÄMTNING: ${order.delivery_type === 'delivery' ? 'LEVERANS' : 'AVHÄMTNING'}
+HÄMTNINGSTID: ${new Date(order.estimated_pickup_time || new Date(Date.now() + 30*60000)).toLocaleTimeString('sv-SE', {hour: '2-digit', minute: '2-digit'})}
+${order.estimated_delivery_time ? `(Beräknad: +30 min)` : ''}
+--------------------------------
+BESTÄLLNING:
 ${itemsArray.map(item => {
   const itemTotal = (item.price || 0) * (item.quantity || 1)
-  let itemText = `${item.quantity}x ${item.name} - ${itemTotal} kr`
+  let itemText = `${item.quantity}x ${item.name}`
+  itemText += `${' '.repeat(Math.max(1, 25 - itemText.length))}${itemTotal} kr`
   
   if (item.extras?.length) {
     item.extras.forEach(extra => {
       const extraTotal = (extra.price || 0) * (item.quantity || 1)
-      itemText += `\n  + ${extra.name} +${extraTotal} kr`
+      itemText += `\n  + ${extra.name}${' '.repeat(Math.max(1, 23 - extra.name.length))}${extraTotal} kr`
     })
   }
   
   return itemText
 }).join('\n')}
-
-───────────────────────────────────
+--------------------------------
 TOTALT: ${order.total_price || order.amount} kr
-Leveransmetod: ${order.delivery_type === 'delivery' ? 'Leverans' : 'Avhämtning'}
 
-${order.special_instructions || order.notes ? `Speciella önskemål:\n${order.special_instructions ? `🚨 VIKTIGT: ${order.special_instructions}\n` : ''}${order.notes ? `${order.notes}\n` : ''}` : ''}
-Tack för ditt köp!
+🚨🚨🚨 SPECIALÖNSKEMÅL 🚨🚨🚨
+${order.special_instructions ? `VIKTIGT: ${order.special_instructions}` : 'INGA SPECIELLA ÖNSKEMÅL'}
+${order.notes ? `NOTERINGAR: ${order.notes}` : ''}
+
+Betalning: I restaurangen
+Restaurant: ${getLocationName(order.location)}
+
+TACK FÖR DITT KÖP!
+Välkommen åter!
+Moi Sushi & Poké Bowl
 Utvecklad av Skaply
-═══════════════════════════════════
-    `.trim()
+`.trim()
     
     return receiptText
   }
@@ -1563,18 +1568,25 @@ Utvecklad av Skaply
       // Header
       builder
         .addTextAlign(builder.ALIGN_CENTER)
-        .addTextSize(2, 1)
-        .addText('Moi Sushi & Poké Bowl\n')
         .addTextSize(1, 1)
-        .addText('================================\n')
+        .addText('MOI SUSHI & POKE BOWL\n')
+        .addText('--------------------------------\n')
         .addTextAlign(builder.ALIGN_LEFT)
-        .addText(`Order: #${order.order_number}\n`)
-        .addText(`Datum: ${new Date(order.created_at).toLocaleString('sv-SE')}\n`)
-        .addText(`Kund: ${order.profiles?.name || order.customer_name || 'Gäst'}\n`)
+        .addText(`ORDER: #${order.order_number}\n`)
+        .addText(`DATUM: ${new Date(order.created_at).toLocaleString('sv-SE')}\n`)
+        .addText(`KUND: ${order.profiles?.name || order.customer_name || 'Gäst'}\n`)
       
       const phone = order.profiles?.phone || order.phone
       if (phone) {
-        builder.addText(`Telefon: ${phone}\n`)
+        builder.addText(`TEL: ${phone}\n`)
+      }
+      
+      builder
+        .addText(`HÄMTNING: ${order.delivery_type === 'delivery' ? 'LEVERANS' : 'AVHÄMTNING'}\n`)
+        .addText(`HÄMTNINGSTID: ${new Date(order.estimated_pickup_time || new Date(Date.now() + 30*60000)).toLocaleTimeString('sv-SE', {hour: '2-digit', minute: '2-digit'})}\n`)
+      
+      if (order.estimated_delivery_time) {
+        builder.addText('(Beräknad: +30 min)\n')
       }
       
       builder.addText('--------------------------------\n')
@@ -1606,26 +1618,32 @@ Utvecklad av Skaply
         })
       }
       
-      // Total
+      // Total and footer
       const finalTotal = order.total_price || order.amount
       builder
-        .addText('================================\n')
-        .addTextAlign(builder.ALIGN_RIGHT)
-        .addTextSize(2, 2)
-        .addText(`TOTALT: ${finalTotal} kr\n`)
+        .addText('--------------------------------\n')
+        .addTextAlign(builder.ALIGN_LEFT)
         .addTextSize(1, 1)
-        .addTextAlign(builder.ALIGN_CENTER)
-        .addText('\n')
-        .addText('Leveransmetod: ')
+        .addText(`TOTALT: ${finalTotal} kr\n`)
+        .addText('\n🚨🚨🚨 SPECIALÖNSKEMÅL 🚨🚨🚨\n')
       
-      if (order.delivery_type === 'delivery') {
-        builder.addText('Leverans\n')
+      // Special instructions - ALWAYS show this section
+      if (order.special_instructions) {
+        builder.addText(`VIKTIGT: ${order.special_instructions}\n`)
       } else {
-        builder.addText('Avhämtning\n')
+        builder.addText('INGA SPECIELLA ÖNSKEMÅL\n')
+      }
+      
+      if (order.notes) {
+        builder.addText(`NOTERINGAR: ${order.notes}\n`)
       }
       
       builder
-        .addText('\nTack för ditt köp!\n')
+        .addText('\nBetalning: I restaurangen\n')
+        .addText(`Restaurant: ${getLocationName(order.location)}\n`)
+        .addText('\nTACK FÖR DITT KÖP!\n')
+        .addText('Välkommen åter!\n')
+        .addText('Moi Sushi & Poké Bowl\n')
         .addText('Utvecklad av Skaply\n')
         .addText('\n')
         .addCut(builder.CUT_FEED)
@@ -1664,54 +1682,65 @@ Utvecklad av Skaply
     const itemsArray = typeof items === 'string' ? JSON.parse(items) : items || []
     
     let receiptText = ''
-    receiptText += '================================\n'
-    receiptText += '      Moi Sushi & Poke Bowl\n'
-    receiptText += '================================\n'
-    receiptText += `Order: #${order.order_number}\n`
-    receiptText += `Datum: ${new Date(order.created_at).toLocaleString('sv-SE')}\n`
-    receiptText += `Kund: ${order.profiles?.name || order.customer_name || 'Gast'}\n`
+    receiptText += 'MOI SUSHI & POKE BOWL\n'
+    receiptText += '--------------------------------\n'
+    receiptText += `ORDER: #${order.order_number}\n`
+    receiptText += `DATUM: ${new Date(order.created_at).toLocaleString('sv-SE')}\n`
+    receiptText += `KUND: ${order.profiles?.name || order.customer_name || 'Gäst'}\n`
     
     const phone = order.profiles?.phone || order.phone
     if (phone) {
-      receiptText += `Telefon: ${phone}\n`
+      receiptText += `TEL: ${phone}\n`
+    }
+    
+    receiptText += `HÄMTNING: ${order.delivery_type === 'delivery' ? 'LEVERANS' : 'AVHÄMTNING'}\n`
+    receiptText += `HÄMTNINGSTID: ${new Date(order.estimated_pickup_time || new Date(Date.now() + 30*60000)).toLocaleTimeString('sv-SE', {hour: '2-digit', minute: '2-digit'})}\n`
+    
+    if (order.estimated_delivery_time) {
+      receiptText += '(Beräknad: +30 min)\n'
     }
     
     receiptText += '--------------------------------\n'
+    receiptText += 'BESTÄLLNING:\n'
     
     // Items
     itemsArray.forEach(item => {
       const itemTotal = (item.price || 0) * (item.quantity || 1)
-      receiptText += `${item.quantity}x ${item.name}\n`
-      receiptText += `                    ${itemTotal.toFixed(2)} kr\n`
+      let itemLine = `${item.quantity}x ${item.name}`
+      const spaces = Math.max(1, 25 - itemLine.length)
+      receiptText += `${itemLine}${' '.repeat(spaces)}${itemTotal} kr\n`
       
       // Extras
       if (item.extras?.length) {
         item.extras.forEach(extra => {
           const extraTotal = (extra.price || 0) * (item.quantity || 1)
-          receiptText += `  + ${extra.name} +${extraTotal.toFixed(2)} kr\n`
+          const extraLine = `  + ${extra.name}`
+          const extraSpaces = Math.max(1, 23 - extraLine.length)
+          receiptText += `${extraLine}${' '.repeat(extraSpaces)}${extraTotal} kr\n`
         })
       }
     })
     
-    receiptText += '================================\n'
+    receiptText += '--------------------------------\n'
     receiptText += `TOTALT: ${order.total_price || order.amount} kr\n`
-    receiptText += '================================\n'
-    receiptText += `Leveransmetod: ${order.delivery_type === 'delivery' ? 'Leverans' : 'Avhamtning'}\n`
-    receiptText += '\n'
+    receiptText += '\n🚨🚨🚨 SPECIALÖNSKEMÅL 🚨🚨🚨\n'
     
-    // Add special instructions if they exist
-    if (order.special_instructions || order.notes) {
-      receiptText += 'Speciella önskemål:\n'
-      if (order.special_instructions) {
-        receiptText += `🚨 VIKTIGT: ${order.special_instructions}\n`
-      }
-      if (order.notes) {
-        receiptText += `${order.notes}\n`
-      }
-      receiptText += '\n'
+    // ALWAYS show special instructions section
+    if (order.special_instructions) {
+      receiptText += `VIKTIGT: ${order.special_instructions}\n`
+    } else {
+      receiptText += 'INGA SPECIELLA ÖNSKEMÅL\n'
     }
     
-    receiptText += 'Tack for ditt kop!\n'
+    if (order.notes) {
+      receiptText += `NOTERINGAR: ${order.notes}\n`
+    }
+    
+    receiptText += '\nBetalning: I restaurangen\n'
+    receiptText += `Restaurant: ${getLocationName(order.location)}\n`
+    receiptText += '\nTACK FÖR DITT KÖP!\n'
+    receiptText += 'Välkommen åter!\n'
+    receiptText += 'Moi Sushi & Poké Bowl\n'
     receiptText += 'Utvecklad av Skaply\n'
     receiptText += '\n\n\n'
     
