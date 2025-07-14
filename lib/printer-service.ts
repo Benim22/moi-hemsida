@@ -48,7 +48,8 @@ export class ProductionPrinterService {
         method: 'POST',
         headers: {
           'Content-Type': 'text/xml; charset=utf-8',
-          'SOAPAction': '""'
+          'SOAPAction': '""',
+          'User-Agent': 'MOI-SUSHI-ePOS/1.0'
         },
         body: this.generateStatusRequest(),
         signal: AbortSignal.timeout(this.config.timeout)
@@ -82,7 +83,8 @@ export class ProductionPrinterService {
         method: 'POST',
         headers: {
           'Content-Type': 'text/xml; charset=utf-8',
-          'SOAPAction': '"print"'
+          'SOAPAction': '""',
+          'User-Agent': 'MOI-SUSHI-ePOS/1.0'
         },
         body: xmlData,
         signal: AbortSignal.timeout(this.config.timeout)
@@ -111,46 +113,48 @@ export class ProductionPrinterService {
   // Generera status request XML
   private generateStatusRequest(): string {
     return `<?xml version="1.0" encoding="utf-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:epos="http://www.epson-pos.com/schemas/2011/03/epos-print">
-    <soapenv:Header/>
-    <soapenv:Body>
-        <epos:request>
-            <epos:parameter devid="${this.config.model}" timeout="${this.config.timeout}"/>
-        </epos:request>
-    </soapenv:Body>
-</soapenv:Envelope>`
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+    <s:Body>
+        <epos-print xmlns="http://www.epson.com/2005/02/printing/epos-print">
+            <text>STATUS REQUEST</text>
+        </epos-print>
+    </s:Body>
+</s:Envelope>`
   }
 
-  // Generera print XML med korrekt format
+  // Generera print XML med korrekt format för TM-30MIII-H
   private generatePrintXML(order: Order): string {
-    // Official ePOS-Print XML format based on Epson documentation
     const date = new Date(order.created_at).toLocaleString('sv-SE')
     const location = this.getLocationName(order.location)
     
     return `<?xml version="1.0" encoding="utf-8"?>
-<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
-  <text align="center" width="2" height="2">MOI SUSHI&#10;</text>
-  <text align="center">${location}&#10;</text>
-  <text>================================&#10;</text>
-  <text>ORDER: #${order.order_number}&#10;</text>
-  <text>Datum: ${date}&#10;</text>
-  ${order.customer_name ? `<text>Kund: ${order.customer_name}&#10;</text>` : ''}
-  ${order.phone ? `<text>Tel: ${order.phone}&#10;</text>` : ''}
-  ${order.delivery_method ? `<text>Leverans: ${order.delivery_method}&#10;</text>` : ''}
-  <text>================================&#10;</text>
-  ${order.cart_items.map(item => {
-    const itemTotal = item.quantity * item.price
-    return `<text>${item.quantity}x ${item.name}&#10;</text><text align="right">${itemTotal} SEK&#10;</text>`
-  }).join('')}
-  <text>--------------------------------&#10;</text>
-  <text width="2" height="2">TOTAL: ${order.total_amount} SEK&#10;</text>
-  <feed line="1"/>
-  ${order.notes ? `<text>Anteckningar:&#10;</text><text>${order.notes}&#10;</text><feed line="1"/>` : ''}
-  <text align="center">Tack för ditt köp!&#10;</text>
-  <text align="center">www.moisushi.se&#10;</text>
-  <feed line="3"/>
-  <cut/>
-</epos-print>`
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+    <s:Body>
+        <epos-print xmlns="http://www.epson.com/2005/02/printing/epos-print">
+            <text align="center" width="2" height="2">MOI SUSHI</text>
+            <text align="center">${location}</text>
+            <text>================================</text>
+            <text>ORDER: #${order.order_number}</text>
+            <text>Datum: ${date}</text>
+            ${order.customer_name ? `<text>Kund: ${order.customer_name}</text>` : ''}
+            ${order.phone ? `<text>Tel: ${order.phone}</text>` : ''}
+            ${order.delivery_method ? `<text>Leverans: ${order.delivery_method}</text>` : ''}
+            <text>================================</text>
+            ${order.cart_items.map(item => {
+              const itemTotal = item.quantity * item.price
+              return `<text>${item.quantity}x ${item.name}</text><text align="right">${itemTotal} SEK</text>`
+            }).join('')}
+            <text>--------------------------------</text>
+            <text width="2" height="2">TOTAL: ${order.total_amount} SEK</text>
+            <feed line="1"/>
+            ${order.notes ? `<text>Anteckningar:</text><text>${order.notes}</text><feed line="1"/>` : ''}
+            <text align="center">Tack för ditt köp!</text>
+            <text align="center">www.moisushi.se</text>
+            <feed line="3"/>
+            <cut type="feed"/>
+        </epos-print>
+    </s:Body>
+</s:Envelope>`
   }
 
 

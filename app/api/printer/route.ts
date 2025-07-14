@@ -178,6 +178,7 @@ async function printXMLToPrinter(xml: string, ip: string, port: number, useSSL: 
       headers: {
         'Content-Type': 'text/xml; charset=utf-8',
         'Accept': 'text/xml, application/xml, */*',
+        'SOAPAction': '""',
         'User-Agent': 'MOI-SUSHI-ePOS/1.0'
       },
       body: xml,
