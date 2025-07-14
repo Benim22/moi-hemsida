@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test - Moi Sushi</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .connected { background: #d4edda; color: #155724; }
+        .disconnected { background: #f8d7da; color: #721c24; }
+        .log { background: #f8f9fa; padding: 15px; border-radius: 5px; font-family: monospace; height: 300px; overflow-y: auto; }
+        button { padding: 10px 20px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; }
+        .connect-btn { background: #28a745; color: white; }
+        .disconnect-btn { background: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+    <h1>🍣 Moi Sushi WebSocket Test</h1>
+    
+    <div id="status" class="status disconnected">
+        Status: Frånkopplad
+    </div>
+    
+    <button id="connectBtn" class="connect-btn">Anslut</button>
+    <button id="disconnectBtn" class="disconnect-btn" disabled>Koppla från</button>
+    
+    <h3>Debug Log:</h3>
+    <div id="log" class="log"></div>
+    
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <script>
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        
+        let socket = null;
+                 const WS_URL = 'wss://moi-skrivare-websocket.onrender.com';
+        
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString('sv-SE');
+            const logEntry = `[${timestamp}] ${message}\n`;
+            logDiv.textContent += logEntry;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            
+            console.log(`[${type}] ${message}`);
+        }
+        
+        function updateStatus(connected) {
+            if (connected) {
+                statusDiv.textContent = 'Status: Ansluten ✅';
+                statusDiv.className = 'status connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                statusDiv.textContent = 'Status: Frånkopplad ❌';
+                statusDiv.className = 'status disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
+        
+        function connectWebSocket() {
+            addLog(`Ansluter till ${WS_URL}...`);
+            
+            socket = io(WS_URL, {
+                transports: ['websocket'],
+                timeout: 10000,
+                reconnection: true,
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000,
+            });
+            
+            socket.on('connect', () => {
+                addLog('✅ WebSocket ansluten!', 'success');
+                updateStatus(true);
+                
+                // Registrera som terminal
+                socket.emit('register-terminal', {
+                    location: 'malmo',
+                    terminalId: `test-terminal-${Date.now()}`,
+                    userProfile: { name: 'Test Terminal' }
+                });
+            });
+            
+            socket.on('disconnect', () => {
+                addLog('❌ WebSocket frånkopplad', 'warning');
+                updateStatus(false);
+            });
+            
+            socket.on('registration-confirmed', (data) => {
+                addLog(`✅ Terminal registrerad för ${data.location}`, 'success');
+                addLog(`Anslutna terminaler: ${data.connectedTerminals}`);
+            });
+            
+            socket.on('new-order', (order) => {
+                addLog(`📦 Ny order mottagen: #${order.id}`, 'success');
+                addLog(`Kund: ${order.customer_name || 'Okänd'}`);
+                addLog(`Summa: ${order.total_amount} kr`);
+            });
+            
+            socket.on('connect_error', (error) => {
+                addLog(`❌ Anslutningsfel: ${error.message}`, 'error');
+                updateStatus(false);
+            });
+            
+            socket.on('error', (error) => {
+                addLog(`❌ Socket fel: ${error.message}`, 'error');
+            });
+            
+            socket.on('pong', (data) => {
+                addLog(`🏓 Pong mottagen: ${data.timestamp}`, 'info');
+            });
+        }
+        
+        function disconnectWebSocket() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+                addLog('Manuellt frånkopplad');
+                updateStatus(false);
+            }
+        }
+        
+        // Event listeners
+        connectBtn.addEventListener('click', connectWebSocket);
+        disconnectBtn.addEventListener('click', disconnectWebSocket);
+        
+        // Test ping varje 30 sekunder
+        setInterval(() => {
+            if (socket && socket.connected) {
+                addLog('🏓 Skickar ping...');
+                socket.emit('ping');
+            }
+        }, 30000);
+        
+        addLog('WebSocket test redo. Klicka "Anslut" för att testa.');
+    </script>
+</body>
+</html> 

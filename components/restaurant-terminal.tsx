@@ -100,9 +100,7 @@ export default function RestaurantTerminal() {
   const [wsReconnectAttempts, setWsReconnectAttempts] = useState(0)
   const [wsLastMessage, setWsLastMessage] = useState(null)
   const [wsUrl, setWsUrl] = useState(
-    process.env.NODE_ENV === 'production' 
-      ? 'wss://moi-skrivare-websocket.onrender.com'
-      : 'ws://localhost:3001'
+    'wss://moi-skrivare-websocket.onrender.com'
   )
   const socketRef = useRef<Socket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
