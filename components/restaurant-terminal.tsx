@@ -1311,100 +1311,119 @@ export default function RestaurantTerminal() {
   }
 
   const activateAudio = async () => {
+    console.log('🍎 ENKEL iOS-ljudaktivering startar...')
+    console.log('📱 Enhet typ:', isIOSDevice ? 'iOS/Safari' : 'Desktop/Android')
+    
     try {
-      console.log('🎵 Aktiverar avancerat iOS-kompatibelt ljudsystem...')
-      
-      // Steg 1: Skapa AudioContext
+      // STEG 1: Skapa AudioContext FÖRST - detta är det viktigaste för iOS
+      console.log('🎵 Skapar AudioContext...')
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
       if (!AudioContextClass) {
-        throw new Error('AudioContext stöds inte i denna webbläsare')
+        throw new Error('AudioContext stöds inte')
       }
       
       const newAudioContext = new AudioContextClass()
+      console.log('✅ AudioContext skapat, state:', newAudioContext.state)
       
-      // Steg 2: Skapa ROBUST tyst HTML Audio-element (iOS workaround)
-      const silentAudio = document.createElement('audio')
-      silentAudio.setAttribute('x-webkit-airplay', 'deny')
-      silentAudio.preload = 'auto'
-      silentAudio.loop = true
-      silentAudio.volume = 0.01 // Lite högre för iOS
-      silentAudio.muted = false
-      silentAudio.autoplay = false // Viktigt för iOS
-      
-      // Skapa en bättre ljudfil för iOS (100ms ton istället för helt tyst)
-      // Detta gör att iOS "känner" ljudet och håller det aktivt bättre
-      const betterSilentMp3 = 'data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCA'
-      silentAudio.src = betterSilentMp3
-      
-      // Lägg till event listeners för bättre debug
-      silentAudio.addEventListener('canplaythrough', () => {
-        console.log('🔇 iOS: Silent audio kan spelas')
-      })
-      silentAudio.addEventListener('error', (e) => {
-        console.log('🔇 iOS: Silent audio fel:', e)
-      })
-      
-      setSilentAudioElement(silentAudio)
-      
-      // AGGRESSIV iOS UNLOCK-SEKVENS
-      for (let unlockAttempt = 1; unlockAttempt <= 3; unlockAttempt++) {
-        try {
-          console.log(`🔇 iOS Unlock försök ${unlockAttempt}/3...`)
-          silentAudio.currentTime = 0
-          await silentAudio.play()
-          console.log(`✅ iOS Silent audio unlock försök ${unlockAttempt} lyckades`)
-          break // Lyckas - hoppa ur loopen
-        } catch (audioError) {
-          console.log(`❌ iOS Silent audio unlock försök ${unlockAttempt} misslyckades:`, audioError)
-          if (unlockAttempt < 3) {
-            // Kort paus mellan försök
-            await new Promise(resolve => setTimeout(resolve, 200))
-          }
-        }
-      }
-      
-      // Steg 3: Resume AudioContext om suspended
+      // STEG 2: Försök resume AudioContext omedelbart
       if (newAudioContext.state === 'suspended') {
+        console.log('🔄 AudioContext suspended, försöker resume...')
         await newAudioContext.resume()
-        console.log('🎵 AudioContext resumed från suspended state')
+        console.log('✅ AudioContext resumed, ny state:', newAudioContext.state)
       }
       
-      // Steg 4: Spela en mycket kort Web Audio ton för att "unlåsa" systemet
-      const oscillator = newAudioContext.createOscillator()
-      const gainNode = newAudioContext.createGain()
+      // STEG 3: Spela ett verkligt ljud OMEDELBART för att unlåsa iOS
+      console.log('🔊 Spelar unlock-ljud...')
+      try {
+        const unlockOscillator = newAudioContext.createOscillator()
+        const unlockGain = newAudioContext.createGain()
+        
+        unlockOscillator.connect(unlockGain)
+        unlockGain.connect(newAudioContext.destination)
+        
+        unlockOscillator.frequency.value = 800
+        unlockOscillator.type = 'sine'
+        unlockGain.gain.setValueAtTime(0.1, newAudioContext.currentTime) // Hörbart ljud för att unlåsa
+        unlockGain.gain.exponentialRampToValueAtTime(0.01, newAudioContext.currentTime + 0.2)
+        
+        unlockOscillator.start(newAudioContext.currentTime)
+        unlockOscillator.stop(newAudioContext.currentTime + 0.2)
+        
+        console.log('✅ Unlock-ljud spelat!')
+        
+        // Vänta på att ljudet ska spelas
+        await new Promise(resolve => setTimeout(resolve, 300))
+        
+      } catch (unlockError) {
+        console.log('❌ Unlock-ljud misslyckades:', unlockError)
+        throw unlockError
+      }
       
-      oscillator.connect(gainNode)
-      gainNode.connect(newAudioContext.destination)
-      
-      oscillator.frequency.value = 440
-      oscillator.type = 'sine'
-      gainNode.gain.setValueAtTime(0.001, newAudioContext.currentTime) // Extremt tyst
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, newAudioContext.currentTime + 0.1)
-      
-      oscillator.start(newAudioContext.currentTime)
-      oscillator.stop(newAudioContext.currentTime + 0.1)
-      
-      // Steg 5: Sätt state
+      // STEG 4: Sätt state OM allt gick bra
       setAudioContext(newAudioContext)
       setAudioEnabled(true)
       setAudioUnlocked(true)
       
-      console.log('✅ Avancerat ljudsystem aktiverat!')
-      console.log('🎵 AudioContext state:', newAudioContext.state)
-      console.log('🎵 Enhet:', isIOSDevice ? 'iOS/iPad' : 'Desktop/Android')
+      console.log('🎉 Ljudsystem aktiverat! State:', {
+        audioContextState: newAudioContext.state,
+        audioEnabled: true,
+        audioUnlocked: true,
+        isIOSDevice
+      })
       
-      // Steg 6: Test med verkligt ljud efter kort delay
-      setTimeout(async () => {
-        console.log('🎯 Testar verkligt ljud efter aktivering...')
-        await playNotificationSound()
-      }, 500)
+      // STEG 5: Spela test-notifikation för att bekräfta att det fungerar
+      console.log('🧪 Spelar bekräftelseljud...')
+      setTimeout(() => {
+        // Spela test-ljud direkt utan att gå genom playNotificationSound
+        try {
+          const testOscillator = newAudioContext.createOscillator()
+          const testGain = newAudioContext.createGain()
+          
+          testOscillator.connect(testGain)
+          testGain.connect(newAudioContext.destination)
+          
+          // Spela en trevlig bekräftelsemild
+          testOscillator.frequency.value = 800
+          testOscillator.type = 'sine'
+          testGain.gain.setValueAtTime(0.2, newAudioContext.currentTime)
+          testGain.gain.exponentialRampToValueAtTime(0.01, newAudioContext.currentTime + 0.15)
+          
+          testOscillator.start(newAudioContext.currentTime)
+          testOscillator.stop(newAudioContext.currentTime + 0.15)
+          
+          // Andra ton efter en paus
+          setTimeout(() => {
+            const test2Oscillator = newAudioContext.createOscillator()
+            const test2Gain = newAudioContext.createGain()
+            
+            test2Oscillator.connect(test2Gain)
+            test2Gain.connect(newAudioContext.destination)
+            
+            test2Oscillator.frequency.value = 1000
+            test2Oscillator.type = 'sine'
+            test2Gain.gain.setValueAtTime(0.2, newAudioContext.currentTime)
+            test2Gain.gain.exponentialRampToValueAtTime(0.01, newAudioContext.currentTime + 0.15)
+            
+            test2Oscillator.start(newAudioContext.currentTime)
+            test2Oscillator.stop(newAudioContext.currentTime + 0.15)
+            
+            console.log('✅ Bekräftelseljud spelat!')
+          }, 200)
+          
+        } catch (testError) {
+          console.log('⚠️ Bekräftelseljud misslyckades:', testError)
+        }
+      }, 100)
       
-      showBrowserNotification('Ljud aktiverat! 🔊', 'Automatiska ljudnotifikationer fungerar nu på alla enheter inklusive iOS', false)
+      showBrowserNotification('🔊 Ljud aktiverat!', `Automatiska notifikationer fungerar nu${isIOSDevice ? ' på iOS' : ''}`, false)
       
     } catch (error) {
-      console.error('❌ Fel vid aktivering av ljud:', error)
+      console.error('❌ Ljudaktivering misslyckades:', error)
+      setAudioEnabled(false)
       setAudioUnlocked(false)
-      showBrowserNotification('Ljudfel', `Kunde inte aktivera ljud: ${(error as Error).message}`, false)
+      setAudioContext(null)
+      
+      showBrowserNotification('❌ Ljudfel', `Kunde inte aktivera ljud: ${(error as Error).message}. Kontrollera att du tillåter ljud i webbläsaren.`, false)
     }
   }
 
@@ -1430,108 +1449,96 @@ export default function RestaurantTerminal() {
     }
     
     try {
-      console.log('🔊 Spelar KRAFTFULLT notifikationsljud med aggressiv iOS-stöd...')
+      console.log('🔊 Enkel ljuduppspelning startar...')
       console.log('🎵 AudioContext state:', audioContext?.state || 'ingen audioContext')
       
-      // AGGRESSIV iOS-ÅTERAKTIVERING - Körs alltid för iOS, även om inte behövs
-      if (isIOSDevice) {
-        console.log('🍎 AGGRESSIV iOS-återaktivering startar...')
-        
-        // Steg 1: Flera försök med silent audio
-        if (silentAudioElement) {
-          for (let attempt = 1; attempt <= 3; attempt++) {
-            try {
-              console.log(`🔇 iOS Silent Audio försök ${attempt}/3...`)
-              silentAudioElement.currentTime = 0
-              silentAudioElement.volume = 0.01 // Lite högre volym för iOS
-              await silentAudioElement.play()
-              console.log(`✅ iOS Silent Audio försök ${attempt} lyckades`)
-              break // Om det lyckas, hoppa ur loopen
-            } catch (silentError) {
-              console.log(`❌ iOS Silent Audio försök ${attempt} misslyckades:`, silentError)
-              if (attempt === 3) {
-                console.log('⚠️ Alla silent audio försök misslyckades - fortsätter ändå')
-              }
-              // Kort paus mellan försök
-              await new Promise(resolve => setTimeout(resolve, 100))
-            }
-          }
-        }
-        
-        // Steg 2: Aggressiv AudioContext-återaktivering
-        if (audioContext) {
-          try {
-            if (audioContext.state === 'suspended') {
-              console.log('🎵 iOS: AudioContext suspended - försöker resume...')
-              await audioContext.resume()
-              console.log('✅ iOS: AudioContext resumed framgångsrikt')
-            } else {
-              console.log('✅ iOS: AudioContext redan running')
-            }
-            
-            // Extra säkerhet: Skapa en kort "warmup" ton för iOS
-            try {
-              console.log('🔥 iOS: Spelar warmup-ton...')
-              const warmupOscillator = audioContext.createOscillator()
-              const warmupGain = audioContext.createGain()
-              
-              warmupOscillator.connect(warmupGain)
-              warmupGain.connect(audioContext.destination)
-              
-              warmupOscillator.frequency.value = 800
-              warmupOscillator.type = 'sine'
-              warmupGain.gain.setValueAtTime(0.1, audioContext.currentTime)
-              warmupGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1)
-              
-              warmupOscillator.start(audioContext.currentTime)
-              warmupOscillator.stop(audioContext.currentTime + 0.1)
-              
-              // Vänta på att warmup är klar
-              await new Promise(resolve => setTimeout(resolve, 150))
-              console.log('✅ iOS: Warmup-ton klar')
-            } catch (warmupError) {
-              console.log('⚠️ iOS: Warmup-ton misslyckades:', warmupError)
-            }
-          } catch (contextError) {
-            console.log('❌ iOS: AudioContext-hantering misslyckades:', contextError)
-          }
+      // Kontrollera om AudioContext behöver återaktiveras
+      if (audioContext && audioContext.state === 'suspended') {
+        console.log('🔄 AudioContext suspended - försöker resume...')
+        try {
+          await audioContext.resume()
+          console.log('✅ AudioContext resumed')
+        } catch (resumeError) {
+          console.log('❌ Kunde inte resume AudioContext:', resumeError)
+          throw resumeError
         }
       }
       
-      // Vanlig återaktivering för andra enheter
-      if (!isIOSDevice && audioContext && audioContext.state === 'suspended') {
-        console.log('🔄 Desktop: AudioContext suspended - återaktiverar...')
-        await audioContext.resume()
+      if (!audioContext || audioContext.state !== 'running') {
+        console.log('❌ AudioContext inte tillgänglig eller inte running')
+        throw new Error('AudioContext inte redo')
       }
       
-      // KRAFTFULL LJUDSEKVENS - spela flera gånger
-      console.log('🎵 Startar kraftfull ljudsekvens...')
-      await playPowerfulSoundSequence()
+      // ENKEL, DIREKT LJUDUPPSPELNING - ingen komplex sekvens
+      console.log('🎵 Spelar direkt notifikationsljud...')
+      
+      // Första ton
+      const osc1 = audioContext.createOscillator()
+      const gain1 = audioContext.createGain()
+      
+      osc1.connect(gain1)
+      gain1.connect(audioContext.destination)
+      
+      osc1.frequency.value = 800
+      osc1.type = 'sine'
+      gain1.gain.setValueAtTime(0.3, audioContext.currentTime)
+      gain1.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2)
+      
+      osc1.start(audioContext.currentTime)
+      osc1.stop(audioContext.currentTime + 0.2)
+      
+      // Andra ton efter kort paus
+      setTimeout(() => {
+        try {
+          const osc2 = audioContext.createOscillator()
+          const gain2 = audioContext.createGain()
+          
+          osc2.connect(gain2)
+          gain2.connect(audioContext.destination)
+          
+          osc2.frequency.value = 1000
+          osc2.type = 'sine'
+          gain2.gain.setValueAtTime(0.3, audioContext.currentTime)
+          gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2)
+          
+          osc2.start(audioContext.currentTime)
+          osc2.stop(audioContext.currentTime + 0.2)
+          
+          console.log('✅ Notifikationsljud spelat (2 toner)')
+        } catch (secondToneError) {
+          console.log('⚠️ Andra tonen misslyckades:', secondToneError)
+        }
+      }, 250)
       
     } catch (error) {
-      console.log('❌ Fel med ljuduppspelning:', error)
-      console.log('🎵 Försöker med fallback-metod...')
+      console.log('❌ Ljuduppspelning misslyckades:', error)
+      console.log('🎵 Försöker med enkel fallback...')
       
-      // AGGRESSIV FALLBACK för iOS
-      if (isIOSDevice) {
-        console.log('🍎 iOS: Kör aggressiv fallback...')
-        try {
-          // Försök spela en enkel ton direkt
-          for (let fallbackAttempt = 1; fallbackAttempt <= 2; fallbackAttempt++) {
-            try {
-              console.log(`🔊 iOS Fallback försök ${fallbackAttempt}/2`)
-              await playFallbackSoundAsync()
-              console.log(`✅ iOS Fallback försök ${fallbackAttempt} lyckades`)
-              break
-            } catch (fallbackError) {
-              console.log(`❌ iOS Fallback försök ${fallbackAttempt} misslyckades:`, fallbackError)
-            }
-          }
-        } catch (aggressiveError) {
-          console.log('❌ iOS: Även aggressiv fallback misslyckades:', aggressiveError)
+      // ENKEL FALLBACK
+      try {
+        const fallbackContext = new ((window.AudioContext || (window as any).webkitAudioContext))()
+        
+        if (fallbackContext.state === 'suspended') {
+          await fallbackContext.resume()
         }
-      } else {
-        playFallbackSound()
+        
+        const fallbackOsc = fallbackContext.createOscillator()
+        const fallbackGain = fallbackContext.createGain()
+        
+        fallbackOsc.connect(fallbackGain)
+        fallbackGain.connect(fallbackContext.destination)
+        
+        fallbackOsc.frequency.value = 800
+        fallbackOsc.type = 'sine'
+        fallbackGain.gain.setValueAtTime(0.3, fallbackContext.currentTime)
+        fallbackGain.gain.exponentialRampToValueAtTime(0.01, fallbackContext.currentTime + 0.3)
+        
+        fallbackOsc.start(fallbackContext.currentTime)
+        fallbackOsc.stop(fallbackContext.currentTime + 0.3)
+        
+        console.log('✅ Fallback-ljud spelat')
+      } catch (fallbackError) {
+        console.log('❌ Även fallback misslyckades:', fallbackError)
       }
     }
   }
@@ -3263,17 +3270,63 @@ Utvecklad av Skaply
                   {/* Test Notifications Button */}
                   <Button 
                     onClick={() => {
-                      console.log('🧪 Testar notifikationer och ljud...')
+                      console.log('🧪 DIREKT LJUDTEST startar...')
                       
-                      // Testa både popup och ljud
+                      // För iOS: Spela ljud DIREKT från användarinteraktion
+                      if (isIOSDevice && audioEnabled && audioContext) {
+                        console.log('🍎 iOS DIREKT LJUDTEST - spelar utan mellansteg')
+                        try {
+                          // Spela ljud direkt utan att gå genom komplexa funktioner
+                          const directOscillator = audioContext.createOscillator()
+                          const directGain = audioContext.createGain()
+                          
+                          directOscillator.connect(directGain)
+                          directGain.connect(audioContext.destination)
+                          
+                          directOscillator.frequency.value = 800
+                          directOscillator.type = 'sine'
+                          directGain.gain.setValueAtTime(0.3, audioContext.currentTime)
+                          directGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
+                          
+                          directOscillator.start(audioContext.currentTime)
+                          directOscillator.stop(audioContext.currentTime + 0.3)
+                          
+                          console.log('✅ iOS DIREKT LJUDTEST utfört!')
+                          
+                          // Andra ton
+                          setTimeout(() => {
+                            const direct2Oscillator = audioContext.createOscillator()
+                            const direct2Gain = audioContext.createGain()
+                            
+                            direct2Oscillator.connect(direct2Gain)
+                            direct2Gain.connect(audioContext.destination)
+                            
+                            direct2Oscillator.frequency.value = 1000
+                            direct2Oscillator.type = 'sine'
+                            direct2Gain.gain.setValueAtTime(0.3, audioContext.currentTime)
+                            direct2Gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
+                            
+                            direct2Oscillator.start(audioContext.currentTime)
+                            direct2Oscillator.stop(audioContext.currentTime + 0.3)
+                          }, 400)
+                          
+                        } catch (directError) {
+                          console.log('❌ iOS DIREKT LJUDTEST misslyckades:', directError)
+                        }
+                      } else {
+                        // Desktop eller om ljud inte aktiverat - använd vanlig metod
+                        console.log('🖥️ Desktop/Standard ljudtest')
+                        playNotificationSound()
+                      }
+                      
+                      // Visa notifikation
                       showBrowserNotification(
                         'Test Notifikation! 🔔', 
                         `Testnotifikation från ${getLocationName(selectedLocation)} - ${new Date().toLocaleTimeString('sv-SE')}`, 
                         true // true = visa popup modal också
                       )
-                      playNotificationSound()
                       
-                      console.log('✅ Testnotifikation skickad!')
+                      console.log('✅ Ljudtest utfört!')
                     }}
                     variant="outline" 
                     className="h-12 flex flex-col items-center justify-center border-purple-500/50 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 transition-all duration-200"
@@ -3370,31 +3423,39 @@ Utvecklad av Skaply
         {notificationsEnabled && (!audioEnabled || !audioUnlocked) && isIOSDevice && (
           <Card className="border border-yellow-500/30 bg-gradient-to-r from-yellow-900/20 to-orange-900/20 backdrop-blur-md mb-6">
             <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-yellow-500/20 rounded-full flex items-center justify-center">
-                  <Volume2 className="h-4 w-4 text-yellow-400" />
-                </div>
-                <div>
-                  <p className="text-yellow-400 font-medium">
-                    {!audioEnabled ? 'Ljud är inte aktiverat' : 'Ljud behöver låsas upp'}
-                  </p>
-                  <p className="text-yellow-300/80 text-sm">
-                    För iPad/Safari: Tryck "Aktivera Ljud" för att höra automatiska notifikationer
-                  </p>
-                  {audioEnabled && audioUnlocked && isIOSDevice && (
-                    <p className="text-green-300/80 text-xs mt-2">
-                      💓 iOS Heartbeat: Håller ljudet aktivt kontinuerligt i bakgrunden (var 30:e sekund)
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-yellow-500/20 rounded-full flex items-center justify-center">
+                    <Volume2 className="h-4 w-4 text-yellow-400" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-yellow-400 font-medium">
+                      🍎 iOS/Safari kräver ljudaktivering
                     </p>
-                  )}
+                    <p className="text-yellow-300/80 text-sm">
+                      Du måste först aktivera ljud för att höra automatiska notifikationer
+                    </p>
+                  </div>
+                  <Button
+                    onClick={activateAudio}
+                    variant="outline"
+                    size="sm"
+                    className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10 font-medium"
+                  >
+                    🔊 Aktivera Ljud
+                  </Button>
                 </div>
-                <Button
-                  onClick={activateAudio}
-                  variant="outline"
-                  size="sm"
-                  className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10"
-                >
-                  {!audioEnabled ? 'Aktivera Nu' : 'Lås Upp'}
-                </Button>
+                
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+                  <p className="text-yellow-200 text-sm font-medium mb-2">📋 Instruktioner för iPhone/iPad:</p>
+                  <ol className="text-yellow-200/80 text-xs space-y-1 list-decimal list-inside ml-2">
+                    <li>Tryck på "<strong>🔊 Aktivera Ljud</strong>" knappen ovan</li>
+                    <li>Du kommer höra 2 bekräftelseljud om det fungerar</li>
+                    <li>Testa sedan med "<strong>Testa Notis</strong>" knappen</li>
+                    <li>Om inget ljud hörs - <strong>kontrollera att ljudet inte är avstängt</strong> på din iPhone/iPad</li>
+                    <li>Om det fortfarande inte fungerar - <strong>uppdatera sidan och försök igen</strong></li>
+                  </ol>
+                </div>
               </div>
             </CardContent>
           </Card>
