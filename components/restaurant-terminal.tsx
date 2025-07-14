@@ -45,9 +45,6 @@ export default function RestaurantTerminal() {
   const [audioEnabled, setAudioEnabled] = useState(false)
   const [audioContext, setAudioContext] = useState(null)
   const [isIOSDevice, setIsIOSDevice] = useState(false)
-  const [audioKeepAliveInterval, setAudioKeepAliveInterval] = useState(null)
-  const [silentAudioElement, setSilentAudioElement] = useState(null)
-  const [alwaysPlayingAudio, setAlwaysPlayingAudio] = useState(null)
   
   // Filter states
   const [selectedLocation, setSelectedLocation] = useState(profile?.location || 'all')
@@ -601,36 +598,6 @@ export default function RestaurantTerminal() {
         try {
           await audioContext.resume()
           console.log('🎵 AudioContext återaktiverat vid användarinteraktion')
-          
-          // Återstarta tyst audio om det behövs
-          if (silentAudioElement && silentAudioElement.paused) {
-            try {
-              await silentAudioElement.play()
-              console.log('🎵 Tyst audio återstartat efter användarinteraktion')
-            } catch (error) {
-              console.log('🎵 Kunde inte återstarta tyst audio:', error)
-            }
-          }
-          
-          // Återstarta Always Be Playing audio om det behövs
-          if (alwaysPlayingAudio && alwaysPlayingAudio.paused) {
-            try {
-              await alwaysPlayingAudio.play()
-              console.log('🎵 Always Be Playing audio återstartat efter användarinteraktion')
-            } catch (error) {
-              console.log('🎵 Kunde inte återstarta Always Be Playing audio:', error)
-            }
-          }
-          
-          // iOS SÄKERHET: Försök sätta audioSession igen
-          try {
-            if (navigator.audioSession) {
-              navigator.audioSession.type = "playback"
-              console.log('🎵 audioSession type återställd till "playback" vid användarinteraktion')
-            }
-          } catch (error) {
-            console.log('🎵 Kunde inte sätta audioSession:', error)
-          }
         } catch (error) {
           console.log('🎵 Kunde inte återaktivera AudioContext:', error)
         }
@@ -645,19 +612,13 @@ export default function RestaurantTerminal() {
     document.addEventListener('click', handleUserInteraction, { passive: true })
     document.addEventListener('touchstart', handleUserInteraction, { passive: true })
     document.addEventListener('keydown', handleUserInteraction, { passive: true })
-    document.addEventListener('touchend', handleUserInteraction, { passive: true })
-    document.addEventListener('pointerdown', handleUserInteraction, { passive: true })
-    document.addEventListener('pointerup', handleUserInteraction, { passive: true })
 
     return () => {
       document.removeEventListener('click', handleUserInteraction)
       document.removeEventListener('touchstart', handleUserInteraction)
       document.removeEventListener('keydown', handleUserInteraction)
-      document.removeEventListener('touchend', handleUserInteraction)
-      document.removeEventListener('pointerdown', handleUserInteraction)
-      document.removeEventListener('pointerup', handleUserInteraction)
     }
-  }, [audioContext, silentAudioElement])
+  }, [audioContext])
 
   // Real-time subscriptions - ENDAST baserat på profile.location, INTE selectedLocation
   useEffect(() => {
@@ -993,32 +954,6 @@ export default function RestaurantTerminal() {
     return () => clearInterval(cleanupInterval)
   }, [])
 
-  // Audio cleanup on unmount
-  useEffect(() => {
-    return () => {
-      console.log('🧹 Städar upp ljudresurser...')
-      
-      // Cleanup audio resources
-      if (audioContext) {
-        audioContext.close()
-      }
-      
-      if (audioKeepAliveInterval) {
-        clearInterval(audioKeepAliveInterval)
-      }
-      
-      if (silentAudioElement) {
-        silentAudioElement.pause()
-        silentAudioElement.currentTime = 0
-      }
-      
-      if (alwaysPlayingAudio) {
-        alwaysPlayingAudio.pause()
-        alwaysPlayingAudio.currentTime = 0
-      }
-    }
-  }, [])
-
   // Check notification permission on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -1293,159 +1228,42 @@ export default function RestaurantTerminal() {
       
       const newAudioContext = new AudioContextClass()
       
-      // KRITISK iOS 17+ FIX: Sätt audioSession type till "playback"
-      try {
-        if (navigator.audioSession) {
-          navigator.audioSession.type = "playback"
-          console.log('🎵 iOS 17+ audioSession type satt till "playback"')
-        }
-      } catch (error) {
-        console.log('🎵 audioSession inte tillgänglig (äldre iOS):', error)
-      }
-      
       // På Safari/iPad/iOS kan AudioContext vara suspended, så vi måste resume den
       if (newAudioContext.state === 'suspended') {
         await newAudioContext.resume()
         console.log('🎵 AudioContext resumed från suspended state')
       }
       
-      // AGGRESSIV iOS UNMUTE - Spela flera typer av ljud samtidigt
-      const createMultipleAudioSources = async () => {
-        const audioSources = []
-        
-        // 1. HTML Audio Element med extremt tyst ljud
-        const htmlAudio = document.createElement('audio')
-        htmlAudio.setAttribute('x-webkit-airplay', 'deny')
-        htmlAudio.setAttribute('playsinline', 'true')
-        htmlAudio.preload = 'auto'
-        htmlAudio.loop = true
-        htmlAudio.volume = 0.001
-        htmlAudio.muted = false
-        
-        // Använd kortare och mer kompatibel data URL
-        const silentWav = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQ4AAAAAAAAAAAAAAAAAAA=='
-        htmlAudio.src = silentWav
-        audioSources.push(htmlAudio)
-        
-        // 2. WebAudio Oscillator för att "unlåsa" AudioContext
-        const oscillator = newAudioContext.createOscillator()
-        const gainNode = newAudioContext.createGain()
-        
-        oscillator.connect(gainNode)
-        gainNode.connect(newAudioContext.destination)
-        
-        oscillator.frequency.value = 440
-        oscillator.type = 'sine'
-        gainNode.gain.setValueAtTime(0.001, newAudioContext.currentTime)
-        
-        oscillator.start(newAudioContext.currentTime)
-        oscillator.stop(newAudioContext.currentTime + 0.1)
-        
-        // 3. Backup Audio Element med annan frekvens
-        const backupAudio = document.createElement('audio')
-        backupAudio.setAttribute('x-webkit-airplay', 'deny')
-        backupAudio.setAttribute('playsinline', 'true')
-        backupAudio.preload = 'auto'
-        backupAudio.loop = true
-        backupAudio.volume = 0.001
-        backupAudio.muted = false
-        backupAudio.src = silentWav
-        audioSources.push(backupAudio)
-        
-        return audioSources
-      }
+      // Spela ett tyst ljud för att "unlåsa" ljudet (krävs för iOS/Safari)
+      const oscillator = newAudioContext.createOscillator()
+      const gainNode = newAudioContext.createGain()
       
-      // Skapa flera ljudkällor för maximal kompatibilitet
-      const audioSources = await createMultipleAudioSources()
+      oscillator.connect(gainNode)
+      gainNode.connect(newAudioContext.destination)
       
-      // Starta alla ljudkällor samtidigt
-      const playPromises = audioSources.map(async (audio, index) => {
-        try {
-          await audio.play()
-          console.log(`🎵 Audio source ${index + 1} startat framgångsrikt`)
-          return audio
-        } catch (error) {
-          console.log(`🎵 Audio source ${index + 1} misslyckades:`, error)
-          return null
-        }
-      })
+      oscillator.frequency.value = 440
+      oscillator.type = 'sine'
+      gainNode.gain.setValueAtTime(0.01, newAudioContext.currentTime) // Mycket tyst
       
-      const playedAudios = await Promise.all(playPromises)
-      const successfulAudios = playedAudios.filter(audio => audio !== null)
-      
-      if (successfulAudios.length > 0) {
-        setAlwaysPlayingAudio(successfulAudios[0]) // Spara första framgångsrika
-        console.log(`🎵 ${successfulAudios.length} av ${audioSources.length} ljudkällor startade framgångsrikt`)
-      }
+      oscillator.start(newAudioContext.currentTime)
+      oscillator.stop(newAudioContext.currentTime + 0.1)
       
       setAudioContext(newAudioContext)
       setAudioEnabled(true)
       
-      // SUPER AGGRESSIV Keep-Alive System
-      const keepAliveInterval = setInterval(() => {
-        // Kontrollera AudioContext
-        if (newAudioContext.state === 'suspended') {
-          console.log('🎵 AudioContext suspended - återupptar aggressivt...')
-          newAudioContext.resume().catch(err => {
-            console.log('🎵 Kunde inte återuppta AudioContext:', err)
-          })
-        }
-        
-        // Kontrollera alla ljudkällor
-        successfulAudios.forEach((audio, index) => {
-          if (audio && audio.paused) {
-            console.log(`🎵 Audio source ${index + 1} pausat - startar om...`)
-            audio.play().catch(err => {
-              console.log(`🎵 Kunde inte återstarta audio source ${index + 1}:`, err)
-            })
-          }
-        })
-        
-        // Spela extremt tyst WebAudio ton
-        try {
-          const keepAliveOsc = newAudioContext.createOscillator()
-          const keepAliveGain = newAudioContext.createGain()
-          
-          keepAliveOsc.connect(keepAliveGain)
-          keepAliveGain.connect(newAudioContext.destination)
-          
-          keepAliveOsc.frequency.value = 20000 // Ohörbar frekvens
-          keepAliveGain.gain.setValueAtTime(0.0001, newAudioContext.currentTime) // Extremt tyst
-          
-          keepAliveOsc.start(newAudioContext.currentTime)
-          keepAliveOsc.stop(newAudioContext.currentTime + 0.01)
-        } catch (error) {
-          // Ignorera keep-alive fel
-        }
-        
-        // iOS-specifik: Försök sätta audioSession igen
-        try {
-          if (navigator.audioSession && navigator.audioSession.type !== "playback") {
-            navigator.audioSession.type = "playback"
-          }
-        } catch (error) {
-          // Ignorera fel
-        }
-      }, 3000) // Var 3:e sekund för aggressiv kontroll
+      console.log('✅ Ljud aktiverat! AudioContext state:', newAudioContext.state)
+      console.log('🎵 Enhet:', isIOSDevice ? 'iOS/iPad' : 'Desktop/Android')
       
-      setAudioKeepAliveInterval(keepAliveInterval)
-      
-      console.log('🎵 AGGRESSIV ljudaktivering slutförd!')
-      console.log('🎵 AudioContext state:', newAudioContext.state)
-      console.log('🎵 Aktiva ljudkällor:', successfulAudios.length)
-      console.log('🎵 audioSession type:', navigator.audioSession?.type || 'inte tillgänglig')
-      
-      // Spela en testnotifikation efter kort delay
+      // Bekräfta med en testton efter kort delay
       setTimeout(() => {
-        console.log('🎵 Spelar testnotifikation...')
         playNotificationSound()
-      }, 1000)
+      }, 300)
       
-      showBrowserNotification('Ljud aktiverat! 🔊', 'AGGRESSIV iOS-kompatibel ljudaktivering slutförd - testnotifikation spelas', false)
+      showBrowserNotification('Ljud aktiverat! 🔊', 'Automatiska ljudnotifikationer fungerar nu på alla enheter', false)
       
     } catch (error) {
-      console.error('🎵 Fel vid aktivering av ljud:', error)
-      showBrowserNotification('Ljudfel', 'Kunde inte aktivera ljud: ' + error.message, false)
+      console.error('❌ Fel vid aktivering av ljud:', error)
+      showBrowserNotification('Ljudfel', `Kunde inte aktivera ljud: ${error.message}`, false)
     }
   }
 
@@ -1474,30 +1292,8 @@ export default function RestaurantTerminal() {
       console.log('🔊 Spelar KRAFTFULLT notifikationsljud...')
       console.log('🎵 AudioContext state:', audioContext?.state || 'ingen audioContext')
       
-      // AGGRESSIV iOS-kompatibel ljuduppspelning
-      if (audioContext && audioContext.state === 'suspended') {
-        console.log('🎵 AudioContext suspended - AGGRESSIV återupptagning...')
-        audioContext.resume().then(() => {
-          console.log('🎵 AudioContext återupptaget, spelar AGGRESSIV ljudsekvens')
-          playPowerfulSoundSequence()
-          // Extra säkerhet: Spela även fallback samtidigt för iOS
-          setTimeout(() => playFallbackSound(), 100)
-        }).catch(error => {
-          console.log('❌ Kunde inte återuppta AudioContext:', error)
-          console.log('🎵 Kör AGGRESSIV fallback-metod...')
-          playFallbackSound()
-        })
-      } else {
-        // KRAFTFULL LJUDSEKVENS - spela flera gånger
-        console.log('🎵 AudioContext redo - spelar KRAFTFULL sekvens')
-        playPowerfulSoundSequence()
-        
-        // iOS SÄKERHET: Spela även fallback efter kort delay
-        setTimeout(() => {
-          console.log('🎵 iOS säkerhet - spelar extra fallback-ljud')
-          playFallbackSound()
-        }, 200)
-      }
+      // KRAFTFULL LJUDSEKVENS - spela flera gånger
+      playPowerfulSoundSequence()
       
     } catch (error) {
       console.log('❌ Fel med ljuduppspelning:', error)
@@ -1582,14 +1378,12 @@ export default function RestaurantTerminal() {
     setTimeout(flash, 100)
   }
 
-  // AGGRESSIV vibration för iOS och mobila enheter
+  // Vibration för mobila enheter
   const triggerVibration = () => {
     if ('vibrate' in navigator) {
-      console.log('📳 AGGRESSIV vibration aktiverat!')
-      // KRAFTFULL vibrationsmönster för iOS: Längre vibrationer för uppmärksamhet
-      const aggressivePattern = [400, 100, 400, 100, 400, 200, 600, 100, 400, 100, 400]
-      navigator.vibrate(aggressivePattern)
-      console.log('📳 Vibrationsmönster:', aggressivePattern)
+      console.log('📳 Aktiverar vibration!')
+      // Kraftfull vibrationsmönster: vibrera 200ms, paus 100ms, upprepa 3 gånger
+      navigator.vibrate([200, 100, 200, 100, 200, 100, 200])
     } else {
       console.log('📳 Vibration stöds inte på denna enhet')
     }
@@ -3121,36 +2915,10 @@ Utvecklad av Skaply
                       if (audioEnabled) {
                         // Stäng av ljud
                         setAudioEnabled(false)
-                        
-                        // Stäng AudioContext
                         if (audioContext) {
                           audioContext.close()
                           setAudioContext(null)
                         }
-                        
-                        // Stoppa keep-alive interval
-                        if (audioKeepAliveInterval) {
-                          clearInterval(audioKeepAliveInterval)
-                          setAudioKeepAliveInterval(null)
-                          console.log('🎵 Keep-alive interval stoppat')
-                        }
-                        
-                        // Stoppa tyst audio element
-                        if (silentAudioElement) {
-                          silentAudioElement.pause()
-                          silentAudioElement.currentTime = 0
-                          setSilentAudioElement(null)
-                          console.log('🎵 Tyst audio stoppat')
-                        }
-                        
-                        // Stoppa Always Be Playing audio
-                        if (alwaysPlayingAudio) {
-                          alwaysPlayingAudio.pause()
-                          alwaysPlayingAudio.currentTime = 0
-                          setAlwaysPlayingAudio(null)
-                          console.log('🎵 Always Be Playing audio stoppat')
-                        }
-                        
                         showBrowserNotification('Ljud avstängt 🔇', 'Automatiska ljudnotifikationer är nu avstängda', false)
                       } else {
                         // Aktivera ljud
