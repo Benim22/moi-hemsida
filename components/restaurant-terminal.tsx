@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useSimpleAuth } from "@/context/simple-auth-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
 import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle, RefreshCw, Settings, Wifi, Bluetooth, Mail, Search, Volume2, VolumeX, Calendar } from "lucide-react"
 import jsPDF from 'jspdf'
+import { io, Socket } from 'socket.io-client'
 
 // ePOS-Print API Declaration (since we'll load it dynamically)
 declare global {
@@ -47,6 +48,8 @@ export default function RestaurantTerminal() {
   const [isIOSDevice, setIsIOSDevice] = useState(false)
   const [audioKeepAlive, setAudioKeepAlive] = useState<NodeJS.Timeout | null>(null)
   const [silentAudio, setSilentAudio] = useState<HTMLAudioElement | null>(null)
+  const [userInteractionUnlocked, setUserInteractionUnlocked] = useState(false)
+  const [pendingAudioTriggers, setPendingAudioTriggers] = useState<(() => void)[]>([])
   
   // Filter states
   const [selectedLocation, setSelectedLocation] = useState(profile?.location || 'all')
@@ -92,6 +95,18 @@ export default function RestaurantTerminal() {
   const [webhookEventCount, setWebhookEventCount] = useState(0)
   const [lastWebhookEvent, setLastWebhookEvent] = useState(null)
 
+  // WebSocket states
+  const [wsConnected, setWsConnected] = useState(false)
+  const [wsReconnectAttempts, setWsReconnectAttempts] = useState(0)
+  const [wsLastMessage, setWsLastMessage] = useState(null)
+  const [wsUrl, setWsUrl] = useState(
+    process.env.NODE_ENV === 'production' 
+      ? 'wss://moi-skrivare-websocket.onrender.com'
+      : 'ws://localhost:3001'
+  )
+  const socketRef = useRef<Socket | null>(null)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   // Debug logging function
   const addDebugLog = (message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString('sv-SE')
@@ -125,6 +140,149 @@ export default function RestaurantTerminal() {
   const clearDebugLogs = () => {
     setDebugLogs([])
     addDebugLog('Debug-logg rensad', 'info')
+  }
+
+  // WebSocket connection functions
+  const connectWebSocket = () => {
+    if (socketRef.current?.connected) {
+      addDebugLog('WebSocket redan ansluten', 'warning')
+      return
+    }
+
+    addDebugLog(`Ansluter till WebSocket: ${wsUrl}`, 'info')
+    
+    const socket = io(wsUrl, {
+      transports: ['websocket'],
+      timeout: 10000,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    })
+
+    socketRef.current = socket
+
+    socket.on('connect', () => {
+      addDebugLog('WebSocket ansluten!', 'success')
+      setWsConnected(true)
+      setWsReconnectAttempts(0)
+      
+      // Registrera terminal för aktuell plats
+      const location = profile?.location || 'malmo'
+      socket.emit('register-terminal', {
+        location,
+        terminalId: `terminal-${Date.now()}`,
+        userProfile: profile
+      })
+    })
+
+    socket.on('disconnect', () => {
+      addDebugLog('WebSocket frånkopplad', 'warning')
+      setWsConnected(false)
+    })
+
+    socket.on('registration-confirmed', (data) => {
+      addDebugLog(`Terminal registrerad för ${data.location}`, 'success')
+    })
+
+    socket.on('new-order', (order) => {
+      addDebugLog(`Ny order mottagen via WebSocket: ${order.id}`, 'success')
+      setWsLastMessage({ type: 'order', data: order, timestamp: new Date() })
+      
+      // Automatisk utskrift om aktiverad
+      if (printerSettings.autoprintEnabled && printerSettings.enabled) {
+        addDebugLog(`Auto-utskrift aktiverad för order ${order.id}`, 'info')
+        handleWebSocketOrder(order)
+      }
+      
+      // Visa notifikation
+      showBrowserNotification(
+        `Ny order #${order.id}`,
+        `Från: ${order.customer_name || 'Okänd kund'} - ${order.total_amount} kr`,
+        true
+      )
+      
+      // Spela ljud
+      playNotificationSound()
+    })
+
+    socket.on('new-booking', (booking) => {
+      addDebugLog(`Ny bokning mottagen via WebSocket: ${booking.id}`, 'success')
+      setWsLastMessage({ type: 'booking', data: booking, timestamp: new Date() })
+      
+      // Visa notifikation
+      showBrowserNotification(
+        `Ny bokning #${booking.id}`,
+        `Från: ${booking.customer_name || 'Okänd kund'} - ${booking.booking_time}`,
+        false
+      )
+      
+      // Spela ljud
+      playNotificationSound()
+    })
+
+    socket.on('order-status-update', (update) => {
+      addDebugLog(`Order status uppdatering: ${update.orderId} → ${update.status}`, 'info')
+      setWsLastMessage({ type: 'status', data: update, timestamp: new Date() })
+    })
+
+    socket.on('error', (error) => {
+      addDebugLog(`WebSocket fel: ${error.message}`, 'error')
+    })
+
+    socket.on('connect_error', (error) => {
+      addDebugLog(`WebSocket anslutningsfel: ${error.message}`, 'error')
+      setWsReconnectAttempts(prev => prev + 1)
+    })
+
+    socket.on('reconnect_attempt', (attempt) => {
+      addDebugLog(`WebSocket återanslutning försök ${attempt}`, 'warning')
+    })
+
+    socket.on('reconnect', () => {
+      addDebugLog('WebSocket återansluten!', 'success')
+      setWsReconnectAttempts(0)
+    })
+  }
+
+  const disconnectWebSocket = () => {
+    if (socketRef.current) {
+      addDebugLog('Stänger WebSocket-anslutning', 'info')
+      socketRef.current.disconnect()
+      socketRef.current = null
+    }
+    setWsConnected(false)
+    
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+  }
+
+  const handleWebSocketOrder = async (order) => {
+    try {
+      // Förhindra dubblering
+      if (autoPrintedOrders.has(order.id)) {
+        addDebugLog(`Order ${order.id} redan utskriven via WebSocket`, 'warning')
+        return
+      }
+      
+      // Lägg till i autoPrintedOrders för att förhindra dubblering
+      setAutoPrintedOrders(prev => new Set([...prev, order.id]))
+      
+      // Skriv ut order
+      await printEPOSReceipt(order)
+      
+      addDebugLog(`WebSocket order ${order.id} utskriven automatiskt`, 'success')
+    } catch (error) {
+      addDebugLog(`Fel vid WebSocket utskrift: ${error.message}`, 'error')
+    }
+  }
+
+  // Ping WebSocket för att hålla anslutningen vid liv
+  const pingWebSocket = () => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('ping')
+    }
   }
 
   // Real network connection test using modern web APIs
@@ -593,7 +751,7 @@ export default function RestaurantTerminal() {
     }
   }, [profile?.location, selectedLocation])
 
-  // User interaction tracking for audio reactivation
+  // Advanced user interaction tracking for iOS audio unlock
   useEffect(() => {
     const reactivateAudio = async () => {
       if (audioContext && audioContext.state === 'suspended') {
@@ -606,21 +764,58 @@ export default function RestaurantTerminal() {
       }
     }
 
-    const handleUserInteraction = () => {
-      reactivateAudio()
+    const handleUserInteraction = async () => {
+      console.log('👆 User interaction detected - unlocking iOS audio capabilities')
+      
+      // Återaktivera AudioContext
+      await reactivateAudio()
+      
+      // Markera som unlocked för iOS
+      if (isIOSDevice) {
+        setUserInteractionUnlocked(true)
+        
+        // Spela alla pending audio triggers
+        if (pendingAudioTriggers.length > 0) {
+          console.log(`🎵 Playing ${pendingAudioTriggers.length} pending audio triggers from user interaction`)
+          
+          // Spela alla triggers
+          pendingAudioTriggers.forEach(trigger => {
+            try {
+              trigger()
+            } catch (error) {
+              console.log('❌ Error playing pending audio trigger:', error)
+            }
+          })
+          
+          // Rensa pending triggers
+          setPendingAudioTriggers([])
+        }
+        
+        // Skapa/uppdatera silent audio för iOS
+        if (silentAudio && silentAudio.paused) {
+          try {
+            await silentAudio.play()
+            console.log('🔇 Silent audio restarted from user interaction')
+          } catch (error) {
+            console.log('⚠️ Could not restart silent audio:', error)
+          }
+        }
+      }
     }
 
     // Lyssna på alla typer av användarinteraktioner
     document.addEventListener('click', handleUserInteraction, { passive: true })
     document.addEventListener('touchstart', handleUserInteraction, { passive: true })
     document.addEventListener('keydown', handleUserInteraction, { passive: true })
+    document.addEventListener('touchend', handleUserInteraction, { passive: true })
 
     return () => {
       document.removeEventListener('click', handleUserInteraction)
       document.removeEventListener('touchstart', handleUserInteraction)
       document.removeEventListener('keydown', handleUserInteraction)
+      document.removeEventListener('touchend', handleUserInteraction)
     }
-  }, [audioContext])
+  }, [audioContext, isIOSDevice, pendingAudioTriggers, silentAudio])
 
   // Real-time subscriptions - ENDAST baserat på profile.location, INTE selectedLocation
   useEffect(() => {
@@ -918,6 +1113,10 @@ export default function RestaurantTerminal() {
         console.log('🧹 Cleanup: Silent audio stoppad')
       }
       
+      // Clear pending audio triggers
+      setPendingAudioTriggers([])
+      console.log('🧹 Cleanup: Pending audio triggers rensade')
+      
       // Close AudioContext
       if (audioContext) {
         audioContext.close()
@@ -948,6 +1147,44 @@ export default function RestaurantTerminal() {
       fetchOrders()
     }
   }, [selectedLocation])
+
+  // WebSocket connection management
+  useEffect(() => {
+    if (user && profile?.location) {
+      addDebugLog('Initierar WebSocket-anslutning...', 'info')
+      connectWebSocket()
+      
+      // Ping WebSocket periodiskt för att hålla anslutningen vid liv
+      const pingInterval = setInterval(() => {
+        pingWebSocket()
+      }, 30000) // Ping var 30:e sekund
+      
+      return () => {
+        clearInterval(pingInterval)
+        disconnectWebSocket()
+      }
+    }
+  }, [user, profile?.location, wsUrl])
+
+  // WebSocket reconnection logic
+  useEffect(() => {
+    if (!wsConnected && user && profile?.location && wsReconnectAttempts < 5) {
+      const reconnectDelay = Math.min(1000 * Math.pow(2, wsReconnectAttempts), 30000) // Exponential backoff, max 30s
+      
+      addDebugLog(`WebSocket återanslutning om ${reconnectDelay / 1000}s (försök ${wsReconnectAttempts + 1}/5)`, 'warning')
+      
+      reconnectTimeoutRef.current = setTimeout(() => {
+        connectWebSocket()
+      }, reconnectDelay)
+    }
+    
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
+    }
+  }, [wsConnected, wsReconnectAttempts, user, profile?.location])
 
   // Auto-refresh orders every 30 seconds
   useEffect(() => {
@@ -982,11 +1219,24 @@ export default function RestaurantTerminal() {
   // Check notification permission on mount and periodically
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      // Kontrollera HTTPS-krav
-      const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost'
+      // Förbättrad HTTPS-krav kontroll - var mindre strikt för testning
+      const isSecure = window.location.protocol === 'https:' || 
+                      window.location.hostname === 'localhost' ||
+                      window.location.hostname === '127.0.0.1' ||
+                      window.location.hostname.includes('192.168.') ||
+                      window.location.hostname.includes('10.0.') ||
+                      window.location.hostname.includes('172.')
       
-      if (!isSecure) {
-        console.log('❌ Notifikationer kräver HTTPS')
+      console.log('🔐 Säkerhetskontroll:', {
+        protocol: window.location.protocol,
+        hostname: window.location.hostname,
+        isSecure,
+        hasNotificationAPI: 'Notification' in window
+      })
+      
+      if (!isSecure && window.location.protocol !== 'file:') {
+        console.log('❌ Notifikationer kräver HTTPS eller lokalt nätverk')
+        addDebugLog('Notifikationer kräver HTTPS eller lokalt nätverk', 'warning')
         setNotificationPermission('unsupported')
         return
       }
@@ -1022,7 +1272,8 @@ export default function RestaurantTerminal() {
         
         return () => clearInterval(interval)
       } else {
-        console.log('❌ Notification API inte tillgängligt')
+        console.log('❌ Notification API inte tillgängligt i denna webbläsare')
+        addDebugLog('Notification API stöds inte av webbläsaren', 'warning')
         setNotificationPermission('unsupported')
       }
     }
@@ -1371,9 +1622,15 @@ export default function RestaurantTerminal() {
       setAudioContext(newAudioContext)
       setAudioEnabled(true)
       
+      // STEG 5: Markera som user interaction unlocked för iOS
+      if (isIOSDevice) {
+        setUserInteractionUnlocked(true)
+        console.log('🍎 iOS User Interaction unlocked - WebSocket triggers kommer nu fungera')
+      }
+      
       console.log('✅ Ljud aktiverat! AudioContext state:', newAudioContext.state)
       
-      // STEG 5: Starta iOS keep-alive system
+      // STEG 6: Starta iOS keep-alive system
       if (isIOSDevice) {
         startIOSAudioKeepAlive(newAudioContext)
       }
@@ -1449,8 +1706,8 @@ export default function RestaurantTerminal() {
   }
 
   const playNotificationSound = async () => {
-    console.log('🚨 AGGRESSIV iOS NOTIFIKATION STARTAR!')
-    console.log('📊 Status: notiser =', notificationsEnabled, 'ljud =', audioEnabled, 'iOS =', isIOSDevice)
+    console.log('🚨 SMART iOS NOTIFIKATION STARTAR!')
+    console.log('📊 Status: notiser =', notificationsEnabled, 'ljud =', audioEnabled, 'iOS =', isIOSDevice, 'userUnlocked =', userInteractionUnlocked)
     
     // VISUELL EFFEKT - Alltid, oavsett ljudinställningar
     triggerVisualAlert()
@@ -1469,23 +1726,43 @@ export default function RestaurantTerminal() {
       return
     }
     
-    try {
-      console.log('🍎 iOS AGGRESSIV LJUDUPPSPELNING STARTAR...')
-      console.log('🎵 AudioContext state:', audioContext?.state || 'ingen audioContext')
-      
-      if (isIOSDevice) {
-        // AGGRESSIV iOS-ljuduppspelning med flera metoder samtidigt
-        await playAggressiveIOSSound()
-      } else {
-        // Standard ljuduppspelning för desktop
-        playPowerfulSoundSequence()
+    // Skapa audio trigger function
+    const audioTriggerFunction = async () => {
+      try {
+        console.log('🍎 iOS SMART LJUDUPPSPELNING STARTAR...')
+        console.log('🎵 AudioContext state:', audioContext?.state || 'ingen audioContext')
+        
+        if (isIOSDevice) {
+          // AGGRESSIV iOS-ljuduppspelning med flera metoder samtidigt
+          await playAggressiveIOSSound()
+        } else {
+          // Standard ljuduppspelning för desktop
+          playPowerfulSoundSequence()
+        }
+        
+      } catch (error) {
+        console.log('❌ Fel med ljuduppspelning:', error)
+        console.log('🎵 Försöker med fallback-metod...')
+        playFallbackSound()
       }
-      
-    } catch (error) {
-      console.log('❌ Fel med ljuduppspelning:', error)
-      console.log('🎵 Försöker med fallback-metod...')
-      playFallbackSound()
     }
+    
+    // För iOS: Kontrollera om vi har user interaction unlock
+    if (isIOSDevice && !userInteractionUnlocked) {
+      console.log('🍎 iOS: Ingen user interaction än - lägg till i pending queue')
+      setPendingAudioTriggers(prev => [...prev, audioTriggerFunction])
+      
+      // Visa instruktion till användaren
+      showBrowserNotification(
+        '🍎 iOS Audio Unlock Behövs', 
+        'Tryck någonstans på skärmen för att aktivera ljud för notifikationer',
+        false
+      )
+      return
+    }
+    
+    // För desktop eller iOS med unlock: Spela direkt
+    await audioTriggerFunction()
   }
 
   // Aggressiv iOS-ljuduppspelning som använder alla tillgängliga metoder
@@ -3130,8 +3407,10 @@ Utvecklad av Skaply
                       <div className={`w-2 h-2 rounded-full ${notificationsEnabled ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
                       <span className="text-white/70">
                         {notificationsEnabled 
-                          ? isIOSDevice && audioEnabled && audioKeepAlive 
-                            ? '🍎 Notiser + iOS Keep-Alive Aktiva' 
+                          ? isIOSDevice && audioEnabled && userInteractionUnlocked
+                            ? '🍎 Notiser + iOS Audio Unlocked' 
+                            : isIOSDevice && audioEnabled && !userInteractionUnlocked
+                            ? '🍎 Notiser Aktiva (Audio väntar på touch)'
                             : 'Notiser Aktiva'
                           : 'Notiser Inaktiva'
                         }
@@ -3274,6 +3553,10 @@ Utvecklad av Skaply
                       if (audioEnabled) {
                         // Stäng av ljud och rensa iOS keep-alive
                         setAudioEnabled(false)
+                        setUserInteractionUnlocked(false)
+                        
+                        // Rensa pending audio triggers
+                        setPendingAudioTriggers([])
                         
                         // Stoppa iOS keep-alive system
                         if (audioKeepAlive) {
@@ -3452,6 +3735,42 @@ Utvecklad av Skaply
                 >
                   🍎 Aktivera iOS Ljud
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* iOS Audio Unlock Waiting Warning */}
+        {notificationsEnabled && audioEnabled && isIOSDevice && !userInteractionUnlocked && (
+          <Card className="border border-orange-500/30 bg-gradient-to-r from-orange-900/20 to-red-900/20 backdrop-blur-md mb-6">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-orange-500/20 rounded-full flex items-center justify-center animate-pulse">
+                  <Volume2 className="h-4 w-4 text-orange-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-orange-400 font-medium">🍎 iOS Audio Unlock Behövs</p>
+                  <p className="text-orange-300/80 text-sm mb-2">
+                    Ljud är aktiverat men iOS Safari kräver en touch-interaktion för att spela ljud från automatiska events
+                  </p>
+                  {pendingAudioTriggers.length > 0 && (
+                    <div className="bg-red-500/10 border border-red-500/30 rounded p-2">
+                      <p className="text-red-300 text-xs">
+                        <strong>⏳ {pendingAudioTriggers.length} ljud väntar:</strong> Tryck någonstans på skärmen för att spela upp alla väntande notifikationsljud!
+                      </p>
+                    </div>
+                  )}
+                  {pendingAudioTriggers.length === 0 && (
+                    <div className="bg-blue-500/10 border border-blue-500/30 rounded p-2">
+                      <p className="text-blue-300 text-xs">
+                        <strong>👆 Tryck någonstans på skärmen</strong> för att låsa upp ljud för framtida automatiska notifikationer
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div className="text-orange-400 font-bold text-sm">
+                  👆 TOUCH
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -3646,7 +3965,32 @@ Utvecklad av Skaply
 
                           return (
                             <div className="space-y-2">
-                              {orderItems.map((item, index) => (
+                              {(() => {
+                                // Gruppera samma varor med samma alternativ (samma logik som i orderdetaljer)
+                                const groupedItems = orderItems.reduce((acc, item) => {
+                                  // Skapa en unik nyckel baserat på namn och alternativ
+                                  const optionsKey = item.options ? JSON.stringify(item.options) : 'no-options'
+                                  const extrasKey = item.extras ? JSON.stringify(item.extras) : 'no-extras'
+                                  const key = `${item.name}-${optionsKey}-${extrasKey}`
+                                  
+                                  if (acc[key]) {
+                                    // Om varan redan finns, lägg till kvantiteten
+                                    acc[key].quantity += item.quantity
+                                    acc[key].totalPrice += (item.price * item.quantity)
+                                  } else {
+                                    // Ny vara, lägg till i gruppen
+                                    acc[key] = {
+                                      ...item,
+                                      totalPrice: item.price * item.quantity
+                                    }
+                                  }
+                                  
+                                  return acc
+                                }, {})
+
+                                const groupedItemsArray = Object.values(groupedItems)
+                                return groupedItemsArray
+                              })().map((item, index) => (
                                 <div key={index} className="flex flex-col sm:flex-row sm:justify-between border-b border-[#e4d699]/10 last:border-0 pb-2 last:pb-0 gap-2">
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
@@ -3664,7 +4008,7 @@ Utvecklad av Skaply
                                           </span>
                                         )}
                                         {item.options.glutenFritt && (
-                                          <span className="text-blue-400 text-xs">🌾 Glutenfritt</span>
+                                          <span className="text-blue-400 text-xs">�� Glutenfritt</span>
                                         )}
                                         {item.options.laktosFritt && (
                                           <span className="text-green-400 text-xs">🥛 Laktosfritt</span>
@@ -3683,7 +4027,7 @@ Utvecklad av Skaply
                                     )}
                                   </div>
                                   <div className="text-[#e4d699] font-bold text-sm flex-shrink-0 self-start ml-6 sm:ml-4">
-                                    {(item.price * item.quantity).toFixed(0)} kr
+                                    {item.totalPrice?.toFixed(0) || (item.price * item.quantity).toFixed(0)} kr
                                   </div>
                                 </div>
                               ))}

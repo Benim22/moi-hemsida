@@ -211,6 +211,39 @@ export async function POST(request: NextRequest) {
       emailResult = { success: false, error: emailError.message }
     }
 
+    // Skicka notifikation till WebSocket-servern för ny bokning
+    try {
+      const websocketResponse = await fetch(`${request.url.replace('/api/bookings', '/api/websocket-notify')}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'booking',
+          data: {
+            id: result.data.id,
+            customer_name: bookingData.customerName,
+            customer_email: bookingData.customerEmail,
+            customer_phone: bookingData.customerPhone,
+            booking_time: result.data.booking_time,
+            guests: bookingData.guests,
+            location: dbLocation,
+            message: bookingData.message,
+            status: 'confirmed',
+            created_at: result.data.created_at
+          }
+        })
+      })
+      
+      if (websocketResponse.ok) {
+        console.log('✅ WebSocket notification sent for booking:', result.data.id)
+      } else {
+        console.error('❌ Failed to send WebSocket notification:', await websocketResponse.text())
+      }
+    } catch (wsError) {
+      console.error('❌ WebSocket notification error:', wsError)
+    }
+
     // Send notification to restaurant staff via notifications table
     try {
       console.log('📢 Creating staff notification for booking...')

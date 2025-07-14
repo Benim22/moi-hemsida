@@ -79,6 +79,40 @@ export async function POST(request: NextRequest) {
             })
             .eq('id', orderId)
 
+          // Skicka notifikation till WebSocket-servern för att trigga utskrift
+          try {
+            const websocketResponse = await fetch(`${request.url.replace('/api/orders/confirm', '/api/websocket-notify')}`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                type: 'order',
+                data: {
+                  id: order.id,
+                  order_number: order.order_number,
+                  customer_name: order.customer_name || order.profiles?.name,
+                  customer_email: order.customer_email || order.profiles?.email,
+                  items: order.items,
+                  total_amount: order.total_price || order.amount,
+                  location: order.location,
+                  order_type: order.order_type,
+                  special_instructions: order.special_instructions,
+                  status: 'confirmed',
+                  confirmed_at: new Date().toISOString()
+                }
+              })
+            })
+            
+            if (websocketResponse.ok) {
+              console.log('✅ WebSocket notification sent for order:', order.id)
+            } else {
+              console.error('❌ Failed to send WebSocket notification:', await websocketResponse.text())
+            }
+          } catch (wsError) {
+            console.error('❌ WebSocket notification error:', wsError)
+          }
+
           return NextResponse.json({
             success: true,
             message: 'Order confirmed and confirmation email sent',
