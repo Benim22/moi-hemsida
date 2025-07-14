@@ -45,6 +45,8 @@ export default function RestaurantTerminal() {
   const [audioEnabled, setAudioEnabled] = useState(false)
   const [audioContext, setAudioContext] = useState(null)
   const [isIOSDevice, setIsIOSDevice] = useState(false)
+  const [audioKeepAlive, setAudioKeepAlive] = useState<NodeJS.Timeout | null>(null)
+  const [silentAudio, setSilentAudio] = useState<HTMLAudioElement | null>(null)
   
   // Filter states
   const [selectedLocation, setSelectedLocation] = useState(profile?.location || 'all')
@@ -901,6 +903,29 @@ export default function RestaurantTerminal() {
     }
   }, [user, profile?.location])
 
+  // Cleanup audio keep-alive on unmount
+  useEffect(() => {
+    return () => {
+      // Cleanup iOS keep-alive system when component unmounts
+      if (audioKeepAlive) {
+        clearInterval(audioKeepAlive)
+        console.log('🧹 Cleanup: iOS keep-alive system stoppad')
+      }
+      
+      // Cleanup silent audio
+      if (silentAudio) {
+        silentAudio.pause()
+        console.log('🧹 Cleanup: Silent audio stoppad')
+      }
+      
+      // Close AudioContext
+      if (audioContext) {
+        audioContext.close()
+        console.log('🧹 Cleanup: AudioContext stängd')
+      }
+    }
+  }, [audioKeepAlive, silentAudio, audioContext])
+
   // Fetch initial data
   useEffect(() => {
     if (user && profile?.location) {
@@ -954,7 +979,7 @@ export default function RestaurantTerminal() {
     return () => clearInterval(cleanupInterval)
   }, [])
 
-  // Check notification permission on mount
+  // Check notification permission on mount and periodically
   useEffect(() => {
     if (typeof window !== 'undefined') {
       // Kontrollera HTTPS-krav
@@ -967,16 +992,41 @@ export default function RestaurantTerminal() {
       }
       
       if ('Notification' in window) {
-        setNotificationPermission(Notification.permission)
-        console.log('🔔 Notifikationsstatus:', Notification.permission)
+        const checkPermission = () => {
+          const currentPermission = Notification.permission
+          setNotificationPermission(currentPermission)
+          
+          // Aktivera notiser automatiskt om permission är granted men notiser är off
+          if (currentPermission === 'granted' && !notificationsEnabled) {
+            console.log('🔔 Auto-aktiverar notiser eftersom permission är granted')
+            setNotificationsEnabled(true)
+          }
+          
+          return currentPermission
+        }
+        
+        // Initial check
+        const initialPermission = checkPermission()
+        console.log('🔔 Initial notifikationsstatus:', initialPermission)
         console.log('🌐 Protokoll:', window.location.protocol)
         console.log('🏠 Hostname:', window.location.hostname)
+        console.log('📱 User Agent:', navigator.userAgent.substring(0, 100) + '...')
+        
+        // Periodisk kontroll för mobil-enheter (var 10:e sekund)
+        const interval = setInterval(() => {
+          const newPermission = checkPermission()
+          if (newPermission !== notificationPermission) {
+            console.log('🔄 Notifikationsstatus ändrad:', notificationPermission, '→', newPermission)
+          }
+        }, 10000) // Kontrollera var 10:e sekund
+        
+        return () => clearInterval(interval)
       } else {
         console.log('❌ Notification API inte tillgängligt')
         setNotificationPermission('unsupported')
       }
     }
-  }, [])
+  }, [notificationPermission, notificationsEnabled])
 
   const fetchOrders = async () => {
     if (!profile) return
@@ -1072,49 +1122,86 @@ export default function RestaurantTerminal() {
       return
     }
 
-    console.log('Nuvarande notifikationsstatus:', Notification.permission)
+    console.log('🔔 Begär notifikationspermission...')
+    console.log('📱 Enhet userAgent:', navigator.userAgent)
+    console.log('🔔 Nuvarande status:', Notification.permission)
+    
+    // Uppdatera state med nuvarande permission först
     setNotificationPermission(Notification.permission)
     
     if (Notification.permission === 'default') {
       try {
+        console.log('🔔 Visar notifikationsdialog...')
         const permission = await Notification.requestPermission()
-        console.log('Notifikationspermission efter begäran:', permission)
+        console.log('✅ Notifikationssvar mottaget:', permission)
+        
+        // Vänta lite och kontrollera igen (mobil-browsers kan vara långsamma)
+        setTimeout(() => {
+          const actualPermission = Notification.permission
+          console.log('🔄 Dubbelkontroll av permission:', actualPermission)
+          setNotificationPermission(actualPermission)
+          
+          if (actualPermission === 'granted') {
+            console.log('✅ Notifikationer aktiverade!')
+            addDebugLog('Notifikationer aktiverade framgångsrikt', 'success')
+            
+            // Aktivera också notiser automatiskt när permission är granted
+            setNotificationsEnabled(true)
+            
+            // Visa en test-notifikation
+            try {
+              const notification = new Notification('🔔 Notifikationer aktiverade!', {
+                body: 'Du kommer nu få meddelanden om nya beställningar',
+                icon: '/favicon.ico',
+                tag: 'permission-granted',
+                requireInteraction: false
+              })
+              
+              // Auto-close efter 3 sekunder
+              setTimeout(() => notification.close(), 3000)
+            } catch (notifError) {
+              console.log('⚠️ Kunde inte visa test-notifikation:', notifError)
+            }
+            
+          } else if (actualPermission === 'denied') {
+            console.log('❌ Notifikationer nekade')
+            addDebugLog('Notifikationer nekade av användaren', 'warning')
+          } else {
+            console.log('⚠️ Notifikationspermission oklar:', actualPermission)
+            addDebugLog(`Notifikationspermission oklar: ${actualPermission}`, 'warning')
+          }
+        }, 1000) // Vänta 1 sekund för mobil-browsers
+        
+        // Uppdatera direkt också
         setNotificationPermission(permission)
         
-        if (permission === 'granted') {
-          console.log('✅ Notifikationer aktiverade!')
-          addDebugLog('Notifikationer aktiverade framgångsrikt', 'success')
-          
-          // Visa en test-notifikation
-          const notification = new Notification('🔔 Notifikationer aktiverade!', {
-            body: 'Du kommer nu få meddelanden om nya beställningar',
-            icon: '/favicon.ico',
-            tag: 'permission-granted',
-            requireInteraction: false
-          })
-          
-          // Auto-close efter 3 sekunder
-          setTimeout(() => notification.close(), 3000)
-          
-        } else if (permission === 'denied') {
-          console.log('❌ Notifikationer nekade')
-          addDebugLog('Notifikationer nekade av användaren', 'warning')
-        } else {
-          console.log('⚠️ Notifikationspermission: default (inget beslut)')
-          addDebugLog('Notifikationspermission oklar', 'warning')
-        }
       } catch (error) {
-        console.error('Fel vid begäran om notifikationspermission:', error)
+        console.error('❌ Fel vid begäran om notifikationspermission:', error)
         addDebugLog(`Fel vid notifikationspermission: ${error.message}`, 'error')
+        
+        // Försök dubbelkontrollera permission även vid fel
+        setTimeout(() => {
+          const actualPermission = Notification.permission
+          console.log('🔄 Dubbelkontroll efter fel:', actualPermission)
+          setNotificationPermission(actualPermission)
+        }, 500)
       }
     } else if (Notification.permission === 'granted') {
       console.log('✅ Notifikationer redan aktiverade')
       setNotificationPermission('granted')
+      setNotificationsEnabled(true) // Aktivera notiser automatiskt om permission finns
       addDebugLog('Notifikationer redan aktiverade', 'success')
     } else {
       console.log('❌ Notifikationer blockerade av användaren')
       setNotificationPermission('denied')
       addDebugLog('Notifikationer blockerade - kan aktiveras i webbläsarinställningar', 'warning')
+      
+      // Visa instruktioner för att aktivera i webbläsarinställningar
+      showBrowserNotification(
+        'Notifikationer blockerade', 
+        'Gå till webbläsarinställningar för att aktivera notifikationer för denna sida',
+        false
+      )
     }
   }
 
@@ -1185,6 +1272,12 @@ export default function RestaurantTerminal() {
     const newStatus = !notificationsEnabled
     
     console.log('🔔 Toggling notifications:', newStatus ? 'ON' : 'OFF')
+    console.log('🔔 Status:', { 
+      notificationPermission, 
+      notificationsEnabled, 
+      newStatus,
+      browserPermission: Notification.permission 
+    })
     
     if (newStatus) {
       showBrowserNotification('Notiser aktiverade', 'Du kommer nu få meddelanden om nya beställningar', false)
@@ -1218,58 +1311,146 @@ export default function RestaurantTerminal() {
 
   const activateAudio = async () => {
     try {
-      console.log('🎵 Aktiverar ljud för alla enheter...')
+      console.log('🍎 AGGRESSIV iOS-ljudaktivering startar...')
+      console.log('📱 Enhet:', navigator.userAgent)
       
-      // Skapa och aktivera AudioContext
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext
+      // STEG 1: Skapa AudioContext
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
       if (!AudioContextClass) {
         throw new Error('AudioContext stöds inte i denna webbläsare')
       }
       
       const newAudioContext = new AudioContextClass()
       
-      // På Safari/iPad/iOS kan AudioContext vara suspended, så vi måste resume den
+      // STEG 2: Återuppta AudioContext om suspended
       if (newAudioContext.state === 'suspended') {
         await newAudioContext.resume()
         console.log('🎵 AudioContext resumed från suspended state')
       }
       
-      // Spela ett tyst ljud för att "unlåsa" ljudet (krävs för iOS/Safari)
+      // STEG 3: För iOS - skapa persistent HTML Audio element
+      if (isIOSDevice) {
+        console.log('🍎 Skapar iOS silent audio keep-alive...')
+        
+        // Skapa extremt tyst ljudfil som base64
+        const silentMp3 = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA/+M4wAAAAAAAAAAAAEluZm8AAAAPAAAABAABBQAzMzMzMzMzMzMzMzMzMzMzMzMzMzNmZmZmZmZmZmZmZmZmZmZmZmZmZmaZmZmZmZmZmZmZmZmZmZmZmZmZmZnMzMzMzMzMzMzMzMzMzMzMzMzMzMz/////////////////AAAAAExhdmY1OC43Ni4xMDAAAAAAAAAAAAAAAAAAAAAAAP/jOMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+        
+        const audio = document.createElement('audio')
+        audio.src = silentMp3
+        audio.loop = true
+        audio.volume = 0.01 // Extremt tyst men inte helt tyst
+        audio.muted = false
+        audio.preload = 'auto'
+        audio.setAttribute('playsinline', 'true')
+        audio.setAttribute('webkit-playsinline', 'true')
+        
+        try {
+          await audio.play()
+          setSilentAudio(audio)
+          console.log('🔇 iOS silent audio keep-alive aktiverat')
+        } catch (silentError) {
+          console.log('⚠️ Kunde inte starta silent audio:', silentError)
+        }
+      }
+      
+      // STEG 4: Spela unlock-ljud
       const oscillator = newAudioContext.createOscillator()
       const gainNode = newAudioContext.createGain()
       
       oscillator.connect(gainNode)
       gainNode.connect(newAudioContext.destination)
       
-      oscillator.frequency.value = 440
+      oscillator.frequency.value = 800
       oscillator.type = 'sine'
-      gainNode.gain.setValueAtTime(0.01, newAudioContext.currentTime) // Mycket tyst
+      gainNode.gain.setValueAtTime(0.3, newAudioContext.currentTime) // Hörbar för unlock
+      gainNode.gain.exponentialRampToValueAtTime(0.01, newAudioContext.currentTime + 0.3)
       
       oscillator.start(newAudioContext.currentTime)
-      oscillator.stop(newAudioContext.currentTime + 0.1)
+      oscillator.stop(newAudioContext.currentTime + 0.3)
       
       setAudioContext(newAudioContext)
       setAudioEnabled(true)
       
       console.log('✅ Ljud aktiverat! AudioContext state:', newAudioContext.state)
-      console.log('🎵 Enhet:', isIOSDevice ? 'iOS/iPad' : 'Desktop/Android')
       
-      // Bekräfta med en testton efter kort delay
+      // STEG 5: Starta iOS keep-alive system
+      if (isIOSDevice) {
+        startIOSAudioKeepAlive(newAudioContext)
+      }
+      
+      // STEG 6: Bekräfta med testton
       setTimeout(() => {
+        console.log('🧪 Spelar bekräftelseljud...')
         playNotificationSound()
-      }, 300)
+      }, 500)
       
-      showBrowserNotification('Ljud aktiverat! 🔊', 'Automatiska ljudnotifikationer fungerar nu på alla enheter', false)
+      showBrowserNotification('🍎 iOS Ljud aktiverat!', 'Automatiska ljudnotifikationer är nu aktiva för iOS Safari', false)
       
     } catch (error) {
       console.error('❌ Fel vid aktivering av ljud:', error)
-      showBrowserNotification('Ljudfel', `Kunde inte aktivera ljud: ${error.message}`, false)
+      showBrowserNotification('Ljudfel', `Kunde inte aktivera ljud: ${(error as Error).message}`, false)
     }
   }
 
-  const playNotificationSound = () => {
-    console.log('🚨 KRAFTFULL NOTIFIKATION: Ljud + Vibration + Visuellt!')
-    console.log('📊 Status: notiser =', notificationsEnabled, 'ljud =', audioEnabled)
+  // iOS Audio Keep-Alive System
+  const startIOSAudioKeepAlive = (audioContext: AudioContext) => {
+    if (!isIOSDevice) return
+    
+    console.log('🍎 Startar iOS audio keep-alive system...')
+    
+    // Stäng eventuell befintlig keep-alive
+    if (audioKeepAlive) {
+      clearInterval(audioKeepAlive)
+    }
+    
+    const keepAliveInterval = setInterval(async () => {
+      try {
+        // Återaktivera AudioContext om suspended
+        if (audioContext && audioContext.state === 'suspended') {
+          console.log('💓 Keep-alive: Återupptar AudioContext...')
+          await audioContext.resume()
+        }
+        
+        // Spela extremt tyst Web Audio ton
+        if (audioContext && audioContext.state === 'running') {
+          const osc = audioContext.createOscillator()
+          const gain = audioContext.createGain()
+          
+          osc.connect(gain)
+          gain.connect(audioContext.destination)
+          
+          osc.frequency.value = 20 // Subsonisk frekvens
+          osc.type = 'sine'
+          gain.gain.setValueAtTime(0.001, audioContext.currentTime) // Extremt tyst
+          
+          osc.start(audioContext.currentTime)
+          osc.stop(audioContext.currentTime + 0.05) // 50ms
+        }
+        
+        // Håll silent audio igång
+        if (silentAudio && silentAudio.paused) {
+          try {
+            await silentAudio.play()
+            console.log('💓 Keep-alive: Silent audio återstartat')
+          } catch (e) {
+            console.log('💓 Keep-alive: Kunde inte återstarta silent audio')
+          }
+        }
+        
+        console.log('💓 iOS keep-alive puls: AudioContext =', audioContext?.state)
+        
+      } catch (error) {
+        console.log('💓 Keep-alive fel:', error)
+      }
+    }, 15000) // Var 15:e sekund
+    
+    setAudioKeepAlive(keepAliveInterval)
+    console.log('✅ iOS keep-alive aktiverat (var 15:e sekund)')
+  }
+
+  const playNotificationSound = async () => {
+    console.log('🚨 AGGRESSIV iOS NOTIFIKATION STARTAR!')
+    console.log('📊 Status: notiser =', notificationsEnabled, 'ljud =', audioEnabled, 'iOS =', isIOSDevice)
     
     // VISUELL EFFEKT - Alltid, oavsett ljudinställningar
     triggerVisualAlert()
@@ -1289,17 +1470,167 @@ export default function RestaurantTerminal() {
     }
     
     try {
-      console.log('🔊 Spelar KRAFTFULLT notifikationsljud...')
+      console.log('🍎 iOS AGGRESSIV LJUDUPPSPELNING STARTAR...')
       console.log('🎵 AudioContext state:', audioContext?.state || 'ingen audioContext')
       
-      // KRAFTFULL LJUDSEKVENS - spela flera gånger
-      playPowerfulSoundSequence()
+      if (isIOSDevice) {
+        // AGGRESSIV iOS-ljuduppspelning med flera metoder samtidigt
+        await playAggressiveIOSSound()
+      } else {
+        // Standard ljuduppspelning för desktop
+        playPowerfulSoundSequence()
+      }
       
     } catch (error) {
       console.log('❌ Fel med ljuduppspelning:', error)
       console.log('🎵 Försöker med fallback-metod...')
       playFallbackSound()
     }
+  }
+
+  // Aggressiv iOS-ljuduppspelning som använder alla tillgängliga metoder
+  const playAggressiveIOSSound = async () => {
+    console.log('🍎 SUPER AGGRESSIV iOS-ljud med alla metoder...')
+    
+    const promises: Promise<void>[] = []
+    
+    // METOD 1: Reaktivera silent audio
+    if (silentAudio && silentAudio.paused) {
+      promises.push(
+        silentAudio.play().then(() => {
+          console.log('🔇 Silent audio återaktiverat')
+        }).catch(e => {
+          console.log('⚠️ Silent audio misslyckades:', e)
+        })
+      )
+    }
+    
+    // METOD 2: Återuppta AudioContext aggressivt
+    if (audioContext && audioContext.state === 'suspended') {
+      promises.push(
+        audioContext.resume().then(() => {
+          console.log('🎵 AudioContext återupptaget')
+        }).catch(e => {
+          console.log('⚠️ AudioContext resume misslyckades:', e)
+        })
+      )
+    }
+    
+    // Vänta på att förberedelserna är klara
+    await Promise.allSettled(promises)
+    
+    // METOD 3: Spela notification med Web Audio (flera försök)
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`🎵 iOS Web Audio försök ${attempt}/3...`)
+        
+        if (audioContext && audioContext.state === 'running') {
+          await playIOSWebAudioNotification(audioContext, attempt)
+          console.log(`✅ iOS Web Audio försök ${attempt} lyckades!`)
+          break // Om det lyckas, hoppa ur loopen
+        } else {
+          console.log(`⚠️ AudioContext inte running för försök ${attempt}`)
+        }
+      } catch (error) {
+        console.log(`❌ iOS Web Audio försök ${attempt} misslyckades:`, error)
+        
+        if (attempt === 3) {
+          // Sista försöket - använd fallback
+          console.log('🔄 Alla Web Audio försök misslyckades - använder fallback')
+          playFallbackSound()
+        } else {
+          // Vänta lite innan nästa försök
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+      }
+    }
+    
+    // METOD 4: HTML Audio fallback parallellt
+    try {
+      const htmlAudio = document.createElement('audio')
+      htmlAudio.src = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJXfH8N2QQAoUXrTp66hVFApGn+DyvmIeAz2p3u2+bSEFl8C4yZNFFwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJXfH8N2QQAoUXrTp66hVFApGn+DyvmIeAz2p3u2+bSEF'
+      htmlAudio.volume = 0.5
+      htmlAudio.play().then(() => {
+        console.log('✅ iOS HTML Audio fallback lyckades')
+      }).catch(e => {
+        console.log('⚠️ iOS HTML Audio fallback misslyckades:', e)
+      })
+    } catch (error) {
+      console.log('❌ HTML Audio fallback fel:', error)
+    }
+  }
+
+  // Specialiserad iOS Web Audio notification
+  const playIOSWebAudioNotification = (audioContext: AudioContext, attempt: number): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      try {
+        // Skapa ljudsekvens optimerad för iOS
+        const startTime = audioContext.currentTime
+        const volume = Math.min(0.3 + (attempt * 0.1), 0.7) // Öka volymen för varje försök
+        
+        // Första ton - Alert ton
+        const osc1 = audioContext.createOscillator()
+        const gain1 = audioContext.createGain()
+        
+        osc1.connect(gain1)
+        gain1.connect(audioContext.destination)
+        
+        osc1.frequency.value = 800
+        osc1.type = 'sine'
+        gain1.gain.setValueAtTime(0, startTime)
+        gain1.gain.linearRampToValueAtTime(volume, startTime + 0.05)
+        gain1.gain.exponentialRampToValueAtTime(0.01, startTime + 0.3)
+        
+        osc1.start(startTime)
+        osc1.stop(startTime + 0.3)
+        
+        // Andra ton - Högre pitch
+        const osc2 = audioContext.createOscillator()
+        const gain2 = audioContext.createGain()
+        
+        osc2.connect(gain2)
+        gain2.connect(audioContext.destination)
+        
+        osc2.frequency.value = 1200
+        osc2.type = 'sine'
+        gain2.gain.setValueAtTime(0, startTime + 0.35)
+        gain2.gain.linearRampToValueAtTime(volume, startTime + 0.4)
+        gain2.gain.exponentialRampToValueAtTime(0.01, startTime + 0.7)
+        
+        osc2.start(startTime + 0.35)
+        osc2.stop(startTime + 0.7)
+        
+        // Tredje ton - Bekräftelse
+        const osc3 = audioContext.createOscillator()
+        const gain3 = audioContext.createGain()
+        
+        osc3.connect(gain3)
+        gain3.connect(audioContext.destination)
+        
+        osc3.frequency.value = 1000
+        osc3.type = 'sine'
+        gain3.gain.setValueAtTime(0, startTime + 0.75)
+        gain3.gain.linearRampToValueAtTime(volume, startTime + 0.8)
+        gain3.gain.exponentialRampToValueAtTime(0.01, startTime + 1.2)
+        
+        osc3.start(startTime + 0.75)
+        osc3.stop(startTime + 1.2)
+        
+        // Resolve när alla toner är klara
+        setTimeout(() => {
+          resolve()
+        }, 1300)
+        
+        // Error handling
+        osc1.onerror = osc2.onerror = osc3.onerror = (error) => {
+          console.log('🎵 Oscillator error:', error)
+          reject(error)
+        }
+        
+      } catch (error) {
+        reject(error)
+      }
+    })
   }
 
   // Kraftfull ljudsekvens som spelas flera gånger
@@ -2798,7 +3129,12 @@ Utvecklad av Skaply
                     <div className="flex items-center gap-1">
                       <div className={`w-2 h-2 rounded-full ${notificationsEnabled ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
                       <span className="text-white/70">
-                        {notificationsEnabled ? 'Notiser Aktiva' : 'Notiser Inaktiva'}
+                        {notificationsEnabled 
+                          ? isIOSDevice && audioEnabled && audioKeepAlive 
+                            ? '🍎 Notiser + iOS Keep-Alive Aktiva' 
+                            : 'Notiser Aktiva'
+                          : 'Notiser Inaktiva'
+                        }
                       </span>
                     </div>
                     
@@ -2829,7 +3165,16 @@ Utvecklad av Skaply
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                   {/* Notification Toggle Button */}
                   <Button 
-                    onClick={notificationPermission === 'granted' ? toggleNotifications : requestNotificationPermission}
+                    onClick={() => {
+                      console.log('🔔 Notis-knapp klickad:', { notificationPermission, notificationsEnabled })
+                      
+                      if (notificationPermission === 'granted') {
+                        toggleNotifications()
+                      } else {
+                        // För alla andra status (default, denied, unsupported) - försök aktivera
+                        requestNotificationPermission()
+                      }
+                    }}
                     variant="outline" 
                     className={`h-12 flex flex-col items-center justify-center text-xs font-medium transition-all duration-200 ${
                       notificationPermission === 'granted' 
@@ -2838,15 +3183,29 @@ Utvecklad av Skaply
                           : 'border-orange-500/50 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20'
                         : notificationPermission === 'denied'
                         ? 'border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/20'
+                        : notificationPermission === 'unsupported'
+                        ? 'border-gray-500/50 bg-gray-500/10 text-gray-400 cursor-not-allowed'
                         : 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20'
                     }`}
+                    disabled={notificationPermission === 'unsupported'}
+                    title={
+                      notificationPermission === 'granted' 
+                        ? notificationsEnabled ? 'Stäng av notifikationer' : 'Slå på notifikationer'
+                        : notificationPermission === 'denied'
+                        ? 'Notifikationer blockerade - gå till webbläsarinställningar för att aktivera'
+                        : notificationPermission === 'unsupported'
+                        ? 'Notifikationer stöds inte (kräver HTTPS)'
+                        : 'Klicka för att aktivera notifikationer'
+                    }
                   >
                     <Bell className="h-5 w-5 mb-1" />
                     <span className="text-xs leading-tight">
                       {notificationPermission === 'granted' 
                         ? notificationsEnabled ? 'Notiser På' : 'Notiser Av'
                         : notificationPermission === 'denied'
-                        ? 'Blockerade'
+                        ? 'Blockerad'
+                        : notificationPermission === 'unsupported'
+                        ? 'Ej stödd'
                         : 'Aktivera'
                       }
                     </span>
@@ -2913,13 +3272,30 @@ Utvecklad av Skaply
                   <Button 
                     onClick={() => {
                       if (audioEnabled) {
-                        // Stäng av ljud
+                        // Stäng av ljud och rensa iOS keep-alive
                         setAudioEnabled(false)
+                        
+                        // Stoppa iOS keep-alive system
+                        if (audioKeepAlive) {
+                          clearInterval(audioKeepAlive)
+                          setAudioKeepAlive(null)
+                          console.log('🛑 iOS keep-alive system stoppad')
+                        }
+                        
+                        // Stoppa silent audio
+                        if (silentAudio) {
+                          silentAudio.pause()
+                          setSilentAudio(null)
+                          console.log('🔇 Silent audio stoppad')
+                        }
+                        
+                        // Stäng AudioContext
                         if (audioContext) {
                           audioContext.close()
                           setAudioContext(null)
                         }
-                        showBrowserNotification('Ljud avstängt 🔇', 'Automatiska ljudnotifikationer är nu avstängda', false)
+                        
+                        showBrowserNotification('🔇 Ljud avstängt', 'Automatiska ljudnotifikationer är nu avstängda', false)
                       } else {
                         // Aktivera ljud
                         activateAudio()
@@ -3057,19 +3433,24 @@ Utvecklad av Skaply
                 <div className="w-8 h-8 bg-yellow-500/20 rounded-full flex items-center justify-center">
                   <Volume2 className="h-4 w-4 text-yellow-400" />
                 </div>
-                <div>
-                  <p className="text-yellow-400 font-medium">Ljud är inte aktiverat</p>
-                  <p className="text-yellow-300/80 text-sm">
-                    För iPad/Safari: Tryck "Aktivera Ljud" för att höra automatiska notifikationer
+                <div className="flex-1">
+                  <p className="text-yellow-400 font-medium">🍎 iOS Ljud behöver aktiveras</p>
+                  <p className="text-yellow-300/80 text-sm mb-2">
+                    För iPad/Safari: Aktivera ljudet för att höra automatiska notifikationer från nya beställningar
                   </p>
+                  <div className="bg-orange-500/10 border border-orange-500/30 rounded p-2">
+                    <p className="text-orange-300 text-xs">
+                      <strong>🔧 iOS Specialfunktioner:</strong> Aktivering startar ett "keep-alive" system som håller ljudet aktivt även när appen är i bakgrunden!
+                    </p>
+                  </div>
                 </div>
                 <Button
                   onClick={activateAudio}
                   variant="outline"
                   size="sm"
-                  className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10"
+                  className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10 flex-shrink-0"
                 >
-                  Aktivera Nu
+                  🍎 Aktivera iOS Ljud
                 </Button>
               </div>
             </CardContent>
@@ -3511,9 +3892,9 @@ Utvecklad av Skaply
           </div>
         </div>
 
-        {/* Notification Dialog - Optimerad för mobil */}
+        {/* Notification Dialog - Centrerad och optimerad för mobil */}
         <Dialog open={!!notificationDialog} onOpenChange={() => setNotificationDialog(null)}>
-          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-md mx-4 w-[calc(100vw-2rem)] sm:w-full fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%]">
+          <DialogContent className="border border-[#e4d699]/50 bg-gradient-to-br from-black to-gray-900 max-w-md mx-auto w-[90vw] sm:w-full">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-3 text-[#e4d699] text-lg sm:text-xl">
                 <div className="w-12 h-12 bg-gradient-to-br from-[#e4d699] to-yellow-600 rounded-full flex items-center justify-center animate-pulse">
