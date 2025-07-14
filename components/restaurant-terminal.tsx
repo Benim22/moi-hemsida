@@ -490,15 +490,196 @@ export default function RestaurantTerminal() {
   }
 
   // Test real printer connection using network detection
+  // Comprehensive connection test: WebSocket + Printer
   const testPrinterConnection = async () => {
-    addDebugLog('🔍 Startar verklig nätverkstest till Epson TM-T20III...', 'info')
+    addDebugLog('🔍 Startar komplett anslutningstest (WebSocket + Epson TM-T30III-H)...', 'info')
+    
+    // Test 1: WebSocket Connection
+    addDebugLog('📡 STEG 1: Testar WebSocket-anslutning...', 'info')
+    
+    try {
+      if (!wsConnected) {
+        addDebugLog('⚠️ WebSocket inte ansluten - försöker ansluta...', 'warning')
+        connectWebSocket()
+        
+        // Wait a bit for connection
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+      
+      if (wsConnected) {
+        addDebugLog('✅ WebSocket-anslutning: OK', 'success')
+        addDebugLog(`📍 Ansluten till: ${wsUrl}`, 'info')
+      } else {
+        addDebugLog('❌ WebSocket-anslutning: MISSLYCKADES', 'error')
+        addDebugLog(`💡 Kontrollera: ${wsUrl}`, 'info')
+      }
+    } catch (error) {
+      addDebugLog(`❌ WebSocket-test fel: ${error.message}`, 'error')
+    }
+    
+    // Test 2: Printer Settings Validation
+    addDebugLog('🔧 STEG 2: Validerar skrivarinställningar...', 'info')
     
     if (!printerSettings.enabled) {
       addDebugLog('❌ Skrivare inte aktiverad i inställningar', 'warning')
       setPrinterStatus(prev => ({ ...prev, connected: false, error: 'Skrivare inte aktiverad' }))
       return
     }
-
+    
+    // Validate IP
+    const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
+    if (!ipRegex.test(printerSettings.printerIP)) {
+      addDebugLog(`❌ Ogiltig IP-adress: ${printerSettings.printerIP}`, 'error')
+      setPrinterStatus(prev => ({ ...prev, connected: false, error: `Ogiltig IP-adress: ${printerSettings.printerIP}` }))
+      return
+    }
+    
+    // Validate port
+    const port = parseInt(printerSettings.printerPort)
+    if (isNaN(port) || port < 1 || port > 65535) {
+      addDebugLog(`❌ Ogiltig port: ${printerSettings.printerPort}`, 'error')
+      setPrinterStatus(prev => ({ ...prev, connected: false, error: `Ogiltig port: ${printerSettings.printerPort}` }))
+      return
+    }
+    
+    addDebugLog('✅ Skrivarinställningar: OK', 'success')
+    addDebugLog(`📍 Testar Epson TM-T30III-H på ${printerSettings.printerIP}:${port}`, 'info')
+    
+    // Test 3: Printer Connection based on method
+    addDebugLog('🖨️ STEG 3: Testar skrivare-anslutning...', 'info')
+    
+    if (printerSettings.connectionType === 'wifi' && port == 80) {
+      addDebugLog('🌐 Testar HTTP ePOS-Print (rekommenderat för TM-T30III-H)...', 'info')
+      await testEPOSHTTPConnection()
+    } else if (printerSettings.connectionType === 'tcp' && port == 9100) {
+      addDebugLog('🔌 Testar TCP Raw Socket (port 9100)...', 'info')
+      await testTCPConnection()
+    } else {
+      addDebugLog('🔄 Testar allmän nätverksanslutning...', 'info')
+      await testGeneralConnection()
+    }
+  }
+  
+  // Test HTTP ePOS-Print connection (best for TM-T30III-H)
+  const testEPOSHTTPConnection = async () => {
+    try {
+      addDebugLog('🌐 Testar HTTP ePOS-Print till TM-T30III-H...', 'info')
+      
+      // Try ePOS-Print discovery endpoint
+      const discoveryURL = `http://${printerSettings.printerIP}/cgi-bin/epos/service.cgi?devid=local_printer&timeout=3000`
+      
+      const response = await fetch(discoveryURL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'SOAPAction': '""'
+        },
+        body: JSON.stringify({
+          "method": "discover",
+          "params": {}
+        }),
+        signal: AbortSignal.timeout(5000)
+      })
+      
+      if (response.ok) {
+        const result = await response.text()
+        addDebugLog('✅ HTTP ePOS-Print: Skrivaren svarar!', 'success')
+        addDebugLog(`📄 Svar: ${result.substring(0, 100)}...`, 'info')
+        
+        setPrinterStatus({
+          connected: true,
+          lastTest: new Date(),
+          error: null
+        })
+        
+        // Test print capability
+        addDebugLog('🖨️ Testar utskriftskapacitet...', 'info')
+        await testEPOSPrintCapability()
+        
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+    } catch (error) {
+      addDebugLog(`❌ HTTP ePOS-Print fel: ${error.message}`, 'error')
+      
+      if (error.name === 'AbortError') {
+        addDebugLog('⏰ Timeout - skrivaren svarar inte på HTTP', 'warning')
+      } else if (error.message.includes('NetworkError')) {
+        addDebugLog('🌐 Nätverksfel - kontrollera IP och WiFi-anslutning', 'warning')
+      }
+      
+      // Fallback to general connection test
+      await testGeneralConnection()
+    }
+  }
+  
+  // Test TCP connection (port 9100)
+  const testTCPConnection = async () => {
+    addDebugLog('🔌 TCP-test för port 9100 (Raw ESC/POS)...', 'info')
+    addDebugLog('⚠️ OBS: TCP fungerar inte i webbläsare p.g.a. säkerhetsbegränsningar', 'warning')
+    addDebugLog('💡 TCP-test körs via backend API...', 'info')
+    
+    // Use backend for TCP testing
+    await testBackendPrinterConnection()
+  }
+  
+  // Test ePOS print capability
+  const testEPOSPrintCapability = async () => {
+    try {
+      if (eposLoaded && window.epos) {
+        addDebugLog('🖨️ Testar ePOS SDK-anslutning...', 'info')
+        
+        const epos = new window.epos.ePOSDevice()
+        const port = parseInt(printerSettings.printerPort)
+        
+        return new Promise((resolve) => {
+          const timeout = setTimeout(() => {
+            addDebugLog('⏰ ePOS SDK timeout efter 10s', 'warning')
+            resolve(false)
+          }, 10000)
+          
+          epos.connect(printerSettings.printerIP, port, (data) => {
+            clearTimeout(timeout)
+            
+            if (data === 'OK') {
+              addDebugLog('✅ ePOS SDK: Anslutning framgångsrik!', 'success')
+              addDebugLog('🎯 TM-T30III-H redo för utskrift via ePOS', 'success')
+              
+              // Test creating a printer device
+              try {
+                const printer = epos.createDevice('local_printer', epos.DEVICE_TYPE_PRINTER, {}, (device, code) => {
+                  if (code === 'OK') {
+                    addDebugLog('✅ ePOS Printer Device: Skapad framgångsrikt', 'success')
+                  } else {
+                    addDebugLog(`⚠️ ePOS Printer Device: ${code}`, 'warning')
+                  }
+                })
+              } catch (deviceError) {
+                addDebugLog(`⚠️ ePOS Device fel: ${deviceError.message}`, 'warning')
+              }
+              
+              resolve(true)
+            } else {
+              addDebugLog(`❌ ePOS SDK fel: ${data}`, 'error')
+              resolve(false)
+            }
+          })
+        })
+      } else {
+        addDebugLog('❌ ePOS SDK inte laddat', 'warning')
+        return false
+      }
+    } catch (error) {
+      addDebugLog(`❌ ePOS test fel: ${error.message}`, 'error')
+      return false
+    }
+  }
+  
+  // General connection test (fallback)
+  const testGeneralConnection = async () => {
+    addDebugLog('🔄 Kör allmän nätverkstest...', 'info')
+    
     // In production, test backend connection instead of simulating
     if (window.location.protocol === 'https:' && window.location.hostname !== 'localhost') {
       addDebugLog('🌐 Produktionsmiljö detekterad - testar backend anslutning', 'info')
@@ -525,7 +706,7 @@ export default function RestaurantTerminal() {
       return
     }
 
-    // First try backend connection
+    // For development, try backend connection first
     const backendConnected = await testBackendPrinterConnection()
     if (backendConnected) {
       return // Backend connection successful

@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "node test-websocket.js"
+    "test": "node test-websocket.js",
+    "build": "echo 'No build step needed for WebSocket server'"
   },
   "dependencies": {
     "express": "^4.18.2",
