@@ -45,6 +45,8 @@ export default function RestaurantTerminal() {
   const [audioEnabled, setAudioEnabled] = useState(false)
   const [audioContext, setAudioContext] = useState(null)
   const [isIOSDevice, setIsIOSDevice] = useState(false)
+  const [audioKeepAliveInterval, setAudioKeepAliveInterval] = useState(null)
+  const [silentAudioElement, setSilentAudioElement] = useState(null)
   
   // Filter states
   const [selectedLocation, setSelectedLocation] = useState(profile?.location || 'all')
@@ -598,6 +600,16 @@ export default function RestaurantTerminal() {
         try {
           await audioContext.resume()
           console.log('🎵 AudioContext återaktiverat vid användarinteraktion')
+          
+          // Återstarta tyst audio om det behövs
+          if (silentAudioElement && silentAudioElement.paused) {
+            try {
+              await silentAudioElement.play()
+              console.log('🎵 Tyst audio återstartat efter användarinteraktion')
+            } catch (error) {
+              console.log('🎵 Kunde inte återstarta tyst audio:', error)
+            }
+          }
         } catch (error) {
           console.log('🎵 Kunde inte återaktivera AudioContext:', error)
         }
@@ -612,13 +624,19 @@ export default function RestaurantTerminal() {
     document.addEventListener('click', handleUserInteraction, { passive: true })
     document.addEventListener('touchstart', handleUserInteraction, { passive: true })
     document.addEventListener('keydown', handleUserInteraction, { passive: true })
+    document.addEventListener('touchend', handleUserInteraction, { passive: true })
+    document.addEventListener('pointerdown', handleUserInteraction, { passive: true })
+    document.addEventListener('pointerup', handleUserInteraction, { passive: true })
 
     return () => {
       document.removeEventListener('click', handleUserInteraction)
       document.removeEventListener('touchstart', handleUserInteraction)
       document.removeEventListener('keydown', handleUserInteraction)
+      document.removeEventListener('touchend', handleUserInteraction)
+      document.removeEventListener('pointerdown', handleUserInteraction)
+      document.removeEventListener('pointerup', handleUserInteraction)
     }
-  }, [audioContext])
+  }, [audioContext, silentAudioElement])
 
   // Real-time subscriptions - ENDAST baserat på profile.location, INTE selectedLocation
   useEffect(() => {
@@ -954,6 +972,27 @@ export default function RestaurantTerminal() {
     return () => clearInterval(cleanupInterval)
   }, [])
 
+  // Audio cleanup on unmount
+  useEffect(() => {
+    return () => {
+      console.log('🧹 Städar upp ljudresurser...')
+      
+      // Cleanup audio resources
+      if (audioContext) {
+        audioContext.close()
+      }
+      
+      if (audioKeepAliveInterval) {
+        clearInterval(audioKeepAliveInterval)
+      }
+      
+      if (silentAudioElement) {
+        silentAudioElement.pause()
+        silentAudioElement.currentTime = 0
+      }
+    }
+  }, [])
+
   // Check notification permission on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -1234,6 +1273,26 @@ export default function RestaurantTerminal() {
         console.log('🎵 AudioContext resumed från suspended state')
       }
       
+      // LÖSNING FÖR iOS: Skapa en tyst HTML audio element som körs kontinuerligt
+      // Detta förhindrar iOS från att suspenda AudioContext
+      const createSilentAudio = () => {
+        const audio = document.createElement('audio')
+        audio.setAttribute('x-webkit-airplay', 'deny')
+        audio.preload = 'auto'
+        audio.loop = true
+        audio.volume = 0.01 // Mycket tyst
+        audio.muted = false
+        
+        // Använd en data URL för tyst ljud istället för extern fil
+        const silentAudioData = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm9LdjHAU+jNXzzXkpBSl+yO/eizEIHWq+8+OWT'
+        audio.src = silentAudioData
+        
+        return audio
+      }
+      
+      // Skapa tyst audio element för iOS
+      const silentAudio = createSilentAudio()
+      
       // Spela ett tyst ljud för att "unlåsa" ljudet (krävs för iOS/Safari)
       const oscillator = newAudioContext.createOscillator()
       const gainNode = newAudioContext.createGain()
@@ -1248,11 +1307,59 @@ export default function RestaurantTerminal() {
       oscillator.start(newAudioContext.currentTime)
       oscillator.stop(newAudioContext.currentTime + 0.1)
       
+      // Starta tyst audio för iOS
+      try {
+        await silentAudio.play()
+        console.log('🎵 Tyst audio startat för iOS-kompatibilitet')
+        setSilentAudioElement(silentAudio)
+      } catch (error) {
+        console.log('🎵 Kunde inte starta tyst audio:', error)
+      }
+      
       setAudioContext(newAudioContext)
       setAudioEnabled(true)
       
+      // Starta keep-alive interval för att hålla AudioContext aktiv
+      const keepAliveInterval = setInterval(() => {
+        // Kontrollera och återuppta AudioContext om det är suspended
+        if (newAudioContext.state === 'suspended') {
+          console.log('🎵 AudioContext suspended - återupptar automatiskt...')
+          newAudioContext.resume().catch(err => {
+            console.log('🎵 Kunde inte återuppta AudioContext:', err)
+          })
+        }
+        
+        // Kontrollera och återstarta tyst audio om det har pausats
+        if (silentAudio && silentAudio.paused) {
+          console.log('🎵 Tyst audio pausat - startar om...')
+          silentAudio.play().catch(err => {
+            console.log('🎵 Kunde inte återstarta tyst audio:', err)
+          })
+        }
+        
+        // Spela ett mycket tyst ljud för att hålla AudioContext aktiv
+        try {
+          const keepAliveOsc = newAudioContext.createOscillator()
+          const keepAliveGain = newAudioContext.createGain()
+          
+          keepAliveOsc.connect(keepAliveGain)
+          keepAliveGain.connect(newAudioContext.destination)
+          
+          keepAliveOsc.frequency.value = 20000 // Mycket hög frekvens (ohörbar)
+          keepAliveGain.gain.setValueAtTime(0.001, newAudioContext.currentTime) // Extremt tyst
+          
+          keepAliveOsc.start(newAudioContext.currentTime)
+          keepAliveOsc.stop(newAudioContext.currentTime + 0.01) // Mycket kort
+        } catch (error) {
+          console.log('🎵 Keep-alive ljud misslyckades:', error)
+        }
+      }, 3000) // Varje 3 sekunder för mer aggressiv keep-alive
+      
+      setAudioKeepAliveInterval(keepAliveInterval)
+      
       console.log('✅ Ljud aktiverat! AudioContext state:', newAudioContext.state)
       console.log('🎵 Enhet:', isIOSDevice ? 'iOS/iPad' : 'Desktop/Android')
+      console.log('🎵 Keep-alive interval startat för kontinuerlig aktivitet')
       
       // Bekräfta med en testton efter kort delay
       setTimeout(() => {
@@ -1292,8 +1399,21 @@ export default function RestaurantTerminal() {
       console.log('🔊 Spelar KRAFTFULLT notifikationsljud...')
       console.log('🎵 AudioContext state:', audioContext?.state || 'ingen audioContext')
       
-      // KRAFTFULL LJUDSEKVENS - spela flera gånger
-      playPowerfulSoundSequence()
+      // Kontrollera om AudioContext är suspended och försök återuppta
+      if (audioContext && audioContext.state === 'suspended') {
+        console.log('🎵 AudioContext suspended - försöker återuppta innan ljud...')
+        audioContext.resume().then(() => {
+          console.log('🎵 AudioContext återupptaget, spelar ljud nu')
+          playPowerfulSoundSequence()
+        }).catch(error => {
+          console.log('❌ Kunde inte återuppta AudioContext:', error)
+          console.log('🎵 Försöker med fallback-metod...')
+          playFallbackSound()
+        })
+      } else {
+        // KRAFTFULL LJUDSEKVENS - spela flera gånger
+        playPowerfulSoundSequence()
+      }
       
     } catch (error) {
       console.log('❌ Fel med ljuduppspelning:', error)
@@ -2915,10 +3035,28 @@ Utvecklad av Skaply
                       if (audioEnabled) {
                         // Stäng av ljud
                         setAudioEnabled(false)
+                        
+                        // Stäng AudioContext
                         if (audioContext) {
                           audioContext.close()
                           setAudioContext(null)
                         }
+                        
+                        // Stoppa keep-alive interval
+                        if (audioKeepAliveInterval) {
+                          clearInterval(audioKeepAliveInterval)
+                          setAudioKeepAliveInterval(null)
+                          console.log('🎵 Keep-alive interval stoppat')
+                        }
+                        
+                        // Stoppa tyst audio element
+                        if (silentAudioElement) {
+                          silentAudioElement.pause()
+                          silentAudioElement.currentTime = 0
+                          setSilentAudioElement(null)
+                          console.log('🎵 Tyst audio stoppat')
+                        }
+                        
                         showBrowserNotification('Ljud avstängt 🔇', 'Automatiska ljudnotifikationer är nu avstängda', false)
                       } else {
                         // Aktivera ljud
