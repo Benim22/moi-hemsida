@@ -3,207 +3,446 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ePOS Direct HTTPS Test - Device Formats</title>
+    <title>Epson TM-T20III Test - Backend TCP</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
-        .result { margin: 10px 0; padding: 10px; background: #f5f5f5; }
-        .error { color: red; }
-        .success { color: green; }
-        button { padding: 10px 20px; margin: 10px 0; }
-        .progress { color: blue; }
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, button, select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        input, select {
+            width: 200px;
+        }
+        button {
+            background-color: #007cba;
+            color: white;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #005a87;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 20px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .method-info {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
-    <h1>ePOS Direct HTTPS Test - Device Formats</h1>
-    <p>Testing XML-format med device-specifikationer (DeviceNotFound → behöver device!)</p>
-    
-    <div class="test-section">
-        <h3>Test 1: SOAP med Device ID</h3>
-        <button onclick="testFormat1()">Test Format 1</button>
-        <div id="result1" class="result"></div>
+    <div class="container">
+        <h1>🖨️ Epson TM-T20III Test</h1>
+        
+        <div class="method-info">
+            <h3>📡 Backend API-metod (Rekommenderad för produktion)</h3>
+            <p>Denna testsida använder <strong>Backend API</strong> för att ansluta till skrivaren.</p>
+            <p><strong>Fördelar:</strong> Mer tillförlitlig, fungerar i alla webbläsare, inga CORS-problem.</p>
+            <p><strong>SSL-stöd:</strong> Fungerar både med HTTP (port 80) och HTTPS (port 443).</p>
         </div>
         
-    <div class="test-section">
-        <h3>Test 2: Print med Device Parameter</h3>
-        <button onclick="testFormat2()">Test Format 2</button>
-        <div id="result2" class="result"></div>
+        <div class="form-group">
+            <label for="printerIP">Skrivare IP-adress:</label>
+            <input type="text" id="printerIP" value="192.168.1.103" placeholder="t.ex. 192.168.1.103">
         </div>
         
-    <div class="test-section">
-        <h3>Test 3: EposDevice Format</h3>
-        <button onclick="testFormat3()">Test Format 3</button>
-        <div id="result3" class="result"></div>
+        <div class="form-group">
+            <label for="useSSL">Använd SSL (HTTPS):</label>
+            <select id="useSSL">
+                <option value="true">Ja (Port 443) - För produktionsmiljö</option>
+                <option value="false">Nej (Port 9100) - För lokala tester</option>
+            </select>
         </div>
         
-    <div class="test-section">
-        <h3>Test 4: Simple Print Request</h3>
-        <button onclick="testFormat4()">Test Format 4</button>
-        <div id="result4" class="result"></div>
+        <div class="form-group">
+            <label for="testMethod">Testmetod:</label>
+            <select id="testMethod">
+                <option value="connection">Testa anslutning</option>
+                <option value="print">Skriv ut test-kvitto</option>
+                <option value="xml">Testa XML-utskrift</option>
+                <option value="ssl">Testa SSL-certifikat</option>
+            </select>
         </div>
         
-    <div class="test-section">
-        <h3>Test 5: Status Request</h3>
-        <button onclick="testFormat5()">Test Format 5</button>
-        <div id="result5" class="result"></div>
+        <div class="form-group">
+            <button onclick="testPrinter()" id="testBtn">Kör test</button>
+            <button onclick="discoverPrinters()" id="discoverBtn">Sök skrivare</button>
+            <button onclick="clearLog()">Rensa logg</button>
+        </div>
+        
+        <div id="status"></div>
+        
+        <div id="log" class="log"></div>
     </div>
 
     <script>
-        const printerIP = '192.168.1.103';
-        const endpoint = `https://${printerIP}/cgi-bin/epos/service.cgi`;
-        
-        async function testPrinterFormat(formatName, xmlData, headers = {}) {
-            console.log(`🔄 ${formatName}:`);
-            console.log(xmlData);
-            
-            const defaultHeaders = {
-                'Content-Type': 'application/soap+xml; charset=utf-8',
-                'Accept': 'application/soap+xml, application/xml, text/xml',
-                'SOAPAction': 'print'
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString('sv-SE');
+            const logElement = document.getElementById('log');
+            const colorMap = {
+                'info': '#333',
+                'success': '#28a745',
+                'error': '#dc3545',
+                'warning': '#ffc107'
             };
             
+            logElement.innerHTML += `<div style="color: ${colorMap[type]}">[${timestamp}] ${message}</div>`;
+            logElement.scrollTop = logElement.scrollHeight;
+            
+            console.log(`[${timestamp}] ${message}`);
+        }
+        
+        function showStatus(message, type) {
+            const statusElement = document.getElementById('status');
+            statusElement.className = `status ${type}`;
+            statusElement.textContent = message;
+        }
+        
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            document.getElementById('status').innerHTML = '';
+        }
+        
+        async function testPrinter() {
+            const ip = document.getElementById('printerIP').value;
+            const method = document.getElementById('testMethod').value;
+            const testBtn = document.getElementById('testBtn');
+            
+            if (!ip) {
+                log('❌ Ange en IP-adress först', 'error');
+                showStatus('Ange en IP-adress', 'error');
+                return;
+            }
+            
+            testBtn.disabled = true;
+            testBtn.textContent = 'Testar...';
+            
             try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { ...defaultHeaders, ...headers },
-                    body: xmlData
-                });
-                
-                const responseText = await response.text();
-                console.log(`📡 ${formatName} response:`, responseText);
-                
-                if (responseText.includes('success="true"')) {
-                    console.log(`✅ ${formatName} SUCCESS!`);
-                    return { success: true, response: responseText };
-                } else {
-                    const errorMatch = responseText.match(/code="([^"]+)"/);
-                    const error = errorMatch ? errorMatch[1] : 'Unknown error';
-                    console.log(`❌ ${formatName} fel:`, error);
-                    return { success: false, error, response: responseText };
+                if (method === 'connection') {
+                    await testConnection(ip);
+                } else if (method === 'print') {
+                    await testPrint(ip);
+                } else if (method === 'xml') {
+                    await testXMLPrint(ip);
+                } else if (method === 'ssl') {
+                    await testSSLCertificate(ip);
                 }
             } catch (error) {
-                console.log(`💥 ${formatName} exception:`, error);
-                return { success: false, error: error.message };
+                log(`❌ Oväntat fel: ${error.message}`, 'error');
+                showStatus(`Fel: ${error.message}`, 'error');
+            } finally {
+                testBtn.disabled = false;
+                testBtn.textContent = 'Kör test';
             }
         }
         
-        async function testFormat1() {
-            const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
-               xmlns:epos="http://www.epson-pos.com/schemas/2011/03/epos-print">
-    <soap:Body>
-        <epos:printRequest>
-            <epos:devid>local_printer</epos:devid>
-            <epos:epos-print>
-                <epos:text>SOAP Device Test</epos:text>
-                <epos:feed line="1"/>
-                <epos:cut/>
-            </epos:epos-print>
-        </epos:printRequest>
-    </soap:Body>
-</soap:Envelope>`;
+        async function testConnection(ip) {
+            const useSSL = document.getElementById('useSSL').value === 'true';
+            const port = useSSL ? 443 : 9100;
+            const protocol = useSSL ? 'HTTPS' : 'TCP';
             
-            const result = await testPrinterFormat('Format 1 - SOAP Device', xml);
-            document.getElementById('result1').innerHTML = `
-                <strong>Format 1 - SOAP med Device ID:</strong><br>
-                ${result.success ? 
-                    `<span class="success">✅ SUCCESS! SOAP device print accepted</span>` : 
-                    `<span class="error">❌ ERROR: ${result.error}</span>`
-                }<br>
-                <small>Response: ${result.response}</small>
-            `;
+            log(`🔗 Testar ${protocol}-anslutning till ${ip}:${port}...`, 'info');
+            showStatus('Testar anslutning...', 'info');
+            
+            try {
+                const response = await fetch('/api/printer', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: 'test',
+                        printerIP: ip,
+                        printerPort: port,
+                        useSSL: useSSL
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    log(`✅ ${protocol}-anslutning framgångsrik!`, 'success');
+                    showStatus(`${protocol}-anslutning framgångsrik`, 'success');
+                    if (result.message) {
+                        log(`📄 ${result.message}`, 'info');
+                    }
+                } else {
+                    log(`❌ ${protocol}-anslutningsfel: ${result.error}`, 'error');
+                    showStatus(`${protocol}-anslutningsfel: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Nätverksfel: ${error.message}`, 'error');
+                showStatus(`Nätverksfel: ${error.message}`, 'error');
+            }
         }
         
-        async function testFormat2() {
-            const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print" devid="local_printer">
-    <text>Device Parameter Test</text>
-    <feed line="1"/>
-    <cut/>
-</epos-print>`;
+        async function testPrint(ip) {
+            const useSSL = document.getElementById('useSSL').value === 'true';
+            const port = useSSL ? 443 : 9100;
+            const protocol = useSSL ? 'HTTPS' : 'TCP';
             
-            const result = await testPrinterFormat('Format 2 - Device Parameter', xml);
-            document.getElementById('result2').innerHTML = `
-                <strong>Format 2 - Print med Device Parameter:</strong><br>
-                ${result.success ? 
-                    `<span class="success">✅ SUCCESS! Device parameter accepted</span>` : 
-                    `<span class="error">❌ ERROR: ${result.error}</span>`
-                }<br>
-                <small>Response: ${result.response}</small>
-            `;
+            log(`🖨️ Skriver ut test-kvitto till ${ip}:${port} (${protocol})...`, 'info');
+            showStatus('Skriver ut test-kvitto...', 'info');
+            
+            const testOrder = {
+                order_number: 'TEST-001',
+                created_at: new Date().toISOString(),
+                customer_name: 'Test Kund',
+                phone: '070-123 45 67',
+                cart_items: [
+                    { name: 'Test Sushi', quantity: 2, price: 89 },
+                    { name: 'Test Pokébowl', quantity: 1, price: 129 }
+                ],
+                total_amount: 307
+            };
+            
+            try {
+                const response = await fetch('/api/printer', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: 'print',
+                        printerIP: ip,
+                        printerPort: port,
+                        order: testOrder,
+                        useSSL: useSSL
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    log(`✅ Test-kvitto skickat till skrivaren via ${protocol}!`, 'success');
+                    showStatus(`Test-kvitto utskrivet (${protocol})`, 'success');
+                    if (result.message) {
+                        log(`📄 ${result.message}`, 'info');
+                    }
+                } else {
+                    log(`❌ ${protocol}-utskriftsfel: ${result.error}`, 'error');
+                    showStatus(`${protocol}-utskriftsfel: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Nätverksfel: ${error.message}`, 'error');
+                showStatus(`Nätverksfel: ${error.message}`, 'error');
+            }
         }
         
-        async function testFormat3() {
-            const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-    <soap:Body>
-        <printjob xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
-            <devid>TM-T20III</devid>
-            <printdata>
-                <epos-print>
-                    <text>EposDevice Test</text>
-                    <feed line="1"/>
-                    <cut/>
-                </epos-print>
-            </printdata>
-        </printjob>
-    </soap:Body>
-</soap:Envelope>`;
+        async function testXMLPrint(ip) {
+            const useSSL = document.getElementById('useSSL').value === 'true';
+            const port = useSSL ? 443 : 80;
+            const protocol = useSSL ? 'HTTPS' : 'HTTP';
             
-            const result = await testPrinterFormat('Format 3 - EposDevice', xml);
-            document.getElementById('result3').innerHTML = `
-                <strong>Format 3 - EposDevice Format:</strong><br>
-                ${result.success ? 
-                    `<span class="success">✅ SUCCESS! EposDevice format accepted</span>` : 
-                    `<span class="error">❌ ERROR: ${result.error}</span>`
-                }<br>
-                <small>Response: ${result.response}</small>
-            `;
+            log(`📄 Testar XML-utskrift till ${ip}:${port} (${protocol})...`, 'info');
+            showStatus('Testar XML-utskrift...', 'info');
+            
+            const testXML = `<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+    <s:Body>
+        <epos-print xmlns="http://www.epson.com/2005/02/printing/epos-print">
+            <text>MOI SUSHI XML TEST</text>
+            <text>==================</text>
+            <text>Datum: ${new Date().toLocaleDateString('sv-SE')}</text>
+            <text>Tid: ${new Date().toLocaleTimeString('sv-SE')}</text>
+            <text>IP: ${ip}</text>
+            <text>Port: ${port} (${protocol})</text>
+            <text>==================</text>
+            <text>XML Test framgångsrik!</text>
+            <cut type="feed"/>
+        </epos-print>
+    </s:Body>
+</s:Envelope>`;
+            
+            try {
+                const response = await fetch('/api/printer', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: 'print_xml',
+                        xml: testXML,
+                        printerIP: ip,
+                        printerPort: port,
+                        useSSL: useSSL
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    log(`✅ XML-utskrift framgångsrik via ${protocol}!`, 'success');
+                    showStatus(`XML-utskrift framgångsrik (${protocol})`, 'success');
+                    if (result.response) {
+                        log(`📄 Svar: ${result.response}`, 'info');
+                    }
+                } else {
+                    log(`❌ XML-utskriftsfel: ${result.error}`, 'error');
+                    showStatus(`XML-utskriftsfel: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ XML-utskrift nätverksfel: ${error.message}`, 'error');
+                showStatus(`XML-utskrift nätverksfel: ${error.message}`, 'error');
+            }
         }
         
-        async function testFormat4() {
-            const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-    <soap:Body>
-        <print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
-            <text>Simple Test</text>
-            <feed line="1"/>
-            <cut/>
-        </print>
-    </soap:Body>
-</soap:Envelope>`;
+        async function testSSLCertificate(ip) {
+            log(`🔒 Testar SSL-certifikat för ${ip}...`, 'info');
+            showStatus('Testar SSL-certifikat...', 'info');
             
-            const result = await testPrinterFormat('Format 4 - Simple Print', xml);
-            document.getElementById('result4').innerHTML = `
-                <strong>Format 4 - Simple Print Request:</strong><br>
-                ${result.success ? 
-                    `<span class="success">✅ SUCCESS! Simple print accepted</span>` : 
-                    `<span class="error">❌ ERROR: ${result.error}</span>`
-                }<br>
-                <small>Response: ${result.response}</small>
-            `;
+            try {
+                // Test HTTPS connection directly
+                const response = await fetch(`https://${ip}:443/`, {
+                    method: 'HEAD',
+                    signal: AbortSignal.timeout(10000)
+                });
+                
+                log(`✅ SSL-certifikat giltigt (Status: ${response.status})`, 'success');
+                showStatus(`SSL-certifikat giltigt (Status: ${response.status})`, 'success');
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    log(`❌ SSL-certifikat timeout - skrivaren svarar inte på port 443`, 'error');
+                    showStatus('SSL-certifikat timeout', 'error');
+                } else if (error.message.includes('net::ERR_SSL_')) {
+                    log(`❌ SSL-certifikat fel: ${error.message}`, 'error');
+                    showStatus(`SSL-certifikat fel: ${error.message}`, 'error');
+                } else {
+                    log(`❌ SSL-certifikat oväntat fel: ${error.message}`, 'error');
+                    showStatus(`SSL-certifikat oväntat fel: ${error.message}`, 'error');
+                }
+            }
         }
         
-        async function testFormat5() {
-            const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-    <soap:Body>
-        <status xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print"/>
-    </soap:Body>
-</soap:Envelope>`;
+        async function discoverPrinters() {
+            const discoverBtn = document.getElementById('discoverBtn');
             
-            const result = await testPrinterFormat('Format 5 - Status', xml, {
-                'SOAPAction': 'status'
-            });
-            document.getElementById('result5').innerHTML = `
-                <strong>Format 5 - Status Request:</strong><br>
-                ${result.success ? 
-                    `<span class="success">✅ SUCCESS! Status request accepted</span>` : 
-                    `<span class="error">❌ ERROR: ${result.error}</span>`
-                }<br>
-                <small>Response: ${result.response}</small>
-            `;
+            discoverBtn.disabled = true;
+            discoverBtn.textContent = 'Söker...';
+            
+            log('🔍 Söker efter skrivare på nätverket...', 'info');
+            showStatus('Söker efter skrivare...', 'info');
+            
+            try {
+                // Test common IP ranges
+                const baseIP = '192.168.1.'; // You might want to make this configurable
+                const promises = [];
+                
+                for (let i = 1; i <= 254; i++) {
+                    const ip = baseIP + i;
+                    promises.push(quickTest(ip));
+                }
+                
+                const results = await Promise.allSettled(promises);
+                const foundPrinters = results
+                    .map((result, index) => ({ ip: baseIP + (index + 1), result }))
+                    .filter(({ result }) => result.status === 'fulfilled' && result.value)
+                    .map(({ ip }) => ip);
+                
+                if (foundPrinters.length > 0) {
+                    log(`✅ Hittade ${foundPrinters.length} möjliga skrivare:`, 'success');
+                    foundPrinters.forEach(ip => {
+                        log(`   📡 ${ip}:9100`, 'success');
+                    });
+                    showStatus(`Hittade ${foundPrinters.length} skrivare`, 'success');
+                    
+                    // Auto-fill first found printer
+                    if (foundPrinters.length > 0) {
+                        document.getElementById('printerIP').value = foundPrinters[0];
+                        log(`💡 Fyllt i första hittade skrivare: ${foundPrinters[0]}`, 'info');
+                    }
+                } else {
+                    log('❌ Inga skrivare hittades på nätverket', 'warning');
+                    showStatus('Inga skrivare hittades', 'warning');
+                }
+            } catch (error) {
+                log(`❌ Fel vid sökning: ${error.message}`, 'error');
+                showStatus(`Sökfel: ${error.message}`, 'error');
+            } finally {
+                discoverBtn.disabled = false;
+                discoverBtn.textContent = 'Sök skrivare';
+            }
         }
+        
+        async function quickTest(ip) {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+                
+                const response = await fetch('/api/printer', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: 'test',
+                        printerIP: ip,
+                        printerPort: 9100
+                    }),
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                const result = await response.json();
+                return result.success;
+            } catch (error) {
+                return false;
+            }
+        }
+        
+        // Auto-load status
+        window.addEventListener('load', () => {
+            log('🚀 Epson TM-T20III Test redo', 'success');
+            log('💡 Ange skrivarens IP-adress och välj testmetod', 'info');
+            log('🔍 Använd "Sök skrivare" för att hitta tillgängliga skrivare', 'info');
+        });
     </script>
 </body>
 </html> 
