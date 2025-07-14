@@ -47,6 +47,7 @@ export default function RestaurantTerminal() {
   const [isIOSDevice, setIsIOSDevice] = useState(false)
   const [audioKeepAliveInterval, setAudioKeepAliveInterval] = useState(null)
   const [silentAudioElement, setSilentAudioElement] = useState(null)
+  const [alwaysPlayingAudio, setAlwaysPlayingAudio] = useState(null)
   
   // Filter states
   const [selectedLocation, setSelectedLocation] = useState(profile?.location || 'all')
@@ -610,6 +611,16 @@ export default function RestaurantTerminal() {
               console.log('🎵 Kunde inte återstarta tyst audio:', error)
             }
           }
+          
+          // Återstarta Always Be Playing audio om det behövs
+          if (alwaysPlayingAudio && alwaysPlayingAudio.paused) {
+            try {
+              await alwaysPlayingAudio.play()
+              console.log('🎵 Always Be Playing audio återstartat efter användarinteraktion')
+            } catch (error) {
+              console.log('🎵 Kunde inte återstarta Always Be Playing audio:', error)
+            }
+          }
         } catch (error) {
           console.log('🎵 Kunde inte återaktivera AudioContext:', error)
         }
@@ -990,6 +1001,11 @@ export default function RestaurantTerminal() {
         silentAudioElement.pause()
         silentAudioElement.currentTime = 0
       }
+      
+      if (alwaysPlayingAudio) {
+        alwaysPlayingAudio.pause()
+        alwaysPlayingAudio.currentTime = 0
+      }
     }
   }, [])
 
@@ -1273,25 +1289,24 @@ export default function RestaurantTerminal() {
         console.log('🎵 AudioContext resumed från suspended state')
       }
       
-      // LÖSNING FÖR iOS: Skapa en tyst HTML audio element som körs kontinuerligt
-      // Detta förhindrar iOS från att suspenda AudioContext
-      const createSilentAudio = () => {
+      // ALWAYS BE PLAYING - Skapa kontinuerligt tyst ljud för iOS-kompatibilitet
+      const createAlwaysPlayingAudio = () => {
         const audio = document.createElement('audio')
         audio.setAttribute('x-webkit-airplay', 'deny')
         audio.preload = 'auto'
         audio.loop = true
-        audio.volume = 0.01 // Mycket tyst
+        audio.volume = 0.001 // Extremt tyst men inte helt tyst
         audio.muted = false
         
-        // Använd en data URL för tyst ljud istället för extern fil
+        // Använd en data URL för tyst ljud (mycket kort för att spara bandbredd)
         const silentAudioData = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm9LdjHAU+jNXzzXkpBSl+yO/eizEIHWq+8+OWT'
         audio.src = silentAudioData
         
         return audio
       }
       
-      // Skapa tyst audio element för iOS
-      const silentAudio = createSilentAudio()
+      // Skapa tyst audio element för iOS (Always Be Playing)
+      const alwaysPlayingAudio = createAlwaysPlayingAudio()
       
       // Spela ett tyst ljud för att "unlåsa" ljudet (krävs för iOS/Safari)
       const oscillator = newAudioContext.createOscillator()
@@ -1307,13 +1322,13 @@ export default function RestaurantTerminal() {
       oscillator.start(newAudioContext.currentTime)
       oscillator.stop(newAudioContext.currentTime + 0.1)
       
-      // Starta tyst audio för iOS
+      // Starta Always Be Playing audio för iOS-kompatibilitet
       try {
-        await silentAudio.play()
-        console.log('🎵 Tyst audio startat för iOS-kompatibilitet')
-        setSilentAudioElement(silentAudio)
+        await alwaysPlayingAudio.play()
+        console.log('🎵 Always Be Playing audio startat för iOS-kompatibilitet')
+        setAlwaysPlayingAudio(alwaysPlayingAudio)
       } catch (error) {
-        console.log('🎵 Kunde inte starta tyst audio:', error)
+        console.log('🎵 Kunde inte starta Always Be Playing audio:', error)
       }
       
       setAudioContext(newAudioContext)
@@ -1329,11 +1344,11 @@ export default function RestaurantTerminal() {
           })
         }
         
-        // Kontrollera och återstarta tyst audio om det har pausats
-        if (silentAudio && silentAudio.paused) {
-          console.log('🎵 Tyst audio pausat - startar om...')
-          silentAudio.play().catch(err => {
-            console.log('🎵 Kunde inte återstarta tyst audio:', err)
+        // Kontrollera och återstarta Always Be Playing audio om det har pausats
+        if (alwaysPlayingAudio && alwaysPlayingAudio.paused) {
+          console.log('🎵 Always Be Playing audio pausat - startar om...')
+          alwaysPlayingAudio.play().catch(err => {
+            console.log('🎵 Kunde inte återstarta Always Be Playing audio:', err)
           })
         }
         
@@ -1351,26 +1366,21 @@ export default function RestaurantTerminal() {
           keepAliveOsc.start(newAudioContext.currentTime)
           keepAliveOsc.stop(newAudioContext.currentTime + 0.01) // Mycket kort
         } catch (error) {
-          console.log('🎵 Keep-alive ljud misslyckades:', error)
+          // Ignorera fel i keep-alive
         }
-      }, 3000) // Varje 3 sekunder för mer aggressiv keep-alive
+      }, 5000) // Var 5:e sekund
       
       setAudioKeepAliveInterval(keepAliveInterval)
       
-      console.log('✅ Ljud aktiverat! AudioContext state:', newAudioContext.state)
-      console.log('🎵 Enhet:', isIOSDevice ? 'iOS/iPad' : 'Desktop/Android')
-      console.log('🎵 Keep-alive interval startat för kontinuerlig aktivitet')
+      console.log('🎵 Ljud aktiverat framgångsrikt!')
+      console.log('🎵 AudioContext state:', newAudioContext.state)
+      console.log('🎵 Always Be Playing aktiv:', !!alwaysPlayingAudio)
       
-      // Bekräfta med en testton efter kort delay
-      setTimeout(() => {
-        playNotificationSound()
-      }, 300)
-      
-      showBrowserNotification('Ljud aktiverat! 🔊', 'Automatiska ljudnotifikationer fungerar nu på alla enheter', false)
+      showBrowserNotification('Ljud aktiverat 🔊', 'Automatiska ljudnotifikationer är nu aktiverade för alla enheter inklusive iOS/iPad', false)
       
     } catch (error) {
-      console.error('❌ Fel vid aktivering av ljud:', error)
-      showBrowserNotification('Ljudfel', `Kunde inte aktivera ljud: ${error.message}`, false)
+      console.error('🎵 Fel vid aktivering av ljud:', error)
+      showBrowserNotification('Ljudfel', 'Kunde inte aktivera ljud: ' + error.message, false)
     }
   }
 
@@ -3055,6 +3065,14 @@ Utvecklad av Skaply
                           silentAudioElement.currentTime = 0
                           setSilentAudioElement(null)
                           console.log('🎵 Tyst audio stoppat')
+                        }
+                        
+                        // Stoppa Always Be Playing audio
+                        if (alwaysPlayingAudio) {
+                          alwaysPlayingAudio.pause()
+                          alwaysPlayingAudio.currentTime = 0
+                          setAlwaysPlayingAudio(null)
+                          console.log('🎵 Always Be Playing audio stoppat')
                         }
                         
                         showBrowserNotification('Ljud avstängt 🔇', 'Automatiska ljudnotifikationer är nu avstängda', false)
