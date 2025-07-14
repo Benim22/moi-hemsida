@@ -43,8 +43,11 @@ export default function RestaurantTerminal() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [audioEnabled, setAudioEnabled] = useState(false)
-  const [audioContext, setAudioContext] = useState(null)
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null)
+  const [audioUnlocked, setAudioUnlocked] = useState(false)
+  const [silentAudioElement, setSilentAudioElement] = useState<HTMLAudioElement | null>(null)
   const [isIOSDevice, setIsIOSDevice] = useState(false)
+  const [audioHeartbeat, setAudioHeartbeat] = useState<NodeJS.Timeout | null>(null)
   
   // Filter states
   const [selectedLocation, setSelectedLocation] = useState(profile?.location || 'all')
@@ -530,6 +533,21 @@ export default function RestaurantTerminal() {
       if (!isIOS && !isSafari) {
         console.log('🔊 Auto-aktiverar ljud för icke-iOS enhet')
         setAudioEnabled(true)
+        // För desktop - också sätt audioUnlocked till true direkt
+        setAudioUnlocked(true)
+        console.log('🔊 Desktop: Ljud auto-unlocked')
+        
+        // Skapa AudioContext direkt för desktop (inga restriktioner som iOS)
+        try {
+          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+          if (AudioContextClass) {
+            const desktopAudioContext = new AudioContextClass()
+            setAudioContext(desktopAudioContext)
+            console.log('🔊 Desktop: AudioContext skapat automatiskt')
+          }
+        } catch (error) {
+          console.log('⚠️ Desktop: Kunde inte skapa AudioContext automatiskt:', error)
+        }
       }
     }
     
@@ -590,6 +608,82 @@ export default function RestaurantTerminal() {
       setSelectedLocation(profile.location)
     }
   }, [profile?.location, selectedLocation])
+
+  // iOS Audio Heartbeat - Håller ljudet aktivt kontinuerligt på iOS
+  useEffect(() => {
+    if (!isIOSDevice || !audioEnabled || !audioUnlocked) {
+      // Rensa heartbeat om inte iOS eller ljud inte aktiverat
+      if (audioHeartbeat) {
+        clearInterval(audioHeartbeat)
+        setAudioHeartbeat(null)
+      }
+      return
+    }
+
+    console.log('🍎 Startar iOS audio heartbeat...')
+    
+    const startHeartbeat = () => {
+      const heartbeatInterval = setInterval(async () => {
+        try {
+          // Spela extremt tyst ljud för att hålla iOS-ljud aktivt
+          if (silentAudioElement && audioContext) {
+            console.log('💓 iOS audio heartbeat - håller ljud aktivt')
+            
+            // Först - återaktivera det tysta ljudet
+            try {
+              silentAudioElement.currentTime = 0
+              silentAudioElement.volume = 0.001 // Extremt tyst
+              await silentAudioElement.play()
+            } catch (silentError) {
+              console.log('💓 Heartbeat: Silent audio misslyckades:', silentError)
+            }
+            
+            // Sedan - återaktivera AudioContext om suspended
+            if (audioContext.state === 'suspended') {
+              try {
+                await audioContext.resume()
+                console.log('💓 Heartbeat: AudioContext resumed')
+              } catch (contextError) {
+                console.log('💓 Heartbeat: AudioContext resume misslyckades:', contextError)
+              }
+            }
+            
+            // Spela en extremt kort och tyst Web Audio-ton
+            try {
+              const oscillator = audioContext.createOscillator()
+              const gainNode = audioContext.createGain()
+              
+              oscillator.connect(gainNode)
+              gainNode.connect(audioContext.destination)
+              
+              oscillator.frequency.value = 440
+              oscillator.type = 'sine'
+              gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime) // Extremt tyst
+              gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.05)
+              
+              oscillator.start(audioContext.currentTime)
+              oscillator.stop(audioContext.currentTime + 0.05) // Extremt kort - 50ms
+            } catch (webAudioError) {
+              console.log('💓 Heartbeat: Web Audio misslyckades:', webAudioError)
+            }
+          }
+        } catch (error) {
+          console.log('💓 Heartbeat: Allmänt fel:', error)
+        }
+      }, 30000) // Varje 30:e sekund
+      
+      setAudioHeartbeat(heartbeatInterval)
+    }
+
+    startHeartbeat()
+    
+    return () => {
+      if (audioHeartbeat) {
+        clearInterval(audioHeartbeat)
+        setAudioHeartbeat(null)
+      }
+    }
+  }, [isIOSDevice, audioEnabled, audioUnlocked, silentAudioElement, audioContext])
 
   // User interaction tracking for audio reactivation
   useEffect(() => {
@@ -1218,23 +1312,64 @@ export default function RestaurantTerminal() {
 
   const activateAudio = async () => {
     try {
-      console.log('🎵 Aktiverar ljud för alla enheter...')
+      console.log('🎵 Aktiverar avancerat iOS-kompatibelt ljudsystem...')
       
-      // Skapa och aktivera AudioContext
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext
+      // Steg 1: Skapa AudioContext
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
       if (!AudioContextClass) {
         throw new Error('AudioContext stöds inte i denna webbläsare')
       }
       
       const newAudioContext = new AudioContextClass()
       
-      // På Safari/iPad/iOS kan AudioContext vara suspended, så vi måste resume den
+      // Steg 2: Skapa ROBUST tyst HTML Audio-element (iOS workaround)
+      const silentAudio = document.createElement('audio')
+      silentAudio.setAttribute('x-webkit-airplay', 'deny')
+      silentAudio.preload = 'auto'
+      silentAudio.loop = true
+      silentAudio.volume = 0.01 // Lite högre för iOS
+      silentAudio.muted = false
+      silentAudio.autoplay = false // Viktigt för iOS
+      
+      // Skapa en bättre ljudfil för iOS (100ms ton istället för helt tyst)
+      // Detta gör att iOS "känner" ljudet och håller det aktivt bättre
+      const betterSilentMp3 = 'data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCA'
+      silentAudio.src = betterSilentMp3
+      
+      // Lägg till event listeners för bättre debug
+      silentAudio.addEventListener('canplaythrough', () => {
+        console.log('🔇 iOS: Silent audio kan spelas')
+      })
+      silentAudio.addEventListener('error', (e) => {
+        console.log('🔇 iOS: Silent audio fel:', e)
+      })
+      
+      setSilentAudioElement(silentAudio)
+      
+      // AGGRESSIV iOS UNLOCK-SEKVENS
+      for (let unlockAttempt = 1; unlockAttempt <= 3; unlockAttempt++) {
+        try {
+          console.log(`🔇 iOS Unlock försök ${unlockAttempt}/3...`)
+          silentAudio.currentTime = 0
+          await silentAudio.play()
+          console.log(`✅ iOS Silent audio unlock försök ${unlockAttempt} lyckades`)
+          break // Lyckas - hoppa ur loopen
+        } catch (audioError) {
+          console.log(`❌ iOS Silent audio unlock försök ${unlockAttempt} misslyckades:`, audioError)
+          if (unlockAttempt < 3) {
+            // Kort paus mellan försök
+            await new Promise(resolve => setTimeout(resolve, 200))
+          }
+        }
+      }
+      
+      // Steg 3: Resume AudioContext om suspended
       if (newAudioContext.state === 'suspended') {
         await newAudioContext.resume()
         console.log('🎵 AudioContext resumed från suspended state')
       }
       
-      // Spela ett tyst ljud för att "unlåsa" ljudet (krävs för iOS/Safari)
+      // Steg 4: Spela en mycket kort Web Audio ton för att "unlåsa" systemet
       const oscillator = newAudioContext.createOscillator()
       const gainNode = newAudioContext.createGain()
       
@@ -1243,35 +1378,41 @@ export default function RestaurantTerminal() {
       
       oscillator.frequency.value = 440
       oscillator.type = 'sine'
-      gainNode.gain.setValueAtTime(0.01, newAudioContext.currentTime) // Mycket tyst
+      gainNode.gain.setValueAtTime(0.001, newAudioContext.currentTime) // Extremt tyst
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, newAudioContext.currentTime + 0.1)
       
       oscillator.start(newAudioContext.currentTime)
       oscillator.stop(newAudioContext.currentTime + 0.1)
       
+      // Steg 5: Sätt state
       setAudioContext(newAudioContext)
       setAudioEnabled(true)
+      setAudioUnlocked(true)
       
-      console.log('✅ Ljud aktiverat! AudioContext state:', newAudioContext.state)
+      console.log('✅ Avancerat ljudsystem aktiverat!')
+      console.log('🎵 AudioContext state:', newAudioContext.state)
       console.log('🎵 Enhet:', isIOSDevice ? 'iOS/iPad' : 'Desktop/Android')
       
-      // Bekräfta med en testton efter kort delay
-      setTimeout(() => {
-        playNotificationSound()
-      }, 300)
+      // Steg 6: Test med verkligt ljud efter kort delay
+      setTimeout(async () => {
+        console.log('🎯 Testar verkligt ljud efter aktivering...')
+        await playNotificationSound()
+      }, 500)
       
-      showBrowserNotification('Ljud aktiverat! 🔊', 'Automatiska ljudnotifikationer fungerar nu på alla enheter', false)
+      showBrowserNotification('Ljud aktiverat! 🔊', 'Automatiska ljudnotifikationer fungerar nu på alla enheter inklusive iOS', false)
       
     } catch (error) {
       console.error('❌ Fel vid aktivering av ljud:', error)
-      showBrowserNotification('Ljudfel', `Kunde inte aktivera ljud: ${error.message}`, false)
+      setAudioUnlocked(false)
+      showBrowserNotification('Ljudfel', `Kunde inte aktivera ljud: ${(error as Error).message}`, false)
     }
   }
 
-  const playNotificationSound = () => {
+  const playNotificationSound = async () => {
     console.log('🚨 KRAFTFULL NOTIFIKATION: Ljud + Vibration + Visuellt!')
-    console.log('📊 Status: notiser =', notificationsEnabled, 'ljud =', audioEnabled)
+    console.log('📊 Status: notiser =', notificationsEnabled, 'ljud =', audioEnabled, 'unlocked =', audioUnlocked)
     
-    // VISUELL EFFEKT - Alltid, oavsett ljudinställningar
+    // VISUELL EFFEKT - Alltid, oavsett ljudinställningar  
     triggerVisualAlert()
     
     // VIBRATION - Om tillgängligt
@@ -1282,60 +1423,155 @@ export default function RestaurantTerminal() {
       return
     }
     
-    if (!audioEnabled) {
-      console.log('🔕 Ljud är inte aktiverat - bara visuell/vibration')
+    if (!audioEnabled || !audioUnlocked) {
+      console.log('🔕 Ljud är inte aktiverat eller låst - bara visuell/vibration')
       console.log('💡 Tips: Tryck på "Ljud Av" knappen för att aktivera ljud')
       return
     }
     
     try {
-      console.log('🔊 Spelar KRAFTFULLT notifikationsljud...')
+      console.log('🔊 Spelar KRAFTFULLT notifikationsljud med aggressiv iOS-stöd...')
       console.log('🎵 AudioContext state:', audioContext?.state || 'ingen audioContext')
       
+      // AGGRESSIV iOS-ÅTERAKTIVERING - Körs alltid för iOS, även om inte behövs
+      if (isIOSDevice) {
+        console.log('🍎 AGGRESSIV iOS-återaktivering startar...')
+        
+        // Steg 1: Flera försök med silent audio
+        if (silentAudioElement) {
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              console.log(`🔇 iOS Silent Audio försök ${attempt}/3...`)
+              silentAudioElement.currentTime = 0
+              silentAudioElement.volume = 0.01 // Lite högre volym för iOS
+              await silentAudioElement.play()
+              console.log(`✅ iOS Silent Audio försök ${attempt} lyckades`)
+              break // Om det lyckas, hoppa ur loopen
+            } catch (silentError) {
+              console.log(`❌ iOS Silent Audio försök ${attempt} misslyckades:`, silentError)
+              if (attempt === 3) {
+                console.log('⚠️ Alla silent audio försök misslyckades - fortsätter ändå')
+              }
+              // Kort paus mellan försök
+              await new Promise(resolve => setTimeout(resolve, 100))
+            }
+          }
+        }
+        
+        // Steg 2: Aggressiv AudioContext-återaktivering
+        if (audioContext) {
+          try {
+            if (audioContext.state === 'suspended') {
+              console.log('🎵 iOS: AudioContext suspended - försöker resume...')
+              await audioContext.resume()
+              console.log('✅ iOS: AudioContext resumed framgångsrikt')
+            } else {
+              console.log('✅ iOS: AudioContext redan running')
+            }
+            
+            // Extra säkerhet: Skapa en kort "warmup" ton för iOS
+            try {
+              console.log('🔥 iOS: Spelar warmup-ton...')
+              const warmupOscillator = audioContext.createOscillator()
+              const warmupGain = audioContext.createGain()
+              
+              warmupOscillator.connect(warmupGain)
+              warmupGain.connect(audioContext.destination)
+              
+              warmupOscillator.frequency.value = 800
+              warmupOscillator.type = 'sine'
+              warmupGain.gain.setValueAtTime(0.1, audioContext.currentTime)
+              warmupGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1)
+              
+              warmupOscillator.start(audioContext.currentTime)
+              warmupOscillator.stop(audioContext.currentTime + 0.1)
+              
+              // Vänta på att warmup är klar
+              await new Promise(resolve => setTimeout(resolve, 150))
+              console.log('✅ iOS: Warmup-ton klar')
+            } catch (warmupError) {
+              console.log('⚠️ iOS: Warmup-ton misslyckades:', warmupError)
+            }
+          } catch (contextError) {
+            console.log('❌ iOS: AudioContext-hantering misslyckades:', contextError)
+          }
+        }
+      }
+      
+      // Vanlig återaktivering för andra enheter
+      if (!isIOSDevice && audioContext && audioContext.state === 'suspended') {
+        console.log('🔄 Desktop: AudioContext suspended - återaktiverar...')
+        await audioContext.resume()
+      }
+      
       // KRAFTFULL LJUDSEKVENS - spela flera gånger
-      playPowerfulSoundSequence()
+      console.log('🎵 Startar kraftfull ljudsekvens...')
+      await playPowerfulSoundSequence()
       
     } catch (error) {
       console.log('❌ Fel med ljuduppspelning:', error)
       console.log('🎵 Försöker med fallback-metod...')
-      playFallbackSound()
+      
+      // AGGRESSIV FALLBACK för iOS
+      if (isIOSDevice) {
+        console.log('🍎 iOS: Kör aggressiv fallback...')
+        try {
+          // Försök spela en enkel ton direkt
+          for (let fallbackAttempt = 1; fallbackAttempt <= 2; fallbackAttempt++) {
+            try {
+              console.log(`🔊 iOS Fallback försök ${fallbackAttempt}/2`)
+              await playFallbackSoundAsync()
+              console.log(`✅ iOS Fallback försök ${fallbackAttempt} lyckades`)
+              break
+            } catch (fallbackError) {
+              console.log(`❌ iOS Fallback försök ${fallbackAttempt} misslyckades:`, fallbackError)
+            }
+          }
+        } catch (aggressiveError) {
+          console.log('❌ iOS: Även aggressiv fallback misslyckades:', aggressiveError)
+        }
+      } else {
+        playFallbackSound()
+      }
     }
   }
 
-  // Kraftfull ljudsekvens som spelas flera gånger
-  const playPowerfulSoundSequence = () => {
+  // Kraftfull ljudsekvens som spelas flera gånger - iOS-optimerad
+  const playPowerfulSoundSequence = async () => {
     const playCount = 3 // Spela 3 gånger
-    let currentPlay = 0
-
-    const playNext = () => {
-      if (currentPlay >= playCount) return
-
-      // Prova först med den aktiverade AudioContext
-      if (audioContext && audioContext.state === 'running') {
-        console.log(`🎵 Spelar kraftfullt ljud ${currentPlay + 1}/${playCount} (AudioContext)`)
-        playAdvancedSound()
-      } else if (audioContext && audioContext.state === 'suspended') {
-        console.log('🎵 AudioContext suspended - försöker återuppta...')
-        audioContext.resume().then(() => {
-          playAdvancedSound()
-        }).catch(() => {
-          console.log('🎵 Fallback till enkel ljudmetod')
-          playFallbackSound()
-        })
-      } else {
-        console.log(`🎵 Spelar kraftfullt ljud ${currentPlay + 1}/${playCount} (Fallback)`)
-        playFallbackSound()
-      }
-
-      currentPlay++
-      
-      // Spela nästa efter 800ms
-      if (currentPlay < playCount) {
-        setTimeout(playNext, 800)
+    
+    for (let currentPlay = 0; currentPlay < playCount; currentPlay++) {
+      try {
+        console.log(`🎵 Spelar kraftfullt ljud ${currentPlay + 1}/${playCount}`)
+        
+        // Kontrollera AudioContext status innan varje uppspelning
+        if (audioContext && audioContext.state === 'suspended') {
+          console.log('🎵 AudioContext suspended - återupptar...')
+          await audioContext.resume()
+        }
+        
+        if (audioContext && audioContext.state === 'running') {
+          console.log(`🎵 Använder AudioContext för ljud ${currentPlay + 1}/${playCount}`)
+          await playAdvancedSoundAsync()
+        } else {
+          console.log(`🎵 Använder fallback för ljud ${currentPlay + 1}/${playCount}`)
+          await playFallbackSoundAsync()
+        }
+        
+        // Paus mellan ljuduppspelningar
+        if (currentPlay < playCount - 1) {
+          await new Promise(resolve => setTimeout(resolve, 800))
+        }
+      } catch (error) {
+        console.log(`❌ Fel vid uppspelning ${currentPlay + 1}:`, error)
+        // Försök med fallback vid fel
+        try {
+          await playFallbackSoundAsync()
+        } catch (fallbackError) {
+          console.log('❌ Även fallback misslyckades:', fallbackError)
+        }
       }
     }
-
-    playNext()
   }
 
   // Visuell alert som blinkar hela skärmen
@@ -1389,52 +1625,120 @@ export default function RestaurantTerminal() {
     }
   }
 
-  const playAdvancedSound = () => {
-    try {
-      if (!audioContext || audioContext.state !== 'running') {
-        console.log('❌ AudioContext inte redo, använder fallback')
-        playFallbackSound()
-        return
+  // Async-version för bättre kontroll
+  const playAdvancedSoundAsync = async (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!audioContext || audioContext.state !== 'running') {
+          console.log('❌ AudioContext inte redo')
+          reject(new Error('AudioContext not ready'))
+          return
+        }
+        
+        // Spela en serie toner för att låta mer som en notifikation
+        const playTone = (frequency: number, startTime: number, duration: number, volume = 0.4) => {
+          const oscillator = audioContext.createOscillator()
+          const gainNode = audioContext.createGain()
+          
+          oscillator.connect(gainNode)
+          gainNode.connect(audioContext.destination)
+          
+          oscillator.frequency.value = frequency
+          oscillator.type = 'sine'
+          
+          gainNode.gain.setValueAtTime(0, startTime)
+          gainNode.gain.linearRampToValueAtTime(volume, startTime + 0.01)
+          gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
+          
+          oscillator.start(startTime)
+          oscillator.stop(startTime + duration)
+          
+          // Returnera när oscillatorn är klar
+          oscillator.onended = () => {
+            // Denna callback kommer att köras när sista tonen är klar
+          }
+        }
+        
+        // Spela tre toner i sekvens (som iPhone notifikation) - högre volym för iOS
+        const now = audioContext.currentTime
+        playTone(800, now, 0.15, 0.5)        // Första ton
+        playTone(1000, now + 0.2, 0.15, 0.5) // Andra ton (högre)
+        playTone(800, now + 0.4, 0.2, 0.5)   // Tredje ton (tillbaka till första)
+        
+        console.log('🔊 Avancerat ljud spelat med aktiverad AudioContext')
+        
+        // Resolve efter att alla toner är klara
+        setTimeout(() => {
+          resolve()
+        }, 650) // Lite längre än den längsta tonen
+        
+      } catch (error) {
+        console.log('Fel med avancerat ljud:', error)
+        reject(error)
       }
-      
-      // Spela en serie toner för att låta mer som en notifikation
-      const playTone = (frequency, startTime, duration, volume = 0.3) => {
-        const oscillator = audioContext.createOscillator()
-        const gainNode = audioContext.createGain()
-        
-        oscillator.connect(gainNode)
-        gainNode.connect(audioContext.destination)
-        
-        oscillator.frequency.value = frequency
-        oscillator.type = 'sine'
-        
-        gainNode.gain.setValueAtTime(0, startTime)
-        gainNode.gain.linearRampToValueAtTime(volume, startTime + 0.01)
-        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
-        
-        oscillator.start(startTime)
-        oscillator.stop(startTime + duration)
-      }
-      
-      // Spela tre toner i sekvens (som iPhone notifikation) - lite högre volym
-      const now = audioContext.currentTime
-      playTone(800, now, 0.15, 0.4)        // Första ton
-      playTone(1000, now + 0.2, 0.15, 0.4) // Andra ton (högre)
-      playTone(800, now + 0.4, 0.2, 0.4)   // Tredje ton (tillbaka till första)
-      
-      console.log('🔊 Avancerat ljud spelat med aktiverad AudioContext')
-    } catch (error) {
-      console.log('Fel med avancerat ljud, använder fallback:', error)
-      playFallbackSound()
-    }
+    })
   }
 
+  // Behåll originalet för bakåtkompatibilitet
+  const playAdvancedSound = () => {
+    playAdvancedSoundAsync().catch(error => {
+      console.log('Fel med avancerat ljud, använder fallback:', error)
+      playFallbackSound()
+    })
+  }
+
+  // Async-version för bättre kontroll  
+  const playFallbackSoundAsync = async (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      try {
+        const fallbackAudioContext = new ((window.AudioContext || (window as any).webkitAudioContext))()
+        
+        // Spela en serie toner för att låta mer som en notifikation
+        const playTone = (frequency: number, startTime: number, duration: number) => {
+          const oscillator = fallbackAudioContext.createOscillator()
+          const gainNode = fallbackAudioContext.createGain()
+          
+          oscillator.connect(gainNode)
+          gainNode.connect(fallbackAudioContext.destination)
+          
+          oscillator.frequency.value = frequency
+          oscillator.type = 'sine'
+          
+          gainNode.gain.setValueAtTime(0, startTime)
+          gainNode.gain.linearRampToValueAtTime(0.4, startTime + 0.01)
+          gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
+          
+          oscillator.start(startTime)
+          oscillator.stop(startTime + duration)
+        }
+        
+        // Spela tre toner i sekvens (som iPhone notifikation) - lite högre volym
+        const now = fallbackAudioContext.currentTime
+        playTone(800, now, 0.15)        // Första ton
+        playTone(1000, now + 0.2, 0.15) // Andra ton (högre)
+        playTone(800, now + 0.4, 0.2)   // Tredje ton (tillbaka till första)
+        
+        console.log('🔊 Async Fallback-ljud spelat')
+        
+        // Resolve efter att alla toner är klara
+        setTimeout(() => {
+          resolve()
+        }, 650)
+        
+      } catch (error) {
+        console.log('Kunde inte spela async fallback-ljud:', error)
+        reject(error)
+      }
+    })
+  }
+
+  // Originalet för bakåtkompatibilitet
   const playFallbackSound = () => {
     try {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
       
       // Spela en serie toner för att låta mer som en notifikation
-      const playTone = (frequency, startTime, duration) => {
+      const playTone = (frequency: any, startTime: any, duration: any) => {
         const oscillator = audioContext.createOscillator()
         const gainNode = audioContext.createGain()
         
@@ -1458,7 +1762,7 @@ export default function RestaurantTerminal() {
       playTone(1000, now + 0.2, 0.15) // Andra ton (högre)
       playTone(800, now + 0.4, 0.2)   // Tredje ton (tillbaka till första)
       
-      console.log('�� Fallback-ljud spelat')
+      console.log('🔊 Fallback-ljud spelat')
     } catch (error) {
       console.log('Kunde inte spela fallback-ljud:', error)
     }
@@ -2778,7 +3082,14 @@ Utvecklad av Skaply
                       </div>
                       <div>
                         <p className="text-white font-medium text-sm">{profile?.name}</p>
-                        <p className="text-white/60 text-xs">Inloggad användare</p>
+                        <p className="text-white/60 text-xs">
+                          {audioEnabled && audioUnlocked ? 
+                            (isIOSDevice ? 
+                              (audioHeartbeat ? '🔊💓 iOS Ljud Aktivt + Heartbeat' : '🔊🍎 iOS Ljud Aktivt') : 
+                              '🔊 Ljud Aktivt'
+                            ) : 
+                           audioEnabled ? '🔇 Ljud Låst' : '🔕 Ljud Av'} | Inloggad
+                        </p>
                       </div>
                     </div>
                     
@@ -2913,11 +3224,17 @@ Utvecklad av Skaply
                   <Button 
                     onClick={() => {
                       if (audioEnabled) {
-                        // Stäng av ljud
+                        // Stäng av ljud och rensa alla ljudresurser
                         setAudioEnabled(false)
+                        setAudioUnlocked(false)
                         if (audioContext) {
                           audioContext.close()
                           setAudioContext(null)
+                        }
+                        if (silentAudioElement) {
+                          silentAudioElement.pause()
+                          silentAudioElement.src = ''
+                          setSilentAudioElement(null)
                         }
                         showBrowserNotification('Ljud avstängt 🔇', 'Automatiska ljudnotifikationer är nu avstängda', false)
                       } else {
@@ -3050,7 +3367,7 @@ Utvecklad av Skaply
         </Card>
 
         {/* Audio Status Warning - Show only on iOS devices */}
-        {notificationsEnabled && !audioEnabled && isIOSDevice && (
+        {notificationsEnabled && (!audioEnabled || !audioUnlocked) && isIOSDevice && (
           <Card className="border border-yellow-500/30 bg-gradient-to-r from-yellow-900/20 to-orange-900/20 backdrop-blur-md mb-6">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
@@ -3058,10 +3375,17 @@ Utvecklad av Skaply
                   <Volume2 className="h-4 w-4 text-yellow-400" />
                 </div>
                 <div>
-                  <p className="text-yellow-400 font-medium">Ljud är inte aktiverat</p>
+                  <p className="text-yellow-400 font-medium">
+                    {!audioEnabled ? 'Ljud är inte aktiverat' : 'Ljud behöver låsas upp'}
+                  </p>
                   <p className="text-yellow-300/80 text-sm">
                     För iPad/Safari: Tryck "Aktivera Ljud" för att höra automatiska notifikationer
                   </p>
+                  {audioEnabled && audioUnlocked && isIOSDevice && (
+                    <p className="text-green-300/80 text-xs mt-2">
+                      💓 iOS Heartbeat: Håller ljudet aktivt kontinuerligt i bakgrunden (var 30:e sekund)
+                    </p>
+                  )}
                 </div>
                 <Button
                   onClick={activateAudio}
@@ -3069,7 +3393,7 @@ Utvecklad av Skaply
                   size="sm"
                   className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10"
                 >
-                  Aktivera Nu
+                  {!audioEnabled ? 'Aktivera Nu' : 'Lås Upp'}
                 </Button>
               </div>
             </CardContent>
@@ -4035,9 +4359,32 @@ Utvecklad av Skaply
                       )
                     }
 
+                    // Gruppera samma varor med samma alternativ
+                    const groupedItems = orderItems.reduce((acc, item) => {
+                      // Skapa en unik nyckel baserat på namn och alternativ
+                      const optionsKey = item.options ? JSON.stringify(item.options) : 'no-options'
+                      const key = `${item.name}-${optionsKey}`
+                      
+                      if (acc[key]) {
+                        // Om varan redan finns, lägg till kvantiteten
+                        acc[key].quantity += item.quantity
+                        acc[key].totalPrice += (item.price * item.quantity)
+                      } else {
+                        // Ny vara, lägg till i gruppen
+                        acc[key] = {
+                          ...item,
+                          totalPrice: item.price * item.quantity
+                        }
+                      }
+                      
+                      return acc
+                    }, {})
+
+                    const groupedItemsArray = Object.values(groupedItems)
+
                     return (
                       <div className="space-y-3">
-                        {orderItems.map((item, index) => (
+                        {groupedItemsArray.map((item, index) => (
                           <div key={index} className="border-l-4 border-[#e4d699]/50 pl-3 py-2 bg-black/20 rounded-r-lg">
                             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
                               <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -4047,7 +4394,7 @@ Utvecklad av Skaply
                                 <span className="text-white font-medium text-sm sm:text-base break-words">{item.name}</span>
                               </div>
                               <div className="text-[#e4d699] font-bold text-sm sm:text-base flex-shrink-0">
-                                {(item.price * item.quantity)} kr
+                                {item.totalPrice} kr
                               </div>
                             </div>
                             
