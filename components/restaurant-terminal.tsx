@@ -2366,6 +2366,8 @@ export default function RestaurantTerminal() {
         console.log('📧 Skickar orderbekräftelse för bekräftad order...')
         
         try {
+          console.log('📧 Anropar /api/orders/confirm med orderId:', orderId)
+          
           const confirmResponse = await fetch('/api/orders/confirm', {
             method: 'POST',
             headers: {
@@ -2376,7 +2378,16 @@ export default function RestaurantTerminal() {
             })
           })
 
+          console.log('📧 Confirm response status:', confirmResponse.status)
+          
+          if (!confirmResponse.ok) {
+            const errorText = await confirmResponse.text()
+            console.error('❌ HTTP error from /api/orders/confirm:', confirmResponse.status, errorText)
+            throw new Error(`HTTP ${confirmResponse.status}: ${errorText}`)
+          }
+
           const confirmResult = await confirmResponse.json()
+          console.log('📧 Confirm result:', confirmResult)
           
           if (confirmResult.success) {
             console.log('✅ Orderbekräftelse skickad till kund')

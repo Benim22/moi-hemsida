@@ -70,9 +70,18 @@ export async function POST(request: NextRequest) {
 
     // Skicka orderbekräftelse via SendGrid
     if (order.customer_email || order.profiles?.email) {
+      const targetEmail = order.customer_email || order.profiles?.email
+      console.log('📧 Email target details:', {
+        customer_email: order.customer_email,
+        profiles_email: order.profiles?.email,
+        selected_email: targetEmail,
+        order_id: orderId,
+        order_number: order.order_number
+      })
+      
       const emailData = {
         customerName: order.customer_name || order.profiles?.name || 'Kära kund',
-        customerEmail: order.customer_email || order.profiles?.email,
+        customerEmail: targetEmail,
         orderNumber: order.order_number || order.id,
         orderDate: new Date().toLocaleDateString('sv-SE'),
         orderType: order.delivery_type === "delivery" ? "Leverans" : "Avhämtning",
