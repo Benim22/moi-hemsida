@@ -548,15 +548,13 @@ export default function RestaurantTerminal() {
     // Test 3: Printer Connection based on method
     addDebugLog('🖨️ STEG 3: Testar skrivare-anslutning...', 'info')
     
-    if (printerSettings.connectionType === 'wifi' && port == 80) {
-      addDebugLog('🌐 Testar HTTP ePOS-Print (rekommenderat för TM-T30III-H)...', 'info')
-      await testEPOSHTTPConnection()
-    } else if (printerSettings.connectionType === 'tcp' && port == 9100) {
-      addDebugLog('🔌 Testar TCP Raw Socket (port 9100)...', 'info')
-      await testTCPConnection()
+    // Always use ePOS SDK for printer testing (bypasses CSP)
+    if (eposLoaded && window.epos) {
+      addDebugLog('🖨️ Testar ePOS SDK-anslutning (bypasser CSP)...', 'info')
+      await testEPOSSDKConnection()
     } else {
-      addDebugLog('🔄 Testar allmän nätverksanslutning...', 'info')
-      await testGeneralConnection()
+      addDebugLog('❌ ePOS SDK inte laddat - kan inte testa skrivare', 'warning')
+      addDebugLog('💡 Ladda ePOS SDK för att testa skrivare på samma nätverk', 'info')
     }
   }
   
@@ -624,6 +622,80 @@ export default function RestaurantTerminal() {
     await testBackendPrinterConnection()
   }
   
+  // Test ePOS SDK connection (bypasses CSP restrictions)
+  const testEPOSSDKConnection = async () => {
+    try {
+      addDebugLog('🖨️ Testar ePOS SDK-anslutning (bypasser CSP)...', 'info')
+      
+      const epos = new window.epos.ePOSDevice()
+      const port = parseInt(printerSettings.printerPort) || 80
+      
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          addDebugLog('⏰ ePOS SDK timeout efter 10s', 'warning')
+          addDebugLog('💡 Tips: Kontrollera att skrivaren är påslagen och på samma nätverk', 'info')
+          setPrinterStatus({
+            connected: false,
+            lastTest: new Date(),
+            error: 'ePOS SDK timeout'
+          })
+          resolve(false)
+        }, 10000)
+        
+        epos.connect(printerSettings.printerIP, port, (data) => {
+          clearTimeout(timeout)
+          
+          if (data === 'OK') {
+            addDebugLog('✅ ePOS SDK: Anslutning framgångsrik!', 'success')
+            addDebugLog('🎯 TM-T30III-H redo för utskrift via ePOS SDK', 'success')
+            addDebugLog('🌐 CSP-begränsningar kringgås framgångsrikt', 'success')
+            
+            setPrinterStatus({
+              connected: true,
+              lastTest: new Date(),
+              error: null
+            })
+            
+            // Test creating a printer device
+            try {
+              const printer = epos.createDevice('local_printer', epos.DEVICE_TYPE_PRINTER, {}, (device, code) => {
+                if (code === 'OK') {
+                  addDebugLog('✅ ePOS Printer Device: Skapad framgångsrikt', 'success')
+                  addDebugLog('🚀 Skrivare redo för produktion!', 'success')
+                } else {
+                  addDebugLog(`⚠️ ePOS Printer Device: ${code}`, 'warning')
+                }
+              })
+            } catch (deviceError) {
+              addDebugLog(`⚠️ ePOS Device fel: ${deviceError.message}`, 'warning')
+            }
+            
+            resolve(true)
+          } else {
+            addDebugLog(`❌ ePOS SDK fel: ${data}`, 'error')
+            addDebugLog('💡 Tips: Kontrollera IP-adress och port', 'info')
+            
+            setPrinterStatus({
+              connected: false,
+              lastTest: new Date(),
+              error: `ePOS SDK fel: ${data}`
+            })
+            
+            resolve(false)
+          }
+        })
+      })
+    } catch (error) {
+      addDebugLog(`❌ ePOS SDK test fel: ${error.message}`, 'error')
+      setPrinterStatus({
+        connected: false,
+        lastTest: new Date(),
+        error: error.message
+      })
+      return false
+    }
+  }
+
   // Test ePOS print capability
   const testEPOSPrintCapability = async () => {
     try {
@@ -2745,7 +2817,7 @@ Utvecklad av Skaply
     return discoveredPrinters
   }
 
-  // Print using backend API (node-thermal-printer) with loading state
+  // Print using optimal method (frontend ePOS first, then backend) with loading state
   const printBackendReceiptWithLoading = async (order) => {
     // Check if already printing
     if (printingOrders.has(order.id)) {
@@ -2757,8 +2829,22 @@ Utvecklad av Skaply
     setPrintingOrders(prev => new Set([...prev, order.id]))
     
     try {
-      const success = await printBackendReceipt(order)
-      return success
+      addDebugLog(`🖨️ Manuell utskrift för order #${order.order_number}`, 'info')
+      
+      // Use the same logic as automatic printing (frontend ePOS first)
+      await printEPOSReceipt(order)
+      
+      addDebugLog(`✅ Manuell utskrift framgångsrik för order #${order.order_number}`, 'success')
+      showBrowserNotification(
+        '🖨️ Kvitto utskrivet!', 
+        `Order #${order.order_number} utskrivet framgångsrikt`,
+        false
+      )
+      return true
+    } catch (error) {
+      addDebugLog(`❌ Manuell utskrift misslyckades: ${error.message}`, 'error')
+      setPrinterStatus(prev => ({ ...prev, error: error.message }))
+      return false
     } finally {
       // Remove from loading state
       setPrintingOrders(prev => {
@@ -2979,6 +3065,77 @@ Utvecklad av Skaply
     return commands.join('')
   }
 
+  // Frontend ePOS printing (direct to printer via HTTP)
+  const printFrontendEPOS = async (order) => {
+    addDebugLog('🖨️ Startar frontend ePOS-utskrift...', 'info')
+    
+    if (!eposLoaded) {
+      throw new Error('ePOS SDK inte laddat')
+    }
+    
+    if (!printerSettings.enabled) {
+      throw new Error('Skrivare inte aktiverad')
+    }
+    
+    return new Promise((resolve, reject) => {
+      try {
+        const epos = new window.epos.ePOSDevice()
+        const port = parseInt(printerSettings.printerPort) || 80
+        
+        addDebugLog(`🔌 Ansluter till ${printerSettings.printerIP}:${port}...`, 'info')
+        
+        epos.connect(printerSettings.printerIP, port, (data) => {
+          if (data === 'OK') {
+            addDebugLog('✅ ePOS-anslutning framgångsrik', 'success')
+            
+            try {
+              const printer = epos.createDevice('local_printer', epos.DEVICE_TYPE_PRINTER, {}, (device, code) => {
+                if (code === 'OK') {
+                  addDebugLog('✅ ePOS Printer Device skapad', 'success')
+                  
+                  // Generate receipt content
+                  const receiptContent = generateEPOSReceipt(order)
+                  
+                  // Send to printer
+                  printer.addText(receiptContent)
+                  printer.addCut(printer.CUT_FEED)
+                  
+                  printer.send((result) => {
+                    if (result.success) {
+                      addDebugLog('✅ ePOS-utskrift skickad till skrivaren!', 'success')
+                      resolve(true)
+                    } else {
+                      addDebugLog(`❌ ePOS-utskrift misslyckades: ${result.code}`, 'error')
+                      reject(new Error(`ePOS print failed: ${result.code}`))
+                    }
+                  })
+                } else {
+                  addDebugLog(`❌ ePOS Device fel: ${code}`, 'error')
+                  reject(new Error(`ePOS device error: ${code}`))
+                }
+              })
+            } catch (deviceError) {
+              addDebugLog(`❌ ePOS Device creation fel: ${deviceError.message}`, 'error')
+              reject(deviceError)
+            }
+          } else {
+            addDebugLog(`❌ ePOS-anslutning misslyckades: ${data}`, 'error')
+            reject(new Error(`ePOS connection failed: ${data}`))
+          }
+        })
+        
+        // Timeout after 10 seconds
+        setTimeout(() => {
+          reject(new Error('ePOS connection timeout'))
+        }, 10000)
+        
+      } catch (error) {
+        addDebugLog(`❌ ePOS-fel: ${error.message}`, 'error')
+        reject(error)
+      }
+    })
+  }
+
   // Print Receipt to Epson TM-T20III with ESC/POS commands - iPad Bridge Mode
   const printEPOSReceipt = async (order) => {
     addDebugLog(`🖨️ Skriver ut kvitto för order #${order.order_number}`, 'info')
@@ -2990,25 +3147,21 @@ Utvecklad av Skaply
       
       addDebugLog(`🌍 Miljö: ${isLocalhost ? 'Localhost' : isProduction ? 'Produktion (iPad Bridge)' : 'Utveckling'}`, 'info')
 
-              // Production mode - try new direct HTTPS method first, then fallback to backend
+              // Production mode - prioritize frontend ePOS for local network printers
         if (isProduction) {
-          addDebugLog('🌐 Produktionsmiljö: Provar direkt HTTPS-anslutning till skrivaren', 'info')
+          addDebugLog('🌐 Produktionsmiljö: Prioriterar frontend ePOS för lokalt nätverk', 'info')
           
-          // Try direct HTTPS to printer first
-          try {
-            const { printerService } = await import('@/lib/printer-service')
-            const result = await printerService.printReceipt(order)
-            
-            if (result.success) {
-              addDebugLog('✅ Direkt HTTPS-utskrift framgångsrik', 'success')
+          // Try frontend ePOS first if available (works on local network)
+          if (eposLoaded && printerSettings.enabled && !printerSettings.debugMode) {
+            addDebugLog('🖨️ Försöker frontend ePOS-utskrift först...', 'info')
+            try {
+              await printFrontendEPOS(order)
+              addDebugLog('✅ Frontend ePOS-utskrift framgångsrik!', 'success')
               return
-            } else {
-              addDebugLog(`⚠️ Direkt HTTPS-utskrift misslyckades: ${result.error}`, 'warning')
+            } catch (error) {
+              addDebugLog(`⚠️ Frontend ePOS misslyckades: ${error.message}`, 'warning')
               addDebugLog('🔄 Prövar backend API som fallback...', 'info')
             }
-          } catch (error) {
-            addDebugLog(`⚠️ Direkt HTTPS-utskrift kraschade: ${error.message}`, 'warning')
-            addDebugLog('🔄 Prövar backend API som fallback...', 'info')
           }
           
           // Fallback to backend API
@@ -4303,7 +4456,7 @@ Utvecklad av Skaply
                             printingOrders.has(order.id) 
                               ? 'Skriver ut kvitto...'
                               : printerSettings.enabled 
-                                ? 'Skriv ut kvitto via backend (node-thermal-printer)' 
+                                ? 'Skriv ut kvitto via frontend ePOS (direkt till skrivare)' 
                                 : 'Skrivare inte aktiverad'
                           }
                         >
