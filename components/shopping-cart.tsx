@@ -204,7 +204,7 @@ function OrderSuccessModal({
               Information om orderbekräftelse
             </p>
             <p className="text-amber-100/80 text-xs">
-            Orderbekräftelser skickas normalt via e-post, men ibland kan det uppstå leveransproblem. Vanligtvis fungerar det utan problem! Vi ser alla inkomna beställningar och behandlar dem så snart som möjligt.            </p>
+            Din beställning registreras direkt i vårt system. Orderbekräftelse via e-post skickas när vår personal bekräftar och påbörjar din beställning. Vi ser alla inkomna beställningar och behandlar dem så snart som möjligt.            </p>
           </div>
         </div>
       </div>
@@ -961,49 +961,9 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         // Don't fail the order if notification fails
       }
 
-      // Send order confirmation email using SendGrid
-      try {
-        const emailResponse = await fetch('/api/sendgrid', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'send_order_confirmation',
-            orderData: {
-              customerName,
-              customerEmail,
-              orderNumber,
-              orderDate: new Date().toLocaleDateString('sv-SE'),
-              orderType: deliveryType === "delivery" ? "Leverans" : "Avhämtning",
-              location: selectedLocation.name,
-              deliveryAddress: deliveryType === "delivery" ? customerAddress : undefined,
-              pickupTime: getPickupTimeText(),
-              items: items.map(item => ({
-                name: item.name,
-                quantity: item.quantity,
-                price: `${item.price}`,
-                extras: item.extras?.join(', ') || undefined
-              })),
-              totalPrice: `${totalPrice}`,
-              specialInstructions: specialInstructions || undefined,
-              phone: customerPhone,
-              restaurantPhone: selectedLocation.phone,
-              restaurantAddress: selectedLocation.address
-            }
-          }),
-        })
-
-        const emailResult = await emailResponse.json()
-        if (emailResult.success) {
-          console.log("Order confirmation email sent successfully via SendGrid")
-        } else {
-          console.error("Failed to send order confirmation email:", emailResult.error)
-        }
-      } catch (emailError) {
-        console.error("Error sending order confirmation email:", emailError)
-        // Don't fail the order if email fails
-      }
+      // NOTE: Orderbekräftelse skickas nu manuellt av personalen när de bekräftar ordern i terminalen
+      // Detta säkerställer att kunden endast får bekräftelse när personalen aktivt hanterar beställningen
+      console.log("Order saved successfully. Email confirmation will be sent when staff confirms the order.")
 
 
 

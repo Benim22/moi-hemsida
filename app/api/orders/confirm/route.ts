@@ -1,6 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { sendOrderConfirmation } from '@/lib/nodemailer-one'
+import { sendOrderConfirmationSendGrid } from '@/lib/sendgrid-service'
+
+// Helper functions för restauranginformation
+function getRestaurantPhone(location: string): string {
+  const phoneMap = {
+    'trelleborg': '0410-123456',
+    'malmo': '040-123456', 
+    'ystad': '0411-123456'
+  }
+  return phoneMap[location] || '0410-123456'
+}
+
+function getRestaurantAddress(location: string): string {
+  const addressMap = {
+    'trelleborg': 'Stortorget 1, 231 00 Trelleborg',
+    'malmo': 'Stortorget 1, 211 00 Malmö',
+    'ystad': 'Stortorget 1, 271 00 Ystad'
+  }
+  return addressMap[location] || 'Stortorget 1, 231 00 Trelleborg'
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -49,25 +68,35 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Skicka orderbekräftelse via One.com SMTP
+    // Skicka orderbekräftelse via SendGrid
     if (order.customer_email || order.profiles?.email) {
       const emailData = {
-        customer_name: order.customer_name || order.profiles?.name || 'Kära kund',
-        customer_email: order.customer_email || order.profiles?.email,
-        order_number: order.order_number || order.id,
-        items: order.items || [],
-        total_price: order.total_price || order.amount || '0',
-        delivery_method: order.order_type || order.delivery_method || 'Hämtning',
+        customerName: order.customer_name || order.profiles?.name || 'Kära kund',
+        customerEmail: order.customer_email || order.profiles?.email,
+        orderNumber: order.order_number || order.id,
+        orderDate: new Date().toLocaleDateString('sv-SE'),
+        orderType: order.delivery_type === "delivery" ? "Leverans" : "Avhämtning",
         location: order.location || '',
-        special_instructions: order.special_instructions || order.notes || '',
-        estimated_ready_time: order.estimated_ready_time || '30-45 minuter'
+        deliveryAddress: order.delivery_type === "delivery" ? order.delivery_address : undefined,
+        pickupTime: order.estimated_ready_time || '30-45 minuter',
+        items: (order.items || []).map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: `${item.price}`,
+          extras: item.extras?.join(', ') || undefined
+        })),
+        totalPrice: `${order.total_price || order.amount || '0'}`,
+        specialInstructions: order.special_instructions || order.notes || undefined,
+        phone: order.phone,
+        restaurantPhone: getRestaurantPhone(order.location),
+        restaurantAddress: getRestaurantAddress(order.location)
       }
 
       try {
-        const emailResult = await sendOrderConfirmation(emailData)
+        const emailResult = await sendOrderConfirmationSendGrid(emailData)
         
         if (emailResult.success) {
-          console.log('✅ Order confirmation email sent:', emailResult.messageId)
+          console.log('✅ Order confirmation email sent via SendGrid:', emailResult.messageId)
           
           // Logga email-sändning i orders tabellen
           await supabaseAdmin
@@ -75,7 +104,7 @@ export async function POST(request: NextRequest) {
             .update({ 
               email_sent: true,
               email_sent_at: new Date().toISOString(),
-              email_message_id: emailResult.messageId
+              email_message_id: emailResult.messageId || 'sendgrid-sent'
             })
             .eq('id', orderId)
 
@@ -115,14 +144,14 @@ export async function POST(request: NextRequest) {
 
           return NextResponse.json({
             success: true,
-            message: 'Order confirmed and confirmation email sent',
-            messageId: emailResult.messageId
+            message: 'Order confirmed and confirmation email sent via SendGrid',
+            messageId: emailResult.messageId || 'sendgrid-sent'
           })
         } else {
-          console.error('❌ Failed to send order confirmation email:', emailResult.error)
+          console.error('❌ Failed to send order confirmation email via SendGrid:', emailResult.error)
           
           return NextResponse.json({
-            success: true,
+            success: false,
             message: 'Order confirmed but email failed to send',
             emailError: emailResult.error
           })

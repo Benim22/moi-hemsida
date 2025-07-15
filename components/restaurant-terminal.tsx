@@ -2361,6 +2361,48 @@ export default function RestaurantTerminal() {
         order.id === orderId ? { ...order, status: newStatus } : order
       ))
 
+      // Skicka orderbekräftelse när personalen bekräftar ordern (status: ready)
+      if (newStatus === 'ready') {
+        console.log('📧 Skickar orderbekräftelse för bekräftad order...')
+        
+        try {
+          const confirmResponse = await fetch('/api/orders/confirm', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              orderId: orderId
+            })
+          })
+
+          const confirmResult = await confirmResponse.json()
+          
+          if (confirmResult.success) {
+            console.log('✅ Orderbekräftelse skickad till kund')
+            showBrowserNotification(
+              'Orderbekräftelse skickad!', 
+              `Kunden har fått bekräftelse för order #${data[0]?.order_number}`,
+              false
+            )
+          } else {
+            console.error('❌ Kunde inte skicka orderbekräftelse:', confirmResult.error)
+            showBrowserNotification(
+              'Varning', 
+              `Order bekräftad men e-post kunde inte skickas: ${confirmResult.error}`,
+              false
+            )
+          }
+        } catch (emailError) {
+          console.error('❌ Fel vid skickning av orderbekräftelse:', emailError)
+          showBrowserNotification(
+            'Varning', 
+            'Order bekräftad men e-post kunde inte skickas',
+            false
+          )
+        }
+      }
+
       // INGEN admin-notifikation för statusuppdateringar - bara för nya beställningar
       console.log('✅ Status uppdaterad utan notifikation (som önskat)')
 
