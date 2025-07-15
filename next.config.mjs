@@ -30,6 +30,7 @@ const nextConfig = {
               "font-src 'self' https://fonts.gstatic.com",
               "connect-src 'self' https: http: wss: ws: http://192.168.1.103 http://localhost:* http://127.0.0.1:*",
               "media-src 'self' https: data:",
+              "frame-src 'self' https://maps.google.com https://www.google.com https://maps.googleapis.com",
               "object-src 'none'",
               "base-uri 'self'",
               "form-action 'self'",
@@ -39,7 +40,7 @@ const nextConfig = {
           },
           {
             key: 'X-Frame-Options',
-            value: 'DENY'
+            value: 'SAMEORIGIN'
           },
           {
             key: 'X-Content-Type-Options',

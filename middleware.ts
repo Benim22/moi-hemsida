@@ -6,7 +6,7 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
 
   // Add security headers to fix "INTE SÄKER" warnings
-  res.headers.set('X-Frame-Options', 'DENY')
+  res.headers.set('X-Frame-Options', 'SAMEORIGIN')
   res.headers.set('X-Content-Type-Options', 'nosniff')
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   res.headers.set('X-XSS-Protection', '1; mode=block')

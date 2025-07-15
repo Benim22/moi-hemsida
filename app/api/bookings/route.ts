@@ -166,50 +166,10 @@ export async function POST(request: NextRequest) {
     console.log('Booking saved successfully with ID:', booking.id)
     console.log('===================================')
 
-    // Send booking confirmation email via SendGrid
-    let emailResult = { success: false, error: 'Email not attempted' }
-    try {
-      console.log('📧 Sending booking confirmation email via SendGrid...')
-      
-      const locationNames = {
-        'malmo': 'Malmö',
-        'trelleborg': 'Trelleborg', 
-        'ystad': 'Ystad'
-      }
-      
-      const locationPhones = {
-        'malmo': '040-123 456',
-        'trelleborg': '0410-123 456',
-        'ystad': '0411-123 456'
-      }
-      
-      const locationAddresses = {
-        'malmo': 'Storgatan 1, 211 34 Malmö',
-        'trelleborg': 'Algatan 1, 231 31 Trelleborg',
-        'ystad': 'Stora Östergatan 1, 271 34 Ystad'
-      }
-
-      emailResult = await sendBookingConfirmationSendGrid({
-        customerName: bookingData.customerName,
-        customerEmail: bookingData.customerEmail,
-        bookingDate: bookingDate.toLocaleDateString('sv-SE'),
-        bookingTime: bookingTime.substring(0, 5), // Remove seconds
-        partySize: parseInt(bookingData.guests),
-        location: locationNames[dbLocation] || bookingData.location,
-        restaurantPhone: locationPhones[dbLocation] || '040-123 456',
-        restaurantAddress: locationAddresses[dbLocation] || 'Moi Sushi',
-        specialRequests: bookingData.message
-      })
-
-      if (emailResult.success) {
-        console.log('✅ Booking confirmation email sent successfully')
-      } else {
-        console.error('❌ Failed to send booking confirmation email:', emailResult.error)
-      }
-    } catch (emailError) {
-      console.error('❌ Error sending booking confirmation email:', emailError)
-      emailResult = { success: false, error: emailError.message }
-    }
+    // NOTE: Bokningsbekräftelse skickas nu manuellt av personalen när de bekräftar bokningen i terminalen
+    // Detta säkerställer att kunden endast får bekräftelse när personalen aktivt hanterar bokningen
+    let emailResult = { success: true, message: 'Email will be sent when staff confirms booking' }
+    console.log('📧 Booking saved. Email confirmation will be sent when staff confirms the booking.')
 
     // Skicka notifikation till WebSocket-servern för ny bokning
     try {
@@ -221,22 +181,23 @@ export async function POST(request: NextRequest) {
         body: JSON.stringify({
           type: 'booking',
           data: {
-            id: result.data.id,
+            id: booking.id,
             customer_name: bookingData.customerName,
             customer_email: bookingData.customerEmail,
             customer_phone: bookingData.customerPhone,
-            booking_time: result.data.booking_time,
+            booking_date: bookingDate.toLocaleDateString('sv-SE'),
+            booking_time: bookingTime.substring(0, 5),
             guests: bookingData.guests,
             location: dbLocation,
             message: bookingData.message,
-            status: 'confirmed',
-            created_at: result.data.created_at
+            status: 'pending',
+            created_at: booking.created_at
           }
         })
       })
       
       if (websocketResponse.ok) {
-        console.log('✅ WebSocket notification sent for booking:', result.data.id)
+        console.log('✅ WebSocket notification sent for booking:', booking.id)
       } else {
         console.error('❌ Failed to send WebSocket notification:', await websocketResponse.text())
       }
@@ -247,6 +208,12 @@ export async function POST(request: NextRequest) {
     // Send notification to restaurant staff via notifications table
     try {
       console.log('📢 Creating staff notification for booking...')
+      
+      const locationNames = {
+        'malmo': 'Malmö',
+        'trelleborg': 'Trelleborg', 
+        'ystad': 'Ystad'
+      }
       
       const { error: notificationError } = await supabase
         .from('notifications')

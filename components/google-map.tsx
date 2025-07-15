@@ -1,7 +1,6 @@
 "use client"
 
-
-import { Loader2, MapPin, ExternalLink } from "lucide-react"
+import { MapPin, ExternalLink } from "lucide-react"
 
 interface GoogleMapComponentProps {
   address: string
@@ -14,8 +13,6 @@ interface GoogleMapComponentProps {
   }
 }
 
-
-
 export default function GoogleMapComponent({ address, name, zoom = 15, height = "400px", coordinates }: GoogleMapComponentProps) {
   // Get API key from environment
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API || process.env.GOOGLE_MAPS_API
@@ -25,92 +22,63 @@ export default function GoogleMapComponent({ address, name, zoom = 15, height = 
     ? `https://www.google.com/maps?q=${coordinates.lat},${coordinates.lng}`
     : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
   
+  // Create simple embed URL that works without API key
+  const createSimpleEmbedUrl = () => {
+    if (coordinates) {
+      // Use coordinates for more precise location
+      return `https://maps.google.com/maps?q=${coordinates.lat},${coordinates.lng}&t=&z=${zoom}&ie=UTF8&iwloc=&output=embed`
+    } else {
+      // Use address search
+      return `https://maps.google.com/maps?q=${encodeURIComponent(address)}&t=&z=${zoom}&ie=UTF8&iwloc=&output=embed`
+    }
+  }
+
+  // If we have API key, use the proper embed URL, otherwise use simple embed
   const googleMapsEmbedUrl = apiKey 
     ? (coordinates 
         ? `https://www.google.com/maps/embed/v1/place?key=${apiKey}&q=${coordinates.lat},${coordinates.lng}&zoom=${zoom}`
         : `https://www.google.com/maps/embed/v1/place?key=${apiKey}&q=${encodeURIComponent(address)}&zoom=${zoom}`)
-    : null
+    : createSimpleEmbedUrl()
 
   return (
     <div style={{ height, width: "100%" }} className="rounded-lg overflow-hidden border border-[#e4d699]/20 bg-black/30">
-      {/* Embedded Google Maps iframe */}
+      {/* Always show embedded Google Maps iframe */}
       <div className="relative w-full h-full">
-        {googleMapsEmbedUrl ? (
-          <iframe
-            src={googleMapsEmbedUrl}
-            width="100%"
-            height="100%"
-            style={{ border: 0 }}
-            allowFullScreen
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            className="rounded-lg"
-            onError={() => {
-              // If iframe fails, show fallback
-              const iframe = document.querySelector('iframe[src*="google.com/maps"]') as HTMLIFrameElement
-              if (iframe) {
-                iframe.style.display = 'none'
-                const fallback = iframe.nextElementSibling as HTMLElement
-                if (fallback) fallback.style.display = 'flex'
-              }
-            }}
-          />
-        ) : (
-          // Show fallback if no API key
-          <div className="flex flex-col items-center justify-center h-full bg-black/30 p-4">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-[#e4d699]/20 rounded-full flex items-center justify-center mb-3">
-                <MapPin className="w-6 h-6 text-[#e4d699]" />
-              </div>
-              <h3 className="text-white font-medium mb-2">{name}</h3>
-              <p className="text-white/70 text-sm mb-4">{address}</p>
-              <a
-                href={googleMapsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 bg-[#e4d699] text-black rounded-lg hover:bg-[#e4d699]/90 transition-colors text-sm font-medium"
-              >
-                <ExternalLink className="w-4 h-4 mr-2" />
-                Öppna i Google Maps
-              </a>
-            </div>
-          </div>
-        )}
+        <iframe
+          src={googleMapsEmbedUrl}
+          width="100%"
+          height="100%"
+          style={{ border: 0 }}
+          allowFullScreen
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          className="rounded-lg"
+          title={`Karta för ${name}`}
+        />
         
-        {/* Fallback content - hidden by default, shown if iframe fails */}
-        <div 
-          className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 p-4"
-          style={{ display: 'none' }}
-        >
-          <div className="text-center">
-            <div className="w-12 h-12 bg-[#e4d699]/20 rounded-full flex items-center justify-center mb-3">
-              <MapPin className="w-6 h-6 text-[#e4d699]" />
+        {/* Overlay with restaurant info */}
+        <div className="absolute top-4 left-4 bg-black/80 backdrop-blur-sm rounded-lg p-3 max-w-xs">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 bg-[#e4d699] rounded-full flex items-center justify-center flex-shrink-0">
+              <MapPin className="w-4 h-4 text-black" />
             </div>
-            <h3 className="text-white font-medium mb-2">{name}</h3>
-            <p className="text-white/70 text-sm mb-4">{address}</p>
-            <a
-              href={googleMapsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center px-4 py-2 bg-[#e4d699] text-black rounded-lg hover:bg-[#e4d699]/90 transition-colors text-sm font-medium"
-            >
-              <ExternalLink className="w-4 h-4 mr-2" />
-              Öppna i Google Maps
-            </a>
+            <div>
+              <h3 className="text-white font-medium text-sm">{name}</h3>
+              <p className="text-white/70 text-xs mt-1">{address}</p>
+            </div>
           </div>
         </div>
 
-        {/* Overlay with link to open in Google Maps */}
-        <div className="absolute top-2 right-2">
+        {/* Bottom right link to open in Google Maps */}
+        <div className="absolute bottom-4 right-4">
           <a
             href={googleMapsUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center px-2 py-1 bg-black/80 text-white rounded text-xs hover:bg-black/90 transition-colors"
-            title="Öppna i Google Maps"
+            className="inline-flex items-center px-3 py-2 bg-[#e4d699] text-black rounded-lg hover:bg-[#e4d699]/90 transition-colors text-sm font-medium shadow-lg"
           >
-            <ExternalLink className="w-3 h-3 mr-1" />
-            Öppna
+            <ExternalLink className="w-4 h-4 mr-1" />
+            Öppna i Maps
           </a>
         </div>
       </div>

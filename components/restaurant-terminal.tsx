@@ -5603,6 +5603,7 @@ Utvecklad av Skaply
                                       className="border-green-500/50 text-green-400 hover:bg-green-500/10"
                                       onClick={async () => {
                                         try {
+                                          // Uppdatera bokningsstatus först
                                           const { error } = await supabase
                                             .from('bookings')
                                             .update({ 
@@ -5613,6 +5614,35 @@ Utvecklad av Skaply
                                           
                                           if (!error) {
                                             fetchBookings()
+                                            
+                                            // Skicka bekräftelsemail
+                                            try {
+                                              const response = await fetch('/api/bookings/confirm', {
+                                                method: 'POST',
+                                                headers: {
+                                                  'Content-Type': 'application/json',
+                                                },
+                                                body: JSON.stringify({
+                                                  bookingId: booking.id,
+                                                  customerName,
+                                                  customerEmail,
+                                                  customerPhone,
+                                                  bookingDate: booking.date,
+                                                  bookingTime: booking.time,
+                                                  numberOfGuests: booking.guests,
+                                                  location: booking.location,
+                                                  notes: booking.notes
+                                                })
+                                              })
+                                              
+                                              if (response.ok) {
+                                                console.log('Bekräftelsemail skickat för bokning:', booking.id)
+                                              } else {
+                                                console.error('Kunde inte skicka bekräftelsemail:', await response.text())
+                                              }
+                                            } catch (emailError) {
+                                              console.error('Fel vid skickning av bekräftelsemail:', emailError)
+                                            }
                                           }
                                         } catch (error) {
                                           console.error('Error updating booking:', error)
