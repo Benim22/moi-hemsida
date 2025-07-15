@@ -62,7 +62,10 @@ export default function Navigation() {
     <>
       {/* Mobile Header */}
       <motion.div
-        className="fixed top-0 left-0 right-0 z-40 md:hidden bg-black/90 backdrop-blur-md border-b border-[#e4d699]/20"
+        className={cn(
+          "fixed top-0 left-0 right-0 z-40 md:hidden bg-black/90 backdrop-blur-md border-b border-[#e4d699]/20",
+          pathname === '/terminal' ? 'hidden' : 'block'
+        )}
         initial={{ y: 0 }}
         animate={{ y: isVisible ? 0 : -100 }}
         transition={{ duration: 0.3 }}
@@ -81,7 +84,9 @@ export default function Navigation() {
       </motion.div>
 
       {/* Mobile Navigation Sidebar */}
-      <MobileNavigation isOpen={isMobileNavOpen} setIsOpen={setIsMobileNavOpen} />
+      {pathname !== '/terminal' && (
+        <MobileNavigation isOpen={isMobileNavOpen} setIsOpen={setIsMobileNavOpen} />
+      )}
 
       {/* Top navigation for desktop */}
       <header

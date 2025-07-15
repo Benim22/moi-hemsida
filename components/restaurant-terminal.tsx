@@ -11,9 +11,11 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
-import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle, RefreshCw, Settings, Wifi, Bluetooth, Mail, Search, Volume2, VolumeX, Calendar } from "lucide-react"
+import { Bell, Printer, Download, Check, Clock, Package, Truck, X, AlertTriangle, RefreshCw, Settings, Wifi, Bluetooth, Mail, Search, Volume2, VolumeX, Calendar, BarChart3, History, User } from "lucide-react"
 import jsPDF from 'jspdf'
 import { io, Socket } from 'socket.io-client'
+import AnalyticsDashboard from "./analytics-dashboard"
+import OrderHistory from "./order-history"
 
 // ePOS-Print API Declaration (since we'll load it dynamically)
 declare global {
@@ -46,7 +48,7 @@ export default function RestaurantTerminal() {
   const [audioEnabled, setAudioEnabled] = useState(false)
   const [audioContext, setAudioContext] = useState(null)
   const [isIOSDevice, setIsIOSDevice] = useState(false)
-  const [audioKeepAlive, setAudioKeepAlive] = useState<NodeJS.Timeout | null>(null)
+  // audioKeepAlive state borttaget - orsakade irriterande tickande ljud
   const [silentAudio, setSilentAudio] = useState<HTMLAudioElement | null>(null)
   const [userInteractionUnlocked, setUserInteractionUnlocked] = useState(false)
   const [pendingAudioTriggers, setPendingAudioTriggers] = useState<(() => void)[]>([])
@@ -61,6 +63,7 @@ export default function RestaurantTerminal() {
   const [assigningUser, setAssigningUser] = useState(false)
   const [showLocationModal, setShowLocationModal] = useState(false)
   const [pendingLocation, setPendingLocation] = useState('')
+  const [showAccessDialog, setShowAccessDialog] = useState(false)
 
   // ePOS Printer Settings
   const [showPrinterSettings, setShowPrinterSettings] = useState(false)
@@ -84,6 +87,12 @@ export default function RestaurantTerminal() {
   const [delayMinutes, setDelayMinutes] = useState(15)
   const [sendDelayEmail, setSendDelayEmail] = useState(true)
   const [autoPrintedOrders, setAutoPrintedOrders] = useState(new Set())
+  
+  // Analytics dashboard state
+  const [showAnalytics, setShowAnalytics] = useState(false)
+  
+  // Order history state
+  const [showOrderHistory, setShowOrderHistory] = useState(false)
   
   // Global variabel för extra skydd mot duplicering
   const [lastPrintedOrderId, setLastPrintedOrderId] = useState(null)
@@ -192,30 +201,18 @@ export default function RestaurantTerminal() {
         handleWebSocketOrder(order)
       }
       
-      // Visa notifikation
-      showBrowserNotification(
-        `Ny order #${order.id}`,
-        `Från: ${order.customer_name || 'Okänd kund'} - ${order.total_amount} kr`,
-        true
-      )
-      
-      // Spela ljud
-      playNotificationSound()
+      // 🔕 NOTIFIKATIONER HANTERAS AV NOTIFICATIONS-TABELLEN
+      // WebSocket-notifikationer är inte nödvändiga - notifications-subscription hanterar det
+      console.log('📦 WebSocket order mottagen - notifikationer hanteras av notifications-tabellen')
     })
 
     socket.on('new-booking', (booking) => {
       addDebugLog(`Ny bokning mottagen via WebSocket: ${booking.id}`, 'success')
       setWsLastMessage({ type: 'booking', data: booking, timestamp: new Date() })
       
-      // Visa notifikation
-      showBrowserNotification(
-        `Ny bokning #${booking.id}`,
-        `Från: ${booking.customer_name || 'Okänd kund'} - ${booking.booking_time}`,
-        false
-      )
-      
-      // Spela ljud
-      playNotificationSound()
+      // 🔕 NOTIFIKATIONER HANTERAS AV NOTIFICATIONS-TABELLEN
+      // WebSocket-notifikationer är inte nödvändiga - notifications-subscription hanterar det
+      console.log('📅 WebSocket booking mottagen - notifikationer hanteras av notifications-tabellen')
     })
 
     socket.on('order-status-update', (update) => {
@@ -1102,12 +1099,15 @@ export default function RestaurantTerminal() {
       const isAnonymous = payload.new.user_id === '00000000-0000-0000-0000-000000000000'
       const customerLabel = isAnonymous ? `${customerName} (Beställd utan inloggning)` : customerName
       
-      const notificationTitle = 'Ny beställning!'
-      const notificationBody = `Order #${payload.new.order_number} från ${customerLabel} - ${payload.new.total_price || payload.new.amount} kr`
-      
-
-      showBrowserNotification(notificationTitle, notificationBody, true) // true för ordernotifikation
-      playNotificationSound()
+      // 🔕 NOTIFIKATIONER HANTERAS AV NOTIFICATIONS-TABELLEN
+      // Tar bort duplicerade notifikationer härifrån - notifikationer kommer via notifications-subscription istället
+      console.log('📝 Order tillagd i lista - notifikationer hanteras av notifications-tabellen')
+      console.log('📦 Order detaljer:', {
+        orderNumber: payload.new.order_number,
+        customerName: customerLabel,
+        amount: payload.new.total_price || payload.new.amount,
+        location: payload.new.location
+      })
 
       // AUTOMATISK UTSKRIFT för nya beställningar
       if (printerSettings.enabled && printerSettings.autoprintEnabled) {
@@ -1308,13 +1308,14 @@ export default function RestaurantTerminal() {
         console.log('✅ Bokning matchar location - uppdaterar lista')
         fetchBookings() // Refresh bookings list
         
-        // Show notification for new booking
-        showBrowserNotification(
-          `📅 Ny bordsbokning - ${getLocationName(payload.new.location)}`,
-          `${payload.new.guests} personer den ${new Date(payload.new.date).toLocaleDateString('sv-SE')}`,
-          true
-        )
-        playNotificationSound()
+        // 🔕 NOTIFIKATIONER HANTERAS AV NOTIFICATIONS-TABELLEN
+        // Tar bort duplicerade notifikationer härifrån - notifikationer kommer via notifications-subscription istället
+        console.log('📝 Bokning tillagd i lista - notifikationer hanteras av notifications-tabellen')
+        console.log('📅 Bokning detaljer:', {
+          location: payload.new.location,
+          guests: payload.new.guests,
+          date: new Date(payload.new.date).toLocaleDateString('sv-SE')
+        })
       }
     }
 
@@ -1349,15 +1350,9 @@ export default function RestaurantTerminal() {
     }
   }, [user, profile?.location])
 
-  // Cleanup audio keep-alive on unmount
+  // Cleanup audio on unmount
   useEffect(() => {
     return () => {
-      // Cleanup iOS keep-alive system when component unmounts
-      if (audioKeepAlive) {
-        clearInterval(audioKeepAlive)
-        console.log('🧹 Cleanup: iOS keep-alive system stoppad')
-      }
-      
       // Cleanup silent audio
       if (silentAudio) {
         silentAudio.pause()
@@ -1374,11 +1369,23 @@ export default function RestaurantTerminal() {
         console.log('🧹 Cleanup: AudioContext stängd')
       }
     }
-  }, [audioKeepAlive, silentAudio, audioContext])
+  }, [silentAudio, audioContext])
 
   // Fetch initial data
   useEffect(() => {
     if (user && profile?.location) {
+      // Ladda sparade notis-inställningar från localStorage
+      try {
+        const savedNotifications = localStorage.getItem('restaurant-terminal-notifications')
+        if (savedNotifications !== null) {
+          const isEnabled = savedNotifications === 'true'
+          setNotificationsEnabled(isEnabled)
+          console.log('🔔 Laddat sparade notis-inställningar:', isEnabled)
+        }
+      } catch (error) {
+        console.log('⚠️ Kunde inte ladda notis-inställningar:', error)
+      }
+      
       fetchOrders()
       fetchNotifications()
       requestNotificationPermission()
@@ -1389,6 +1396,21 @@ export default function RestaurantTerminal() {
       setAutoPrintedOrders(new Set())
       setLastPrintedOrderId(null)
       setLastPrintedTime(null)
+    }
+  }, [user, profile?.location])
+
+  // Visa hjälpdialog om användaren inte har tillgång till terminalen
+  useEffect(() => {
+    if (user && !profile?.location) {
+      // Vänta 3 sekunder innan vi visar dialogen för att ge tid för profil att ladda
+      const timer = setTimeout(() => {
+        if (!profile?.location) {
+          console.log('❌ Användare saknar plats-tilldelning för terminal')
+          setShowAccessDialog(true)
+        }
+      }, 3000)
+      
+      return () => clearTimeout(timer)
     }
   }, [user, profile?.location])
 
@@ -1603,6 +1625,10 @@ export default function RestaurantTerminal() {
       setNotifications(uniqueNotifications.slice(0, 10)) // Visa max 10 notifikationer
     } catch (error) {
       console.error('Error fetching notifications:', error)
+      // Sätt tom array om det blir fel, så terminalen kan fortsätta fungera
+      setNotifications([])
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -1770,16 +1796,23 @@ export default function RestaurantTerminal() {
   }
 
   const toggleNotifications = () => {
-    setNotificationsEnabled(!notificationsEnabled)
     const newStatus = !notificationsEnabled
+    setNotificationsEnabled(newStatus)
     
     console.log('🔔 Toggling notifications:', newStatus ? 'ON' : 'OFF')
     console.log('🔔 Status:', { 
       notificationPermission, 
-      notificationsEnabled, 
+      notificationsEnabled: notificationsEnabled, 
       newStatus,
-      browserPermission: Notification.permission 
+      browserPermission: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported' 
     })
+    
+    // Spara i localStorage för persistence
+    try {
+      localStorage.setItem('restaurant-terminal-notifications', newStatus.toString())
+    } catch (error) {
+      console.log('⚠️ Kunde inte spara notis-inställning:', error)
+    }
     
     if (newStatus) {
       showBrowserNotification('Notiser aktiverade', 'Du kommer nu få meddelanden om nya beställningar', false)
@@ -1792,37 +1825,42 @@ export default function RestaurantTerminal() {
     if (isRefreshing) return
     
     setIsRefreshing(true)
-    console.log('🔄 Manuell uppdatering av data...')
+    console.log('🔄 Refreshar sidan...')
     
     try {
-      await Promise.all([
-        fetchOrders(),
-        fetchNotifications(),
-        fetchAvailableUsers(),
-        fetchBookings()
-      ])
+      // Visa notifikation innan refresh
+      showBrowserNotification('Uppdaterar sidan', 'Sidan refreshas om ett ögonblick...', false)
       
-      showBrowserNotification('Data uppdaterad', 'Beställningar och notifikationer har uppdaterats', false)
+      // Vänta lite för att notifikationen ska visas
+      setTimeout(() => {
+        // Refresha hela sidan
+        window.location.reload()
+      }, 500)
+      
     } catch (error) {
-      console.error('❌ Fel vid uppdatering:', error)
-      showBrowserNotification('Uppdateringsfel', 'Kunde inte uppdatera data', false)
-    } finally {
+      console.error('❌ Fel vid refresh:', error)
+      showBrowserNotification('Refresh-fel', 'Kunde inte refresha sidan', false)
       setIsRefreshing(false)
     }
   }
 
+  // Modern 2025 iOS Audio Solutions
   const activateAudio = async () => {
     try {
-      console.log('🍎 AGGRESSIV iOS-ljudaktivering startar...')
+      console.log('🍎 MODERN 2025 iOS-ljudaktivering startar...')
       console.log('📱 Enhet:', navigator.userAgent)
       
-      // STEG 1: Skapa AudioContext
+      // STEG 1: Skapa AudioContext med modern 2025 konfiguration
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
       if (!AudioContextClass) {
         throw new Error('AudioContext stöds inte i denna webbläsare')
       }
       
-      const newAudioContext = new AudioContextClass()
+      // Modern 2025: Använd latencyHint för optimal performance
+      const newAudioContext = new AudioContextClass({
+        latencyHint: 'interactive',
+        sampleRate: 44100 // Explicit sample rate för konsistens
+      })
       
       // STEG 2: Återuppta AudioContext om suspended
       if (newAudioContext.state === 'suspended') {
@@ -1830,69 +1868,91 @@ export default function RestaurantTerminal() {
         console.log('🎵 AudioContext resumed från suspended state')
       }
       
-      // STEG 3: För iOS - skapa persistent HTML Audio element
+      // STEG 3: Modern 2025 - Förbättrad iOS silent audio med flera format
       if (isIOSDevice) {
-        console.log('🍎 Skapar iOS silent audio keep-alive...')
+        console.log('🍎 Skapar modern 2025 iOS silent audio keep-alive...')
         
-        // Skapa extremt tyst ljudfil som base64
-        const silentMp3 = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA/+M4wAAAAAAAAAAAAEluZm8AAAAPAAAABAABBQAzMzMzMzMzMzMzMzMzMzMzMzMzMzNmZmZmZmZmZmZmZmZmZmZmZmZmZmaZmZmZmZmZmZmZmZmZmZmZmZmZmZnMzMzMzMzMzMzMzMzMzMzMzMzMzMz/////////////////AAAAAExhdmY1OC43Ni4xMDAAAAAAAAAAAAAAAAAAAAAAAP/jOMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+        // Försök flera audioformat för maximal kompatibilitet
+        const audioFormats = [
+          'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA/+M4wAAAAAAAAAAAAEluZm8AAAAPAAAABAABBQAzMzMzMzMzMzMzMzMzMzMzMzMzMzNmZmZmZmZmZmZmZmZmZmZmZmZmZmaZmZmZmZmZmZmZmZmZmZmZmZmZmZnMzMzMzMzMzMzMzMzMzMzMzMzMzMz/////////////////AAAAAExhdmY1OC43Ni4xMDAAAAAAAAAAAAAAAAAAAAAAAP/jOMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+          'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJXfH8N2QQAoUXrTp66hVFApGn+DyvmIeAz2p3u2+bSEFl8C4yZNFFwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJXfH8N2QQAoUXrTp66hVFApGn+DyvmIeAz2p3u2+bSEF',
+          'data:audio/ogg;base64,T2dnUwACAAAAAAAAAADSeIQnAAAAAM39P1BISgAOT2dnUwAAAAAAAAAA0niEJwEAAABMPvO1E01BZA==' // Minimal OGG
+        ]
         
-        const audio = document.createElement('audio')
-        audio.src = silentMp3
-        audio.loop = true
-        audio.volume = 0.01 // Extremt tyst men inte helt tyst
-        audio.muted = false
-        audio.preload = 'auto'
-        audio.setAttribute('playsinline', 'true')
-        audio.setAttribute('webkit-playsinline', 'true')
+        let audioCreated = false
+        for (const format of audioFormats) {
+          try {
+            const audio = document.createElement('audio')
+            audio.src = format
+            audio.loop = true
+            audio.volume = 0 // Helt tyst för att undvika tickande ljud
+            audio.muted = true // Också mutad för extra säkerhet
+            audio.preload = 'auto'
+            audio.setAttribute('playsinline', 'true')
+            audio.setAttribute('webkit-playsinline', 'true')
+            
+            // Modern 2025: Explicit crossOrigin för säkerhet
+            audio.crossOrigin = 'anonymous'
+            
+            await audio.play()
+            setSilentAudio(audio)
+            console.log('🔇 iOS silent audio keep-alive aktiverat med format:', format.substring(0, 20))
+            audioCreated = true
+            break
+          } catch (formatError) {
+            console.log('⚠️ Format misslyckades:', format.substring(0, 20), formatError)
+          }
+        }
         
-        try {
-          await audio.play()
-          setSilentAudio(audio)
-          console.log('🔇 iOS silent audio keep-alive aktiverat')
-        } catch (silentError) {
-          console.log('⚠️ Kunde inte starta silent audio:', silentError)
+        if (!audioCreated) {
+          console.log('⚠️ Ingen silent audio format fungerade')
         }
       }
       
-      // STEG 4: Spela unlock-ljud
+      // STEG 4: Modern 2025 - Förbättrad unlock-ljud med bättre frekvenser
       const oscillator = newAudioContext.createOscillator()
       const gainNode = newAudioContext.createGain()
       
       oscillator.connect(gainNode)
       gainNode.connect(newAudioContext.destination)
       
-      oscillator.frequency.value = 800
+      // Modern 2025: Använd mer behaglig frekvens för unlock
+      oscillator.frequency.value = 440 // A4 note - mer behaglig än 800Hz
       oscillator.type = 'sine'
-      gainNode.gain.setValueAtTime(0.3, newAudioContext.currentTime) // Hörbar för unlock
-      gainNode.gain.exponentialRampToValueAtTime(0.01, newAudioContext.currentTime + 0.3)
+      gainNode.gain.setValueAtTime(0.2, newAudioContext.currentTime) // Lägre volym
+      gainNode.gain.exponentialRampToValueAtTime(0.01, newAudioContext.currentTime + 0.2) // Kortare duration
       
       oscillator.start(newAudioContext.currentTime)
-      oscillator.stop(newAudioContext.currentTime + 0.3)
+      oscillator.stop(newAudioContext.currentTime + 0.2)
       
       setAudioContext(newAudioContext)
       setAudioEnabled(true)
       
-      // STEG 5: Markera som user interaction unlocked för iOS
+      // STEG 5: Modern 2025 - Förbättrad user interaction tracking
       if (isIOSDevice) {
         setUserInteractionUnlocked(true)
         console.log('🍎 iOS User Interaction unlocked - WebSocket triggers kommer nu fungera')
+        
+        // Modern 2025: Spara unlock-status i localStorage för persistence
+        try {
+          localStorage.setItem('ios-audio-unlocked', 'true')
+          localStorage.setItem('ios-audio-unlocked-timestamp', Date.now().toString())
+        } catch (storageError) {
+          console.log('⚠️ Kunde inte spara unlock-status:', storageError)
+        }
       }
       
-      console.log('✅ Ljud aktiverat! AudioContext state:', newAudioContext.state)
+      console.log('✅ Modern 2025 ljud aktiverat! AudioContext state:', newAudioContext.state)
       
-      // STEG 6: Starta iOS keep-alive system
-      if (isIOSDevice) {
-        startIOSAudioKeepAlive(newAudioContext)
-      }
+      // STEG 6: Keep-alive system borttaget - orsakade irriterande tickande ljud
       
-      // STEG 6: Bekräfta med testton
+      // STEG 7: Modern 2025 - Bättre bekräftelse med trevligare ljud
       setTimeout(() => {
-        console.log('🧪 Spelar bekräftelseljud...')
+        console.log('🧪 Spelar modern bekräftelseljud...')
         playNotificationSound()
-      }, 500)
+      }, 300) // Kortare delay
       
-      showBrowserNotification('🍎 iOS Ljud aktiverat!', 'Automatiska ljudnotifikationer är nu aktiva för iOS Safari', false)
+      showBrowserNotification('🍎 Modern iOS Ljud aktiverat!', 'Automatiska ljudnotifikationer är nu aktiva för iOS Safari (2025)', false)
       
     } catch (error) {
       console.error('❌ Fel vid aktivering av ljud:', error)
@@ -1900,61 +1960,7 @@ export default function RestaurantTerminal() {
     }
   }
 
-  // iOS Audio Keep-Alive System
-  const startIOSAudioKeepAlive = (audioContext: AudioContext) => {
-    if (!isIOSDevice) return
-    
-    console.log('🍎 Startar iOS audio keep-alive system...')
-    
-    // Stäng eventuell befintlig keep-alive
-    if (audioKeepAlive) {
-      clearInterval(audioKeepAlive)
-    }
-    
-    const keepAliveInterval = setInterval(async () => {
-      try {
-        // Återaktivera AudioContext om suspended
-        if (audioContext && audioContext.state === 'suspended') {
-          console.log('💓 Keep-alive: Återupptar AudioContext...')
-          await audioContext.resume()
-        }
-        
-        // Spela extremt tyst Web Audio ton
-        if (audioContext && audioContext.state === 'running') {
-          const osc = audioContext.createOscillator()
-          const gain = audioContext.createGain()
-          
-          osc.connect(gain)
-          gain.connect(audioContext.destination)
-          
-          osc.frequency.value = 20 // Subsonisk frekvens
-          osc.type = 'sine'
-          gain.gain.setValueAtTime(0.001, audioContext.currentTime) // Extremt tyst
-          
-          osc.start(audioContext.currentTime)
-          osc.stop(audioContext.currentTime + 0.05) // 50ms
-        }
-        
-        // Håll silent audio igång
-        if (silentAudio && silentAudio.paused) {
-          try {
-            await silentAudio.play()
-            console.log('💓 Keep-alive: Silent audio återstartat')
-          } catch (e) {
-            console.log('💓 Keep-alive: Kunde inte återstarta silent audio')
-          }
-        }
-        
-        console.log('💓 iOS keep-alive puls: AudioContext =', audioContext?.state)
-        
-      } catch (error) {
-        console.log('💓 Keep-alive fel:', error)
-      }
-    }, 15000) // Var 15:e sekund
-    
-    setAudioKeepAlive(keepAliveInterval)
-    console.log('✅ iOS keep-alive aktiverat (var 15:e sekund)')
-  }
+  // Keep alive system borttaget - orsakade irriterande tickande ljud
 
   const playNotificationSound = async () => {
     console.log('🚨 SMART iOS NOTIFIKATION STARTAR!')
@@ -3652,6 +3658,11 @@ Utvecklad av Skaply
 
     } catch (error) {
       console.error('Error fetching bookings:', error)
+      // Sätt tom array om det blir fel, så terminalen kan fortsätta fungera
+      setBookings([])
+      setNewBookingsCount(0)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -3736,6 +3747,57 @@ Utvecklad av Skaply
           <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-[#e4d699] mx-auto mb-4"></div>
           <p className="text-white/60">Laddar restaurangterminal...</p>
         </div>
+        
+        {/* Access Dialog */}
+        <Dialog open={showAccessDialog} onOpenChange={setShowAccessDialog}>
+          <DialogContent className="sm:max-w-md border-red-500/30 bg-gradient-to-b from-red-900/20 to-black/80">
+            <DialogHeader>
+              <DialogTitle className="text-red-400 flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Terminal Access Problem
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4">
+                <p className="text-white/90 text-sm mb-3">
+                  Du kan inte komma åt restaurangterminalen eftersom din användare saknar plats-tilldelning.
+                </p>
+                
+                <div className="space-y-2 text-sm text-white/70">
+                  <p><strong>Möjliga orsaker:</strong></p>
+                  <ul className="list-disc list-inside ml-2 space-y-1">
+                    <li>Din användare är inte tilldelad någon specifik restaurangplats</li>
+                    <li>Din roll är inte konfigurerad som 'admin' eller 'staff'</li>
+                    <li>Databasfel som förhindrar profil-laddning</li>
+                  </ul>
+                </div>
+                
+                <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-500/30 rounded">
+                  <p className="text-yellow-400 text-sm font-medium">
+                    Lösning: Kontakta systemadministratören för att tilldela din användare till en restaurangplats.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={() => window.location.reload()}
+                  className="flex-1 border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Ladda om
+                </Button>
+                <Button 
+                  onClick={() => setShowAccessDialog(false)}
+                  className="flex-1 bg-red-600 hover:bg-red-700"
+                >
+                  Stäng
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     )
   }
@@ -3943,12 +4005,7 @@ Utvecklad av Skaply
                         // Rensa pending audio triggers
                         setPendingAudioTriggers([])
                         
-                        // Stoppa iOS keep-alive system
-                        if (audioKeepAlive) {
-                          clearInterval(audioKeepAlive)
-                          setAudioKeepAlive(null)
-                          console.log('🛑 iOS keep-alive system stoppad')
-                        }
+                        // Keep-alive system borttaget - orsakade irriterande tickande ljud
                         
                         // Stoppa silent audio
                         if (silentAudio) {
@@ -4075,19 +4132,44 @@ Utvecklad av Skaply
                 </div>
               </div>
 
-              {/* Assign User */}
-              <div className="flex justify-center sm:justify-start">
-                <Button
-                  onClick={() => {
-                    setShowAssignUser(true)
-                    fetchAvailableUsers()
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10 text-xs sm:text-sm w-full sm:w-auto"
-                >
-                  👥 Tilldela personal
-                </Button>
+              {/* Admin Actions */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-white/70 text-center sm:text-left">Admin verktyg:</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
+                  <Button
+                    onClick={() => {
+                      setShowAssignUser(true)
+                      fetchAvailableUsers()
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10 text-xs sm:text-sm h-10 sm:h-8 flex items-center justify-center gap-2"
+                  >
+                    <User className="h-4 w-4" />
+                    <span className="hidden xs:inline">Tilldela personal</span>
+                    <span className="xs:hidden">Personal</span>
+                  </Button>
+                  <Button
+                    onClick={() => setShowAnalytics(true)}
+                    variant="outline"
+                    size="sm"
+                    className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10 text-xs sm:text-sm h-10 sm:h-8 flex items-center justify-center gap-2"
+                  >
+                    <BarChart3 className="h-4 w-4" />
+                    <span className="hidden xs:inline">Analytics</span>
+                    <span className="xs:hidden">Stats</span>
+                  </Button>
+                  <Button
+                    onClick={() => setShowOrderHistory(true)}
+                    variant="outline"
+                    size="sm"
+                    className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10 text-xs sm:text-sm h-10 sm:h-8 flex items-center justify-center gap-2 sm:col-span-2 lg:col-span-1"
+                  >
+                    <History className="h-4 w-4" />
+                    <span className="hidden xs:inline">Alla beställningar</span>
+                    <span className="xs:hidden">Historia</span>
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -4214,15 +4296,86 @@ Utvecklad av Skaply
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
-          {/* Orders List */}
-          <div className="lg:col-span-2 min-w-0">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-white">Aktiva Beställningar</h3>
-              <Badge variant="outline" className="border-[#e4d699]/50 text-[#e4d699]">
-                {filteredOrders.length} visas
-              </Badge>
-            </div>
+        {/* Horisontell notis-banner för iPad */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-medium text-white">🔔 Senaste Notiser</h3>
+            <Badge variant="outline" className="border-[#e4d699]/50 text-[#e4d699]">
+              {notifications.length} notiser
+            </Badge>
+          </div>
+          <div className="flex gap-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin' }}>
+            {notifications.slice(0, 8).map(notification => (
+              <Card 
+                key={notification.id} 
+                className={`border border-[#e4d699]/30 bg-black/30 transition-all duration-200 min-w-[300px] max-w-[350px] flex-shrink-0 ${
+                  notification.metadata?.order_id 
+                    ? 'cursor-pointer hover:bg-black/50 hover:border-[#e4d699]/50 hover:scale-105' 
+                    : ''
+                }`}
+                onClick={() => {
+                  if (notification.metadata?.order_id) {
+                    console.log('🔍 Klickade på notifikation med order_id:', notification.metadata.order_id)
+                    fetchOrderFromNotification(notification.metadata.order_id)
+                  }
+                }}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xl">
+                          {notification.type === 'order' && '🍱'}
+                          {notification.type === 'system' && 'ℹ️'}
+                          {notification.type === 'booking' && '📅'}
+                          {notification.type === 'promotion' && '🎁'}
+                        </span>
+                        <h5 className="text-sm font-medium text-white truncate">{notification.title}</h5>
+                      </div>
+                      <p className="text-xs text-white/60 mb-2 line-clamp-2">{notification.message}</p>
+                      <p className="text-xs text-white/40">
+                        {new Date(notification.created_at).toLocaleString('sv-SE')}
+                      </p>
+                      {notification.metadata?.order_id && (
+                        <p className="text-xs text-[#e4d699]/80 mt-1">
+                          👆 Klicka för detaljer
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-white/40 hover:text-white/60 h-6 w-6 p-0 flex-shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        removeNotification(notification.id)
+                      }}
+                    >
+                      ×
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            {notifications.length === 0 && (
+              <Card className="border border-[#e4d699]/30 bg-black/30 min-w-[300px]">
+                <CardContent className="p-4 text-center">
+                  <div className="text-white/60 mb-2">🔔</div>
+                  <p className="text-white/60 text-sm">Inga nya notiser</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+
+        {/* Huvudinnehåll - nu fullbredd */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold text-white">Aktiva Beställningar</h3>
+            <Badge variant="outline" className="border-[#e4d699]/50 text-[#e4d699]">
+              {filteredOrders.length} visas
+            </Badge>
+          </div>
             <div className="space-y-4">
               {filteredOrders.length === 0 ? (
                 <Card className="border border-[#e4d699]/30 bg-gradient-to-br from-black/80 to-gray-900/80 backdrop-blur-sm">
@@ -4480,18 +4633,7 @@ Utvecklad av Skaply
                       )}
                       
                       {/* Action Buttons */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        <Button 
-                          size="sm" 
-                          onClick={() => printSimpleReceipt(order)}
-                          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium shadow-lg text-xs sm:text-sm"
-                          title="Skriv ut textkvitto (fungerar alltid)"
-                        >
-                          <Printer className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                          <span className="hidden sm:inline">📄 Textkvitto</span>
-                          <span className="sm:hidden">📄</span>
-                        </Button>
-
+                      <div className="grid grid-cols-3 gap-2">
                         <Button 
                           size="sm" 
                           onClick={() => printBackendReceiptWithLoading(order)}
@@ -4559,67 +4701,6 @@ Utvecklad av Skaply
               )))}
             </div>
           </div>
-
-          {/* Notifications Sidebar */}
-          <div className="lg:block">
-            <h3 className="text-base sm:text-lg font-medium mb-4 text-white">Senaste Notiser</h3>
-            <div className="space-y-3">
-              {notifications.slice(0, 5).map(notification => (
-                <Card 
-                  key={notification.id} 
-                  className={`border border-[#e4d699]/30 bg-black/30 transition-all duration-200 ${
-                    notification.metadata?.order_id 
-                      ? 'cursor-pointer hover:bg-black/50 hover:border-[#e4d699]/50 hover:scale-105' 
-                      : ''
-                  }`}
-                  onClick={() => {
-                    if (notification.metadata?.order_id) {
-                      console.log('🔍 Klickade på notifikation med order_id:', notification.metadata.order_id)
-                      fetchOrderFromNotification(notification.metadata.order_id)
-                    }
-                  }}
-                >
-                  <CardContent className="p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <h5 className="text-xs sm:text-sm font-medium text-white break-words">{notification.title}</h5>
-                        <p className="text-xs text-white/60 mt-1 break-words">{notification.message}</p>
-                        <p className="text-xs text-white/40 mt-2">
-                          {new Date(notification.created_at).toLocaleString('sv-SE')}
-                        </p>
-                        {notification.metadata?.order_id && (
-                          <p className="text-xs text-[#e4d699]/80 mt-1">
-                            👆 Klicka för att visa order-detaljer
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-sm sm:text-lg">
-                          {notification.type === 'order' && '🍱'}
-                          {notification.type === 'system' && 'ℹ️'}
-                          {notification.type === 'booking' && '📅'}
-                          {notification.type === 'promotion' && '🎁'}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 w-6 p-0 text-white/40 hover:text-red-400 hover:bg-red-500/10"
-                          onClick={(e) => {
-                            e.stopPropagation() // Förhindra att kortet klickas
-                            removeNotification(notification.id)
-                          }}
-                          title="Ta bort notis"
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </div>
 
         {/* Notification Dialog - Centrerad och optimerad för mobil */}
         <Dialog open={!!notificationDialog} onOpenChange={() => setNotificationDialog(null)}>
@@ -5262,26 +5343,34 @@ Utvecklad av Skaply
                 {/* Action buttons */}
                 <div className="flex flex-col sm:flex-row gap-2 pt-4">
                   <Button 
-                    onClick={() => printSimpleReceipt(selectedOrder)}
-                    className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-sm"
-                    size="sm"
-                    title="Skriv ut textkvitto (fungerar alltid)"
-                  >
-                    <Printer className="h-4 w-4 mr-2" />
-                    📄 Textkvitto
-                  </Button>
-                  <Button 
-                    onClick={() => printEPOSReceipt(selectedOrder)}
+                    onClick={() => printBackendReceiptWithLoading(selectedOrder)}
+                    disabled={printingOrders.has(selectedOrder.id) || !printerSettings.enabled}
                     className={`text-sm ${
-                      printerSettings.enabled && printerStatus.connected
-                        ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white'
-                        : 'bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white'
+                      printingOrders.has(selectedOrder.id)
+                        ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white cursor-not-allowed'
+                        : printerSettings.enabled 
+                          ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white'
+                          : 'bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white'
                     }`}
                     size="sm"
-                    title={printerSettings.enabled && printerStatus.connected ? 'Skriv ut på Epson TM-T20III' : 'Simulator-utskrift (skrivare inte aktiverad)'}
+                    title={
+                      printingOrders.has(selectedOrder.id) 
+                        ? 'Skriver ut kvitto...'
+                        : printerSettings.enabled 
+                          ? 'Skriv ut kvitto via frontend ePOS (direkt till skrivare)' 
+                          : 'Skrivare inte aktiverad'
+                    }
                   >
-                    <Printer className="h-4 w-4 mr-2" />
-                    {printerSettings.enabled && printerStatus.connected ? '🖨️ Epson' : '🎭 Simulator'}
+                    {printingOrders.has(selectedOrder.id) ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Printer className="h-4 w-4 mr-2" />
+                    )}
+                    {printingOrders.has(selectedOrder.id) 
+                      ? '🖨️ Skriver ut...' 
+                      : printerSettings.enabled 
+                        ? '🖨️ Skriv ut' 
+                        : '❌ Inaktiverad'}
                   </Button>
 
                 </div>
@@ -5716,6 +5805,18 @@ Utvecklad av Skaply
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Analytics Dashboard */}
+        <AnalyticsDashboard 
+          isOpen={showAnalytics}
+          onClose={() => setShowAnalytics(false)}
+        />
+
+        {/* Order History */}
+        <OrderHistory 
+          isOpen={showOrderHistory}
+          onClose={() => setShowOrderHistory(false)}
+        />
 
       </div>
     </div>

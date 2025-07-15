@@ -6749,6 +6749,15 @@ function EmailManagement() {
   const [oneComTestEmail, setOneComTestEmail] = useState('')
   const [emailStats, setEmailStats] = useState({ total: 0, sent: 0, failed: 0, today: 0, success_rate: 0 })
   
+  // SendGrid states
+  const [sendGridConnectionStatus, setSendGridConnectionStatus] = useState(null)
+  const [testingSendGrid, setTestingSendGrid] = useState(false)
+  const [sendGridDialogOpen, setSendGridDialogOpen] = useState(false)
+  const [sendGridTestEmail, setSendGridTestEmail] = useState('')
+  const [sendGridTestType, setSendGridTestType] = useState('order')
+  const [sendGridSettings, setSendGridSettings] = useState([])
+  const [localSendGridSettings, setLocalSendGridSettings] = useState({})
+  
   const { toast } = useToast()
 
   const [templateForm, setTemplateForm] = useState({
@@ -6770,6 +6779,8 @@ function EmailManagement() {
     fetchResendSettings()
     checkResendConnection()
     checkOneComConnection()
+    fetchSendGridSettings()
+    checkSendGridConnection()
     fetchEmailLogs()
     fetchEmailStats()
   }, [])
@@ -6888,6 +6899,187 @@ function EmailManagement() {
       }
     } catch (error) {
       console.error('Error fetching email stats:', error)
+    }
+  }
+
+  // SendGrid funktioner
+  const fetchSendGridSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('email_settings')
+        .select('*')
+        .in('setting_key', ['sendgrid_api_key', 'sendgrid_from_email', 'sendgrid_enabled'])
+
+      if (error) throw error
+
+      setSendGridSettings(data || [])
+      
+      // Skapa lokala inställningar från databasen
+      const localSettings = {}
+      data?.forEach(setting => {
+        localSettings[setting.setting_key] = setting.setting_value
+      })
+      setLocalSendGridSettings(localSettings)
+    } catch (error) {
+      console.error('Error fetching SendGrid settings:', error)
+      setSendGridSettings([])
+      setLocalSendGridSettings({})
+    }
+  }
+
+  const checkSendGridConnection = async () => {
+    try {
+      const response = await fetch('/api/test-sendgrid', {
+        method: 'GET'
+      })
+      const result = await response.json()
+      
+      if (result.success) {
+        setSendGridConnectionStatus('connected')
+      } else if (result.error && result.error.includes('inte konfigurerad')) {
+        // API-nyckel är inte konfigurerad, visa som "ej testad"
+        setSendGridConnectionStatus(null)
+      } else {
+        setSendGridConnectionStatus('error')
+      }
+    } catch (error) {
+      console.error('Error checking SendGrid connection:', error)
+      setSendGridConnectionStatus('error')
+    }
+  }
+
+  const handleTestSendGridConnection = async () => {
+    try {
+      setTestingSendGrid(true)
+      const response = await fetch('/api/test-sendgrid', {
+        method: 'GET'
+      })
+      const result = await response.json()
+      
+      if (result.success) {
+        setSendGridConnectionStatus('connected')
+        toast({
+          title: "✅ SendGrid anslutning OK!",
+          description: "SendGrid API-nyckeln fungerar och anslutningen är klar.",
+        })
+      } else {
+        setSendGridConnectionStatus('error')
+        toast({
+          title: "❌ SendGrid anslutning misslyckades",
+          description: result.error || "Okänt fel vid anslutning till SendGrid",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('Error testing SendGrid connection:', error)
+      setSendGridConnectionStatus('error')
+      toast({
+        title: "❌ SendGrid anslutning misslyckades",
+        description: error instanceof Error ? error.message : 'Kunde inte ansluta till SendGrid',
+        variant: "destructive"
+      })
+    } finally {
+      setTestingSendGrid(false)
+    }
+  }
+
+  const handleSendSendGridTestEmail = async () => {
+    if (!sendGridTestEmail.trim()) {
+      toast({
+        title: "❌ E-postadress saknas",
+        description: "Ange en giltig e-postadress",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      setTestingSendGrid(true)
+      const response = await fetch('/api/admin/email-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'send_sendgrid_test',
+          email: sendGridTestEmail,
+          type: sendGridTestType
+        })
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        toast({
+          title: "✅ SendGrid test-e-post skickad!",
+          description: `Test-email skickades via SendGrid (ID: ${result.messageId})`
+        })
+        setSendGridDialogOpen(false)
+        setSendGridTestEmail('')
+        fetchEmailLogs()
+        fetchEmailStats()
+      } else {
+        throw new Error(result.error || 'Okänt fel')
+      }
+    } catch (error) {
+      console.error('Error sending SendGrid test email:', error)
+      toast({
+        title: "❌ Fel vid SendGrid e-posttest",
+        description: error instanceof Error ? error.message : 'Kunde inte skicka test-e-post via SendGrid',
+        variant: "destructive"
+      })
+    } finally {
+      setTestingSendGrid(false)
+    }
+  }
+
+  const updateSendGridSetting = (settingKey, value) => {
+    setLocalSendGridSettings(prev => ({
+      ...prev,
+      [settingKey]: value
+    }))
+  }
+
+  const saveSendGridSettings = async () => {
+    try {
+      setTestingSendGrid(true)
+      
+      for (const [key, value] of Object.entries(localSendGridSettings)) {
+        const { error } = await supabase
+          .from('email_settings')
+          .upsert({
+            setting_key: key,
+            setting_value: value,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'setting_key'
+          })
+
+        if (error) throw error
+      }
+
+      // Uppdatera sendGridSettings utan att hämta om hela listan
+      setSendGridSettings(prev =>
+        prev.map(setting => ({
+          ...setting,
+          setting_value: localSendGridSettings[setting.setting_key] || setting.setting_value
+        }))
+      )
+
+      toast({
+        title: "✅ SendGrid inställningar sparade!",
+        description: "Inställningarna har uppdaterats i databasen.",
+      })
+
+      // Testa anslutning efter att ha sparat
+      await checkSendGridConnection()
+    } catch (error) {
+      console.error('Error saving SendGrid settings:', error)
+      toast({
+        title: "❌ Fel vid sparande",
+        description: error instanceof Error ? error.message : 'Kunde inte spara SendGrid inställningar',
+        variant: "destructive"
+      })
+    } finally {
+      setTestingSendGrid(false)
     }
   }
 
@@ -7672,11 +7864,12 @@ function EmailManagement() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="templates">Mallar</TabsTrigger>
           <TabsTrigger value="logs">Loggar</TabsTrigger>
           <TabsTrigger value="settings">NodeMailer</TabsTrigger>
           <TabsTrigger value="resend">Resend</TabsTrigger>
+          <TabsTrigger value="sendgrid">SendGrid</TabsTrigger>
           <TabsTrigger value="onecom">One.com</TabsTrigger>
         </TabsList>
 
@@ -8074,6 +8267,175 @@ function EmailManagement() {
               )}
 
 
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="sendgrid" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-lg font-medium">SendGrid E-posttjänst</h4>
+            <div className="flex gap-2">
+              {sendGridSettings.length === 0 && (
+                <Button
+                  onClick={async () => {
+                    try {
+                      const response = await fetch('/api/setup-sendgrid', { method: 'POST' })
+                      const result = await response.json()
+                      if (result.success) {
+                        toast({ title: "✅ SendGrid-inställningar skapade", description: result.message })
+                        fetchSendGridSettings()
+                      } else {
+                        throw new Error(result.error)
+                      }
+                    } catch (error) {
+                      toast({ title: "❌ Fel", description: error.message, variant: "destructive" })
+                    }
+                  }}
+                  variant="outline"
+                  className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Skapa inställningar
+                </Button>
+              )}
+              <Button
+                onClick={handleTestSendGridConnection}
+                disabled={testingSendGrid || sendGridSettings.length === 0}
+                variant="outline"
+                className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+              >
+                {testingSendGrid ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Testar...
+                  </>
+                ) : (
+                  <>
+                    <Check className="mr-2 h-4 w-4" />
+                    Testa anslutning
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={() => setSendGridDialogOpen(true)}
+                disabled={testingSendGrid || sendGridSettings.length === 0}
+                variant="outline"
+                className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+              >
+                <Send className="mr-2 h-4 w-4" />
+                Skicka test-e-post
+              </Button>
+            </div>
+          </div>
+          
+          {/* SendGrid Info */}
+          <Card className="border border-green-500/30 bg-green-900/20">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-green-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+                  <Send className="h-4 w-4 text-green-400" />
+                </div>
+                <div>
+                  <h5 className="font-medium text-green-400 mb-1">SendGrid E-posttjänst</h5>
+                  <p className="text-sm text-green-300/80 mb-2">
+                    SendGrid är en pålitlig e-posttjänst som används som primär leveransmetod för beställningsbekräftelser.
+                  </p>
+                  <div className="space-y-1 text-xs text-green-300/70">
+                    <p><strong>Fördelar:</strong></p>
+                    <ul className="list-disc list-inside ml-2 space-y-1">
+                      <li>Hög leveransgrad och tillförlitlighet</li>
+                      <li>Detaljerad analytics och spårning</li>
+                      <li>Automatisk hantering av SPF/DKIM/DMARC</li>
+                      <li>Stöd för anpassade domäner</li>
+                      <li>Robust för stora volymer</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-[#e4d699]/30 bg-black/30">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">SendGrid Status</CardTitle>
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${
+                    sendGridConnectionStatus === 'connected' ? 'bg-green-400' : 
+                    sendGridConnectionStatus === 'error' ? 'bg-red-400' : 'bg-yellow-400'
+                  }`} />
+                  <span className="text-xs text-white/60">
+                    {sendGridConnectionStatus === 'connected' ? 'Ansluten' : 
+                     sendGridConnectionStatus === 'error' ? 'Fel' : 'Ej testad'}
+                  </span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {sendGridSettings.length === 0 ? (
+                <div className="p-4 bg-yellow-900/20 border border-yellow-500/30 rounded-lg text-center">
+                  <h6 className="font-medium text-yellow-400 mb-2">⚠️ Inga SendGrid-inställningar hittades</h6>
+                  <p className="text-sm text-yellow-300/80 mb-3">
+                    Klicka på "Skapa inställningar" ovan för att lägga till SendGrid-konfiguration i databasen.
+                  </p>
+                </div>
+              ) : (
+                sendGridSettings.map(setting => (
+                <div key={setting.id} className="space-y-2">
+                  <Label htmlFor={setting.setting_key}>
+                    {setting.setting_key === 'sendgrid_api_key' ? 'API-nyckel' :
+                     setting.setting_key === 'sendgrid_from_email' ? 'Avsändaradress' :
+                     setting.setting_key === 'sendgrid_enabled' ? 'Aktiverad' :
+                     setting.setting_key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </Label>
+                  {setting.setting_key === 'sendgrid_api_key' ? (
+                    <div className="flex gap-2">
+                      <Input
+                        id={setting.setting_key}
+                        type="password"
+                        value={localSendGridSettings[setting.setting_key] || setting.setting_value}
+                        onChange={(e) => updateSendGridSetting(setting.setting_key, e.target.value)}
+                        className="border-[#e4d699]/30 bg-black/50"
+                        placeholder="SG.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                      />
+                      <Button
+                        onClick={saveSendGridSettings}
+                        disabled={testingSendGrid}
+                        variant="outline"
+                        className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                      >
+                        {testingSendGrid ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  ) : setting.setting_key === 'sendgrid_enabled' ? (
+                    <select
+                      id={setting.setting_key}
+                      value={localSendGridSettings[setting.setting_key] || setting.setting_value}
+                      onChange={(e) => updateSendGridSetting(setting.setting_key, e.target.value)}
+                      className="w-full p-2 rounded-md border border-[#e4d699]/30 bg-black/50 text-white"
+                    >
+                      <option value="true">Ja</option>
+                      <option value="false">Nej</option>
+                    </select>
+                  ) : (
+                    <Input
+                      id={setting.setting_key}
+                      value={localSendGridSettings[setting.setting_key] || setting.setting_value}
+                      onChange={(e) => updateSendGridSetting(setting.setting_key, e.target.value)}
+                      className="border-[#e4d699]/30 bg-black/50"
+                      placeholder={setting.setting_key === 'sendgrid_from_email' ? '"Moi Sushi <info@moisushi.se>"' : ''}
+                    />
+                  )}
+                  {setting.description && (
+                    <p className="text-xs text-white/60">{setting.description}</p>
+                  )}
+                </div>
+                ))
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -9065,6 +9427,79 @@ function EmailManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* SendGrid Test Dialog */}
+      <Dialog open={sendGridDialogOpen} onOpenChange={setSendGridDialogOpen}>
+        <DialogContent className="bg-black border border-[#e4d699]/30 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-[#e4d699]">Skicka SendGrid test-e-post</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Välj typ av test-e-post och ange mottagaradress för SendGrid
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="sendgrid-test-type" className="text-white">E-posttyp</Label>
+              <select
+                id="sendgrid-test-type"
+                value={sendGridTestType}
+                onChange={(e) => setSendGridTestType(e.target.value)}
+                className="w-full p-2 rounded-md border border-[#e4d699]/30 bg-black/50 text-white"
+              >
+                <option value="order">Beställningsbekräftelse</option>
+                <option value="booking">Bordsbokningsbekräftelse</option>
+                <option value="welcome">Välkomstmail</option>
+              </select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="sendgrid-test-email" className="text-white">E-postadress</Label>
+              <Input
+                id="sendgrid-test-email"
+                type="email"
+                value={sendGridTestEmail}
+                onChange={(e) => setSendGridTestEmail(e.target.value)}
+                placeholder="test@example.com"
+                className="border-[#e4d699]/30 bg-black/50"
+              />
+            </div>
+            
+            <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-3">
+              <p className="text-sm text-green-300/80">
+                <strong>OBS:</strong> Detta skickar en riktig e-post via SendGrid med testdata till den angivna adressen.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setSendGridDialogOpen(false)}
+              className="border-[#e4d699]/30"
+            >
+              Avbryt
+            </Button>
+            <Button
+              onClick={handleSendSendGridTestEmail}
+              disabled={testingSendGrid || !sendGridTestEmail.trim()}
+              className="bg-green-600 text-white hover:bg-green-700"
+            >
+              {testingSendGrid ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Skickar...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Skicka via SendGrid
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -9094,6 +9529,10 @@ function OrderManagement() {
   const [deleteOrderNumber, setDeleteOrderNumber] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
   const { toast } = useToast()
+  
+  // Paginering state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [ordersPerPage] = useState(15) // 15 beställningar per sida
 
   useEffect(() => {
     fetchOrderData()
@@ -9359,6 +9798,18 @@ function OrderManagement() {
   }
 
   const filteredOrders = getFilteredAndSortedOrders()
+  
+  // Paginering beräkningar
+  const totalOrders = filteredOrders.length
+  const totalPages = Math.ceil(totalOrders / ordersPerPage)
+  const startIndex = (currentPage - 1) * ordersPerPage
+  const endIndex = startIndex + ordersPerPage
+  const currentOrders = filteredOrders.slice(startIndex, endIndex)
+  
+  // Återställ till första sidan när filter ändras
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filterStatus, selectedLocation, sortBy, dateFilter])
 
   if (isLoading) {
     return (
@@ -9589,7 +10040,7 @@ function OrderManagement() {
 
         <div className="flex items-center gap-2">
           <span className="text-sm text-white/60">
-            Visar {filteredOrders.length} av {allOrders.length} ordrar
+            Visar {currentOrders.length} av {totalOrders} filtrerade ordrar ({allOrders.length} totalt)
           </span>
           <Button onClick={fetchOrderData} disabled={isLoading} size="sm">
             <RefreshCw className="w-4 h-4 mr-2" />
@@ -9600,7 +10051,7 @@ function OrderManagement() {
 
       {/* Orders List - Mobile Responsive */}
       <div className="grid gap-4">
-        {filteredOrders.length === 0 ? (
+        {totalOrders === 0 ? (
           <Card>
             <CardContent className="p-8 text-center">
               <ShoppingCart className="w-12 h-12 mx-auto mb-4 text-gray-400" />
@@ -9608,7 +10059,7 @@ function OrderManagement() {
             </CardContent>
           </Card>
         ) : (
-          filteredOrders.map((order) => (
+          currentOrders.map((order) => (
             <Card key={order.id} className="overflow-hidden">
               <CardContent className="p-4">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -9765,6 +10216,83 @@ function OrderManagement() {
           ))
         )}
       </div>
+
+      {/* Paginering */}
+      {totalPages > 1 && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div className="text-sm text-white/60">
+                Visar {startIndex + 1}-{Math.min(endIndex, totalOrders)} av {totalOrders} beställningar
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                >
+                  Första
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                >
+                  Föregående
+                </Button>
+                
+                <div className="flex items-center gap-1">
+                  {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                    const pageNum = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i
+                    if (pageNum > totalPages) return null
+                    
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={currentPage === pageNum 
+                          ? "bg-[#e4d699] text-black hover:bg-[#e4d699]/90" 
+                          : "border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                        }
+                      >
+                        {pageNum}
+                      </Button>
+                    )
+                  })}
+                </div>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                >
+                  Nästa
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10"
+                >
+                  Sista
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Revenue Summary */}
       <Card className="mb-6">

@@ -25,11 +25,21 @@ export default function EmailManagement() {
   const [emailLogs, setEmailLogs] = useState([])
   const [isSaving, setIsSaving] = useState(false)
   
+  // Resend state variabler
+  const [resendConnectionStatus, setResendConnectionStatus] = useState(null)
+  const [testingResend, setTestingResend] = useState(false)
+  const [resendDialogOpen, setResendDialogOpen] = useState(false)
+  const [resendTestEmail, setResendTestEmail] = useState('')
+  const [resendSettings, setResendSettings] = useState([])
+  const [localResendSettings, setLocalResendSettings] = useState({})
+  
   const { toast } = useToast()
 
   useEffect(() => {
     checkSendGridConnection()
     fetchSendGridSettings()
+    checkResendConnection()
+    fetchResendSettings()
     fetchEmailLogs()
     fetchEmailStats()
   }, [])
@@ -257,6 +267,166 @@ export default function EmailManagement() {
     }
   }
 
+  // Resend funktioner
+  const checkResendConnection = async () => {
+    try {
+      setTestingResend(true)
+      console.log('🔍 Testing Resend connection...')
+      
+      const response = await fetch('/api/test-resend', {
+        method: 'GET'
+      })
+      const result = await response.json()
+      
+      console.log('📧 Resend connection result:', result)
+      
+      if (result.success) {
+        setResendConnectionStatus('connected')
+        toast({
+          title: "✅ Resend anslutning lyckades!",
+          description: "Resend API svarar och anslutningen fungerar.",
+        })
+      } else {
+        setResendConnectionStatus('error')
+        toast({
+          title: "❌ Resend anslutning misslyckades",
+          description: result.error || "Okänt fel vid anslutning till Resend API",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('Error checking Resend connection:', error)
+      setResendConnectionStatus('error')
+      toast({
+        title: "❌ Fel vid Resend-test",
+        description: "Kunde inte testa anslutningen till Resend API",
+        variant: "destructive"
+      })
+    } finally {
+      setTestingResend(false)
+    }
+  }
+
+  const fetchResendSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('email_settings')
+        .select('*')
+        .in('setting_key', ['resend_api_key', 'resend_from_email', 'resend_enabled'])
+
+      if (error) throw error
+
+      setResendSettings(data || [])
+      
+      // Konvertera till local state format
+      const localSettings = {}
+      data?.forEach(setting => {
+        localSettings[setting.setting_key] = setting.setting_value
+      })
+      setLocalResendSettings(localSettings)
+    } catch (error) {
+      console.error('Error fetching Resend settings:', error)
+    }
+  }
+
+  const updateResendSetting = async (settingKey, newValue) => {
+    try {
+      setIsSaving(true)
+      const { data, error } = await supabase
+        .from('email_settings')
+        .upsert([
+          {
+            setting_key: settingKey,
+            setting_value: newValue,
+            updated_at: new Date().toISOString()
+          }
+        ], { onConflict: 'setting_key' })
+        .select()
+
+      if (error) throw error
+
+      // Uppdatera lokala inställningar
+      setLocalResendSettings(prev => ({
+        ...prev,
+        [settingKey]: newValue
+      }))
+
+      // Uppdatera settings array
+      setResendSettings(prev => {
+        const existingIndex = prev.findIndex(s => s.setting_key === settingKey)
+        if (existingIndex >= 0) {
+          const updated = [...prev]
+          updated[existingIndex] = { ...updated[existingIndex], setting_value: newValue }
+          return updated
+        } else {
+          return [...prev, { setting_key: settingKey, setting_value: newValue }]
+        }
+      })
+
+      toast({
+        title: "✅ Inställning sparad",
+        description: `${settingKey} har uppdaterats`,
+      })
+    } catch (error) {
+      console.error('Error updating Resend setting:', error)
+      toast({
+        title: "❌ Fel vid sparande",
+        description: `Kunde inte uppdatera ${settingKey}`,
+        variant: "destructive"
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleSendResendTestEmail = async () => {
+    if (!resendTestEmail.trim()) {
+      toast({
+        title: "❌ E-postadress saknas",
+        description: "Ange en giltig e-postadress",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      setTestingResend(true)
+      const response = await fetch('/api/test-resend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'send_test',
+          email: resendTestEmail,
+          testType: 'admin_test'
+        })
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        toast({
+          title: "✅ Resend test-e-post skickad!",
+          description: `Test-email skickades via Resend (ID: ${result.messageId})`
+        })
+        setResendDialogOpen(false)
+        setResendTestEmail('')
+        fetchEmailLogs()
+        fetchEmailStats()
+      } else {
+        throw new Error(result.error || 'Okänt fel')
+      }
+    } catch (error) {
+      console.error('Error sending Resend test email:', error)
+      toast({
+        title: "❌ Fel vid Resend e-posttest",
+        description: error instanceof Error ? error.message : 'Kunde inte skicka test-e-post via Resend',
+        variant: "destructive"
+      })
+    } finally {
+      setTestingResend(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -399,6 +569,113 @@ export default function EmailManagement() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Resend sektion */}
+          <Card className="border-[#e4d699]/20 bg-black/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Resend Inställningar
+              </CardTitle>
+              <CardDescription>
+                Konfigurera Resend API-inställningar för backup e-postleverans
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Connection Status */}
+              <div className="flex items-center justify-between p-4 rounded-lg border border-[#e4d699]/20 bg-black/30">
+                <div className="flex items-center gap-3">
+                  {getConnectionStatusIcon(resendConnectionStatus)}
+                  <div>
+                    <p className="font-medium">Anslutningsstatus</p>
+                    <p className="text-sm text-white/60">
+                      {getConnectionStatusText(resendConnectionStatus)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge className={getConnectionStatusColor(resendConnectionStatus)}>
+                    {getConnectionStatusText(resendConnectionStatus)}
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={checkResendConnection}
+                    disabled={testingResend}
+                  >
+                    {testingResend ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* API Key */}
+              <div className="space-y-2">
+                <Label htmlFor="resend_api_key">Resend API Nyckel</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="resend_api_key"
+                    type="password"
+                    placeholder="re_xxxxxxxxxxxxxxxxxxxxx"
+                    value={localResendSettings.resend_api_key || ''}
+                    onChange={(e) => setLocalResendSettings(prev => ({
+                      ...prev,
+                      resend_api_key: e.target.value
+                    }))}
+                  />
+                  <Button
+                    onClick={() => updateResendSetting('resend_api_key', localResendSettings.resend_api_key)}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Spara'}
+                  </Button>
+                </div>
+              </div>
+
+              {/* From Email */}
+              <div className="space-y-2">
+                <Label htmlFor="resend_from_email">Avsändar E-post</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="resend_from_email"
+                    type="email"
+                    placeholder="noreply@moisushi.se"
+                    value={localResendSettings.resend_from_email || ''}
+                    onChange={(e) => setLocalResendSettings(prev => ({
+                      ...prev,
+                      resend_from_email: e.target.value
+                    }))}
+                  />
+                  <Button
+                    onClick={() => updateResendSetting('resend_from_email', localResendSettings.resend_from_email)}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Spara'}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Enabled Toggle */}
+              <div className="flex items-center justify-between p-4 rounded-lg border border-[#e4d699]/20 bg-black/30">
+                <div>
+                  <p className="font-medium">Aktiverad</p>
+                  <p className="text-sm text-white/60">
+                    Aktivera Resend för backup e-postleverans
+                  </p>
+                </div>
+                <Button
+                  variant={localResendSettings.resend_enabled === 'true' ? 'default' : 'outline'}
+                  onClick={() => updateResendSetting('resend_enabled', localResendSettings.resend_enabled === 'true' ? 'false' : 'true')}
+                  disabled={isSaving}
+                >
+                  {localResendSettings.resend_enabled === 'true' ? 'Aktiverad' : 'Inaktiverad'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="test" className="space-y-4">
@@ -434,6 +711,43 @@ export default function EmailManagement() {
                   <Send className="h-4 w-4 mr-2" />
                 )}
                 Skicka Test E-post
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Resend Test */}
+          <Card className="border-[#e4d699]/20 bg-black/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Send className="h-5 w-5" />
+                Testa Resend
+              </CardTitle>
+              <CardDescription>
+                Skicka test-e-post för att verifiera Resend-konfigurationen (backup)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="resend_test_email">Test E-postadress</Label>
+                <Input
+                  id="resend_test_email"
+                  type="email"
+                  placeholder="test@example.com"
+                  value={resendTestEmail}
+                  onChange={(e) => setResendTestEmail(e.target.value)}
+                />
+              </div>
+              <Button
+                onClick={handleSendResendTestEmail}
+                disabled={testingResend || !resendTestEmail.trim()}
+                className="w-full"
+              >
+                {testingResend ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Send className="h-4 w-4 mr-2" />
+                )}
+                Skicka Resend Test E-post
               </Button>
             </CardContent>
           </Card>

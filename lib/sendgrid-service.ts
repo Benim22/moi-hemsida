@@ -600,4 +600,7 @@ export const sendTestEmailSendGrid = async (email: string, testType: string = 'g
     console.error('Error sending test email via SendGrid:', error)
     return { success: false, error: `SendGrid test-fel: ${error.message}` }
   }
-} 
+}
+
+// Alias for backup service compatibility
+export const sendEmailWithSendGrid = sendEmailViaSendGrid 
