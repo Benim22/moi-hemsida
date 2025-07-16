@@ -853,6 +853,7 @@ export default function RestaurantTerminal() {
               
               if (data === 'OK') {
                 addDebugLog('🎯 ePOS-anslutning framgångsrik!', 'success')
+                addDebugLog('✅ Test: Skrivaren svarar på ping och grundläggande kommandon', 'success')
                 setPrinterStatus(prev => ({ 
                   ...prev, 
                   connected: true, 
@@ -860,8 +861,18 @@ export default function RestaurantTerminal() {
                   error: null 
                 }))
                 addDebugLog('✅ VERIFIERAD: Epson TM-T20III är ansluten och redo!', 'success')
+              } else if (data === 'ERR_CONNECT') {
+                addDebugLog(`❌ ePOS-anslutning misslyckades: ${data}`, 'error')
+                addDebugLog('💡 Möjliga orsaker: Fel IP, port blockerad, skrivare avstängd', 'warning')
+                setPrinterStatus(prev => ({ 
+                  ...prev, 
+                  connected: false,
+                  lastTest: new Date(),
+                  error: `ePOS-anslutning misslyckades: ${data}` 
+                }))
               } else {
-                addDebugLog(`⚠️ ePOS-fel: ${data} - men nätverksanslutning fungerar`, 'warning')
+                addDebugLog(`⚠️ ePOS-varning: ${data} - men nätverksanslutning fungerar`, 'warning')
+                addDebugLog('💡 Skrivaren svarar men kan ha konfigurationsproblem', 'info')
                 setPrinterStatus(prev => ({ 
                   ...prev, 
                   connected: true, // Network is working
@@ -1153,9 +1164,21 @@ export default function RestaurantTerminal() {
 
     const handleOrderUpdate = (payload) => {
 
-      setOrders(prev => prev.map(order => 
-        order.id === payload.new.id ? payload.new : order
-      ))
+      setOrders(prev => {
+        if (payload.new.status === 'delivered') {
+          // Ta bort delivered orders från terminalen
+          console.log('🚚 HANDLEORDERUPDATE: Tar bort delivered order från real-time update:', payload.new.id)
+          const filteredOrders = prev.filter(order => order.id !== payload.new.id)
+          console.log('🚚 HANDLEORDERUPDATE: Orders efter filtrering:', filteredOrders.map(o => ({ id: o.id, status: o.status })))
+          return filteredOrders
+        } else {
+          // Uppdatera andra statusar normalt
+          console.log('🔄 HANDLEORDERUPDATE: Uppdaterar order via real-time:', payload.new.id, 'till status:', payload.new.status)
+          return prev.map(order => 
+            order.id === payload.new.id ? payload.new : order
+          )
+        }
+      })
       // INGEN notifikation för uppdateringar - bara uppdatera listan
     }
 
@@ -2203,44 +2226,71 @@ export default function RestaurantTerminal() {
     playNext()
   }
 
-  // Visuell alert som blinkar hela skärmen
+  // Visuell alert som blinkar hela skärmen - KONTINUERLIGT tills användaren trycker
   const triggerVisualAlert = () => {
-    console.log('💡 Aktiverar visuell alert!')
+    console.log('💡 Aktiverar KONTINUERLIG visuell alert!')
     
-    // Skapa en fullscreen flash-overlay
+    // Kolla om det redan finns en aktiv alert
+    const existingAlert = document.getElementById('moi-continuous-alert')
+    if (existingAlert) {
+      console.log('⚠️ Kontinuerlig alert redan aktiv - hoppar över')
+      return
+    }
+    
+    // Skapa en fullscreen flash-overlay med ID för att kunna stoppa den
     const flashOverlay = document.createElement('div')
+    flashOverlay.id = 'moi-continuous-alert'
     flashOverlay.style.cssText = `
       position: fixed;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      background: linear-gradient(45deg, #ff0000, #ff6600);
+      background: linear-gradient(45deg, #ff0000, #ff6600, #ff0000);
       z-index: 9999;
       pointer-events: none;
       opacity: 0;
-      transition: opacity 0.2s ease;
+      transition: opacity 0.3s ease;
+      animation: moi-alert-pulse 1s infinite;
     `
+    
+    // Lägg till CSS animation för kontinuerligt blinkande
+    const style = document.createElement('style')
+    style.textContent = `
+      @keyframes moi-alert-pulse {
+        0% { opacity: 0; }
+        50% { opacity: 0.8; }
+        100% { opacity: 0; }
+      }
+    `
+    document.head.appendChild(style)
     
     document.body.appendChild(flashOverlay)
     
-    // Flash-animation
-    let flashCount = 0
-    const maxFlashes = 6
-    
-    const flash = () => {
-      if (flashCount >= maxFlashes) {
-        document.body.removeChild(flashOverlay)
-        return
+    // Lägg till event listener för att stoppa blinkandet vid touch/click
+    const stopAlert = () => {
+      console.log('👆 Användaren tryckte - stoppar kontinuerlig alert')
+      const alertElement = document.getElementById('moi-continuous-alert')
+      if (alertElement) {
+        alertElement.remove()
       }
-      
-      flashOverlay.style.opacity = flashCount % 2 === 0 ? '0.7' : '0'
-      flashCount++
-      
-      setTimeout(flash, 200)
+      // Ta bort style element också
+      const styleElement = document.querySelector('style:last-child')
+      if (styleElement && styleElement.textContent.includes('moi-alert-pulse')) {
+        styleElement.remove()
+      }
+      // Ta bort event listeners
+      document.removeEventListener('click', stopAlert)
+      document.removeEventListener('touchstart', stopAlert)
+      document.removeEventListener('keydown', stopAlert)
     }
     
-    setTimeout(flash, 100)
+    // Lägg till event listeners för att stoppa vid interaktion
+    document.addEventListener('click', stopAlert, { once: true })
+    document.addEventListener('touchstart', stopAlert, { once: true })
+    document.addEventListener('keydown', stopAlert, { once: true })
+    
+    console.log('🔴 KONTINUERLIG RÖDD ALERT AKTIV - tryck någonstans för att stoppa')
   }
 
   // Vibration för mobila enheter
@@ -2331,13 +2381,17 @@ export default function RestaurantTerminal() {
 
   const updateOrderStatus = async (orderId, newStatus) => {
     try {
-      console.log('🔄 Uppdaterar orderstatus:', { 
+      console.log('🔄 STARTAR updateOrderStatus:', { 
         orderId, 
         newStatus, 
         currentUser: user?.id,
         userRole: profile?.role,
         userLocation: profile?.location 
       })
+      
+      // Kolla om ordern finns i lokal state före uppdatering
+      const orderBefore = orders.find(o => o.id === orderId)
+      console.log('📦 Order före uppdatering:', orderBefore ? { id: orderBefore.id, status: orderBefore.status, order_number: orderBefore.order_number } : 'INTE HITTAD')
       
       const { data, error } = await supabase
         .from('orders')
@@ -2363,9 +2417,21 @@ export default function RestaurantTerminal() {
       console.log('✅ Orderstatus uppdaterad:', data)
 
       // Uppdatera lokala state direkt för snabbare UI-respons
-      setOrders(prev => prev.map(order => 
-        order.id === orderId ? { ...order, status: newStatus } : order
-      ))
+      setOrders(prev => {
+        if (newStatus === 'delivered') {
+          // Ta bort delivered orders från terminalen (men behåll i databasen)
+          console.log('🚚 UPDATEORDERSTATUS: Tar bort delivered order från lokal state:', orderId)
+          const filteredOrders = prev.filter(order => order.id !== orderId)
+          console.log('🚚 UPDATEORDERSTATUS: Orders efter filtrering:', filteredOrders.map(o => ({ id: o.id, status: o.status })))
+          return filteredOrders
+        } else {
+          // Uppdatera status för andra statusar
+          console.log('🔄 UPDATEORDERSTATUS: Uppdaterar status till:', newStatus, 'för order:', orderId)
+          return prev.map(order => 
+            order.id === orderId ? { ...order, status: newStatus } : order
+          )
+        }
+      })
 
       // Skicka orderbekräftelse när personalen bekräftar ordern (status: ready)
       if (newStatus === 'ready') {
@@ -2432,7 +2498,13 @@ export default function RestaurantTerminal() {
       )
 
     } catch (error) {
-      console.error('❌ Fel vid uppdatering av orderstatus:', error)
+      console.error('❌ UPDATEORDERSTATUS FELADE:', error)
+      console.error('❌ Fel detaljer:', {
+        orderId,
+        newStatus,
+        errorMessage: error.message,
+        errorCode: error.code
+      })
       
       // Visa felmeddelande
       showBrowserNotification(
@@ -2441,6 +2513,7 @@ export default function RestaurantTerminal() {
       )
       
       // Hämta orders igen för att säkerställa korrekt state
+      console.log('🔄 UPDATEORDERSTATUS FELADE - Hämtar orders igen via fetchOrders()')
       fetchOrders()
     }
   }
@@ -3160,10 +3233,17 @@ Utvecklad av Skaply
                   printer.send((result) => {
                     if (result.success) {
                       addDebugLog('✅ ePOS-utskrift skickad till skrivaren!', 'success')
+                      addDebugLog('📄 Kvitto ska nu skrivas ut på Epson TM-T20III', 'success')
                       resolve(true)
                     } else {
                       addDebugLog(`❌ ePOS-utskrift misslyckades: ${result.code}`, 'error')
-                      reject(new Error(`ePOS print failed: ${result.code}`))
+                      if (result.code === 'ERR_CONNECT') {
+                        addDebugLog('💡 ERR_CONNECT: Skrivaren svarar inte på utskriftskommando', 'warning')
+                        addDebugLog('🔧 Möjliga lösningar: Kontrollera IP, starta om skrivare, testa backend proxy', 'info')
+                      } else if (result.code === 'ERR_PRINT') {
+                        addDebugLog('💡 ERR_PRINT: Utskriftsfel - kontrollera papper och skrivarstatus', 'warning')
+                      }
+                      reject(new Error(`ePOS print failed: ${result.code} - ${result.message || 'Okänt fel'}`))
                     }
                   })
                 } else {
@@ -3725,6 +3805,12 @@ Utvecklad av Skaply
 
   // Filter orders based on selected filters
   const filteredOrders = orders.filter(order => {
+    // ALLTID filtrera bort delivered orders från terminalen
+    if (order.status === 'delivered') {
+      console.log('🚚 FILTRERAR BORT delivered order:', order.id, order.order_number)
+      return false
+    }
+    
     // Location filter
     if (selectedLocation !== 'all' && order.location !== selectedLocation) {
       return false
@@ -3737,6 +3823,10 @@ Utvecklad av Skaply
     
     return true
   })
+  
+  // Debug logging för att se vad som händer
+  console.log('🔍 DEBUG - Orders array:', orders.map(o => ({ id: o.id, status: o.status, order_number: o.order_number })))
+  console.log('🔍 DEBUG - Filtered orders:', filteredOrders.map(o => ({ id: o.id, status: o.status, order_number: o.order_number })))
 
   const unreadNotifications = notifications.filter(n => !n.read).length
 

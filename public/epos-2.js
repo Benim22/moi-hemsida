@@ -40,8 +40,8 @@
     this.useSSL = port === 443 || port === 8443;
     const protocol = this.useSSL ? 'https' : 'http';
     
-    // Testa anslutning med ping
-    this.testConnection()
+    // Förbättrad anslutningstest med längre timeout för utskrift
+    this.testConnection(15000) // 15 sekunder timeout för utskrift
       .then(() => {
         console.log(`[ePOS] Anslutning framgångsrik till ${address}:${port}`);
         this.connected = true;
@@ -49,33 +49,64 @@
       })
       .catch((error) => {
         console.log(`[ePOS] Anslutning misslyckades till ${address}:${port}:`, error.message);
+        console.log(`[ePOS] Försöker backend proxy som fallback...`);
         this.connected = false;
         if (this.callback) this.callback('ERR_CONNECT');
       });
   };
 
-  window.epos.ePOSDevice.prototype.testConnection = async function() {
+  window.epos.ePOSDevice.prototype.testConnection = async function(timeout = 5000) {
     const protocol = this.useSSL ? 'https' : 'http';
-    const url = `${protocol}://${this.address}:${this.port}/cgi-bin/epos/service.cgi`;
     
-    try {
-      // Försök med GET request först för att testa anslutning
-      const response = await fetch(url, {
-        method: 'GET',
-        signal: AbortSignal.timeout(5000),
-        mode: 'cors'
-      });
+    // Prova flera endpoints för att hitta den som fungerar
+    const testEndpoints = [
+      '/cgi-bin/epos/service.cgi',
+      '/status',
+      '/',
+      '/info'
+    ];
+    
+    console.log(`[ePOS] Testar anslutning med ${timeout}ms timeout...`);
+    
+    for (const endpoint of testEndpoints) {
+      const url = `${protocol}://${this.address}:${this.port}${endpoint}`;
       
-      // Även om vi får 404 eller annat, så betyder det att servern svarar
-      return true;
-    } catch (error) {
-      // Om det är CORS-fel från HTTPS till HTTP, försök med backend proxy
-      if (error.message.includes('CORS') || error.message.includes('Mixed Content')) {
-        console.log('[ePOS] CORS/Mixed Content detected - will use backend proxy');
-        return true; // Låt backend hantera det
+      try {
+        console.log(`[ePOS] Provar endpoint: ${endpoint}`);
+        const response = await fetch(url, {
+          method: 'GET',
+          signal: AbortSignal.timeout(timeout),
+          mode: 'no-cors' // Tillåt CORS för att testa anslutning
+        });
+        
+        console.log(`[ePOS] Endpoint ${endpoint} svarade (no-cors mode)`);
+        
+        // I no-cors mode får vi inte läsa response.ok, men om vi inte får error så fungerar anslutningen
+        console.log(`[ePOS] Anslutning till ${endpoint} framgångsrik`);
+        return true;
+        
+      } catch (error) {
+        console.log(`[ePOS] Endpoint ${endpoint} misslyckades: ${error.message}`);
+        
+        // Om det är timeout, avbryt alla försök
+        if (error.name === 'AbortError' || error.message.includes('timeout')) {
+          console.log(`[ePOS] Timeout på ${endpoint} - avbryter alla försök`);
+          break;
+        }
+        
+        // Om det är CORS-fel från HTTPS till HTTP, försök med backend proxy
+        if (error.message.includes('CORS') || error.message.includes('Mixed Content')) {
+          console.log('[ePOS] CORS/Mixed Content detected - will use backend proxy');
+          return true; // Låt backend hantera det
+        }
+        
+        // Fortsätt till nästa endpoint
+        continue;
       }
-      throw error;
     }
+    
+    // Om alla endpoints misslyckas, kasta fel
+    throw new Error(`Alla endpoints misslyckades - skrivaren på ${this.address}:${this.port} svarar inte`);
   };
 
   window.epos.ePOSDevice.prototype.createDevice = function(deviceId, deviceType, options, callback) {
@@ -138,34 +169,45 @@
     const protocol = this.device.useSSL ? 'https' : 'http';
     const url = `${protocol}://${this.device.address}:${this.device.port}/cgi-bin/epos/service.cgi`;
     
+    console.log(`[ePOS] Skickar XML till skrivare: ${url}`);
+    console.log(`[ePOS] XML längd: ${xml.length} tecken`);
+    
     try {
-      // Försök direkt anslutning först
+      // Försök direkt anslutning först med längre timeout för utskrift
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'text/xml; charset=utf-8',
-          'Accept': 'text/xml, application/xml, */*'
+          'Accept': 'text/xml, application/xml, */*',
+          'SOAPAction': '"urn:schemas-epson-com:service:EpsonEPOSService:SendData"'
         },
         body: xml,
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(20000) // 20 sekunder för utskrift
       });
 
       const result = await response.text();
+      console.log('[ePOS] Printer response status:', response.status);
       console.log('[ePOS] Printer response:', result);
 
-      if (response.ok && !result.includes('SchemaError')) {
-        console.log('[ePOS] Utskrift framgångsrik');
+      if (response.ok && !result.includes('SchemaError') && !result.includes('ERR_')) {
+        console.log('[ePOS] ✅ Utskrift framgångsrik via direkt anslutning');
         if (callback) callback({ success: true, code: 'SUCCESS', status: 'OK' });
       } else {
-        console.log('[ePOS] Utskrift misslyckades:', result);
+        console.log('[ePOS] ❌ Utskrift misslyckades - fel i svar:', result);
         if (callback) callback({ success: false, code: 'ERR_PRINT', status: 'PRINT_ERROR', message: result });
       }
     } catch (error) {
-      console.log('[ePOS] Direkt anslutning misslyckades:', error.message);
+      console.log('[ePOS] ❌ Direkt anslutning misslyckades:', error.message);
+      console.log('[ePOS] Error type:', error.name);
       
-      // Fallback till backend proxy för CORS/Mixed Content
-      if (error.message.includes('CORS') || error.message.includes('Mixed Content') || error.name === 'TypeError') {
-        console.log('[ePOS] Använder backend proxy som fallback');
+      // Fallback till backend proxy för CORS/Mixed Content/Timeout
+      if (error.message.includes('CORS') || 
+          error.message.includes('Mixed Content') || 
+          error.name === 'TypeError' ||
+          error.name === 'AbortError' ||
+          error.message.includes('timeout')) {
+        
+        console.log('[ePOS] 🔄 Använder backend proxy som fallback...');
         
         try {
           const response = await fetch('/api/printer', {
@@ -179,24 +221,26 @@
               printerPort: this.device.port,
               xml: xml,
               useSSL: this.device.useSSL
-            })
+            }),
+            signal: AbortSignal.timeout(25000) // 25 sekunder för backend proxy
           });
 
           const result = await response.json();
           
           if (result.success) {
-            console.log('[ePOS] Backend proxy utskrift framgångsrik');
+            console.log('[ePOS] ✅ Backend proxy utskrift framgångsrik');
             if (callback) callback({ success: true, code: 'SUCCESS', status: 'OK' });
           } else {
-            console.log('[ePOS] Backend proxy utskrift misslyckades:', result.error);
+            console.log('[ePOS] ❌ Backend proxy utskrift misslyckades:', result.error);
             if (callback) callback({ success: false, code: 'ERR_PRINT', status: 'PRINT_ERROR', message: result.error });
           }
         } catch (backendError) {
-          console.log('[ePOS] Backend proxy misslyckades:', backendError.message);
-          if (callback) callback({ success: false, code: 'ERR_CONNECT', status: 'CONNECTION_ERROR', message: backendError.message });
+          console.log('[ePOS] ❌ Backend proxy misslyckades:', backendError.message);
+          if (callback) callback({ success: false, code: 'ERR_CONNECT', status: 'CONNECTION_ERROR', message: `Backend proxy fel: ${backendError.message}` });
         }
       } else {
-        if (callback) callback({ success: false, code: 'ERR_CONNECT', status: 'CONNECTION_ERROR', message: error.message });
+        console.log('[ePOS] ❌ Okänt fel vid utskrift:', error.message);
+        if (callback) callback({ success: false, code: 'ERR_CONNECT', status: 'CONNECTION_ERROR', message: `Utskriftsfel: ${error.message}` });
       }
     }
   };
