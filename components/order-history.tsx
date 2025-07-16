@@ -90,6 +90,66 @@ export default function OrderHistory({ isOpen, onClose }: OrderHistoryProps) {
     total_revenue: 0
   })
 
+  // Calculate stats function
+  const calculateStats = (ordersData: OrderData[]) => {
+    const stats = {
+      total_orders: ordersData.length,
+      pending_orders: ordersData.filter(o => o.status === 'pending').length,
+      preparing_orders: ordersData.filter(o => o.status === 'preparing').length,
+      ready_orders: ordersData.filter(o => o.status === 'ready').length,
+      delivered_orders: ordersData.filter(o => o.status === 'delivered').length,
+      cancelled_orders: ordersData.filter(o => o.status === 'cancelled').length,
+      total_revenue: ordersData.reduce((sum, o) => sum + (parseFloat(o.total_price || o.amount || 0)), 0)
+    }
+    setOrderStats(stats)
+  }
+
+  // Update order status function
+  const updateOrderStatus = async (orderId: string, newStatus: string) => {
+    try {
+      console.log('🔄 Uppdaterar orderstatus:', { orderId, newStatus })
+      
+      const { data, error } = await supabase
+        .from('orders')
+        .update({ 
+          status: newStatus,
+          [`${newStatus}_at`]: new Date().toISOString()
+        })
+        .eq('id', orderId)
+        .select()
+
+      if (error) {
+        console.error('❌ Fel vid statusuppdatering:', error)
+        throw error
+      }
+
+      console.log('✅ Orderstatus uppdaterad:', data)
+      
+      // Uppdatera lokal state
+      setAllOrders(prev => 
+        prev.map(order => 
+          order.id === orderId 
+            ? { ...order, status: newStatus }
+            : order
+        )
+      )
+      
+      // Uppdatera selectedOrder om den är samma
+      if (selectedOrder && selectedOrder.id === orderId) {
+        setSelectedOrder(prev => prev ? { ...prev, status: newStatus } : null)
+      }
+      
+      // Uppdatera statistik
+      calculateStats(allOrders.map(order => 
+        order.id === orderId ? { ...order, status: newStatus } : order
+      ))
+      
+    } catch (error) {
+      console.error('❌ Fel vid statusuppdatering:', error)
+      alert('Kunde inte uppdatera orderstatus. Försök igen.')
+    }
+  }
+
   const fetchOrders = async () => {
     setIsLoading(true)
     try {
@@ -120,16 +180,7 @@ export default function OrderHistory({ isOpen, onClose }: OrderHistoryProps) {
       setAllOrders(ordersData)
 
       // Calculate stats
-      const stats = {
-        total_orders: ordersData.length,
-        pending_orders: ordersData.filter(o => o.status === 'pending').length,
-        preparing_orders: ordersData.filter(o => o.status === 'preparing').length,
-        ready_orders: ordersData.filter(o => o.status === 'ready').length,
-        delivered_orders: ordersData.filter(o => o.status === 'delivered').length,
-        cancelled_orders: ordersData.filter(o => o.status === 'cancelled').length,
-        total_revenue: ordersData.reduce((sum, o) => sum + (parseFloat(o.total_price || o.amount || 0)), 0)
-      }
-      setOrderStats(stats)
+      calculateStats(ordersData)
 
     } catch (error) {
       console.error('Error fetching orders:', error)
@@ -713,11 +764,64 @@ export default function OrderHistory({ isOpen, onClose }: OrderHistoryProps) {
                     <CardHeader>
                       <CardTitle className="text-white text-sm">Orderstatus</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <Badge className={`${getStatusColor(selectedOrder.status)} text-white font-medium px-3 py-1 flex items-center gap-1 w-fit`}>
-                        {getStatusIcon(selectedOrder.status)}
-                        {getStatusText(selectedOrder.status)}
-                      </Badge>
+                    <CardContent className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/60 text-sm">Nuvarande status:</span>
+                        <Badge className={`${getStatusColor(selectedOrder.status)} text-white font-medium px-3 py-1 flex items-center gap-1 w-fit`}>
+                          {getStatusIcon(selectedOrder.status)}
+                          {getStatusText(selectedOrder.status)}
+                        </Badge>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <label className="text-white/60 text-sm">Ändra status:</label>
+                        <Select 
+                          value={selectedOrder.status} 
+                          onValueChange={(newStatus) => updateOrderStatus(selectedOrder.id, newStatus)}
+                        >
+                          <SelectTrigger className="bg-black/50 border-[#e4d699]/30 text-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-black border-[#e4d699]/30">
+                            <SelectItem value="pending" className="text-white hover:bg-gray-800">
+                              <div className="flex items-center gap-2">
+                                <Clock className="h-4 w-4 text-orange-400" />
+                                Väntande
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="confirmed" className="text-white hover:bg-gray-800">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle className="h-4 w-4 text-blue-400" />
+                                Bekräftad
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="preparing" className="text-white hover:bg-gray-800">
+                              <div className="flex items-center gap-2">
+                                <Package className="h-4 w-4 text-yellow-400" />
+                                Förbereder
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="ready" className="text-white hover:bg-gray-800">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle className="h-4 w-4 text-green-400" />
+                                Klar
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="delivered" className="text-white hover:bg-gray-800">
+                              <div className="flex items-center gap-2">
+                                <Truck className="h-4 w-4 text-green-600" />
+                                Levererad
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="cancelled" className="text-white hover:bg-gray-800">
+                              <div className="flex items-center gap-2">
+                                <AlertCircle className="h-4 w-4 text-red-400" />
+                                Avbruten
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </CardContent>
                   </Card>
 

@@ -16,6 +16,7 @@ import jsPDF from 'jspdf'
 import { io, Socket } from 'socket.io-client'
 import AnalyticsDashboard from "./analytics-dashboard"
 import OrderHistory from "./order-history"
+import HybridPrinterModal from "./hybrid-printer-modal"
 
 // ePOS-Print API Declaration (since we'll load it dynamically)
 declare global {
@@ -97,6 +98,10 @@ export default function RestaurantTerminal() {
   // Global variabel för extra skydd mot duplicering
   const [lastPrintedOrderId, setLastPrintedOrderId] = useState(null)
   const [lastPrintedTime, setLastPrintedTime] = useState(null)
+  
+  // Hybrid printer states
+  const [showHybridPrinter, setShowHybridPrinter] = useState(false)
+  const [hybridPrintOrder, setHybridPrintOrder] = useState<any>(null)
 
   // Webhook bridge states
   const [webhookBridgeActive, setWebhookBridgeActive] = useState(false)
@@ -264,8 +269,8 @@ export default function RestaurantTerminal() {
       // Lägg till i autoPrintedOrders för att förhindra dubblering
       setAutoPrintedOrders(prev => new Set([...prev, order.id]))
       
-      // Skriv ut order
-      await printEPOSReceipt(order)
+      // Skriv ut order automatiskt (utan modal)
+      await printEPOSReceipt(order, false)
       
       addDebugLog(`WebSocket order ${order.id} utskriven automatiskt`, 'success')
     } catch (error) {
@@ -2587,7 +2592,7 @@ Utvecklad av Skaply
             return
           }
         } else {
-          await printEPOSReceipt(order)
+          await printEPOSReceipt(order, false)
           addDebugLog('✅ ePOS utskrift utförd! Hoppar över textfönster.', 'success')
           return
         }
@@ -2961,8 +2966,8 @@ Utvecklad av Skaply
     try {
       addDebugLog(`🖨️ Manuell utskrift för order #${order.order_number}`, 'info')
       
-      // Use the same logic as automatic printing (frontend ePOS first)
-      await printEPOSReceipt(order)
+      // Use the same logic as automatic printing (frontend ePOS first) - men öppna modal för manuell utskrift
+      await printEPOSReceipt(order, true)
       
       addDebugLog(`✅ Manuell utskrift framgångsrik för order #${order.order_number}`, 'success')
       showBrowserNotification(
@@ -3273,16 +3278,59 @@ Utvecklad av Skaply
     })
   }
 
-  // Print Receipt to Epson TM-T20III with ESC/POS commands - iPad Bridge Mode
-  const printEPOSReceipt = async (order) => {
-    addDebugLog(`🖨️ Skriver ut kvitto för order #${order.order_number}`, 'info')
+  // Automatisk hybrid utskrift utan modal
+  const performAutomaticHybridPrint = async (order) => {
+    addDebugLog(`🤖 Automatisk hybrid utskrift för order #${order.order_number}`, 'info')
     
     try {
-      // Detect environment
-      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      const isProduction = window.location.protocol === 'https:' && !isLocalhost
+      // Testa först lokal ePOS om tillgänglig
+      if (eposLoaded && printerSettings.enabled && !printerSettings.debugMode) {
+        addDebugLog('🖨️ Försöker lokal ePOS-utskrift först...', 'info')
+        try {
+          await printFrontendEPOS(order)
+          addDebugLog('✅ Lokal ePOS-utskrift framgångsrik!', 'success')
+          return { success: true, method: 'local_epos' }
+        } catch (error) {
+          addDebugLog(`⚠️ Lokal ePOS misslyckades: ${error.message}`, 'warning')
+        }
+      }
       
-      addDebugLog(`🌍 Miljö: ${isLocalhost ? 'Localhost' : isProduction ? 'Produktion (iPad Bridge)' : 'Utveckling'}`, 'info')
+      // Fallback till backend API
+      addDebugLog('🔄 Prövar backend API...', 'info')
+      try {
+        const backendSuccess = await printBackendReceipt(order)
+        if (backendSuccess) {
+          addDebugLog('✅ Backend utskrift framgångsrik', 'success')
+          return { success: true, method: 'backend_api' }
+        } else {
+          throw new Error('Backend utskrift misslyckades')
+        }
+      } catch (error) {
+        addDebugLog(`❌ Backend utskrift misslyckades: ${error.message}`, 'error')
+        return { success: false, error: error.message }
+      }
+      
+    } catch (error) {
+      addDebugLog(`❌ Automatisk hybrid utskrift fel: ${error.message}`, 'error')
+      return { success: false, error: error.message }
+    }
+  }
+
+  // Print Receipt using Hybrid System - WebSocket + Backend Proxy Fallback
+  const printEPOSReceipt = async (order, showModal = false) => {
+    addDebugLog(`🖨️ Startar hybrid utskrift för order #${order.order_number} (Modal: ${showModal ? 'JA' : 'NEJ'})`, 'info')
+    
+    try {
+      // Om showModal är false, kör automatisk utskrift utan modal
+      if (!showModal) {
+        return await performAutomaticHybridPrint(order)
+      }
+      
+      // Öppna hybrid printer modal för manuell utskrift
+      setHybridPrintOrder(order)
+      setShowHybridPrinter(true)
+      
+      addDebugLog('🔄 Hybrid printer modal öppnad för manuell utskrift', 'info')
 
               // Production mode - prioritize frontend ePOS for local network printers
         if (isProduction) {
@@ -3320,9 +3368,9 @@ Utvecklad av Skaply
 
       // Simulator mode
       if (!printerSettings.enabled || printerSettings.debugMode) {
-        const receipt = generateMockEPOSReceipt(order)
-        simulatePrintReceipt(receipt, order)
-        return
+        const receipt = generateMockEPOSReceipt(order);
+        simulatePrintReceipt(receipt, order);
+        return;
       }
 
       // Choose print method based on settings
@@ -3498,12 +3546,12 @@ Utvecklad av Skaply
       })
       
     } catch (error) {
-      addDebugLog(`❌ Kritiskt fel vid utskrift: ${error.message}`, 'error')
-      setPrinterStatus(prev => ({ ...prev, error: error.message }))
+      addDebugLog(`❌ Kritiskt fel vid utskrift: ${error.message}`, 'error');
+      setPrinterStatus(prev => ({ ...prev, error: error.message }));
       
       // Fallback to simulator
-      const receipt = generateMockEPOSReceipt(order)
-      simulatePrintReceipt(receipt, order)
+      const receipt = generateMockEPOSReceipt(order);
+      simulatePrintReceipt(receipt, order);
     }
   }
 
@@ -3676,7 +3724,7 @@ Utvecklad av Skaply
         .from('orders')
         .select(`
           *,
-          profiles:customer_id (
+          profiles:user_id (
             id,
             name,
             email,
@@ -4689,15 +4737,27 @@ Utvecklad av Skaply
                               <p className="text-orange-300 text-sm">
                                 {order.notes}
                               </p>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })()}
+                                    )}
+      </div>
+      
+      {/* Hybrid Printer Modal */}
+      <HybridPrinterModal
+        isOpen={showHybridPrinter}
+        onClose={() => {
+          setShowHybridPrinter(false)
+          setHybridPrintOrder(null)
+        }}
+        order={hybridPrintOrder}
+        printerIP={printerSettings.printerIP}
+        location={selectedLocation}
+      />
+    </div>
+  )
+})()}
 
                     <div className="space-y-3 mb-4">
                       {/* Status Actions */}
-                      {(order.status === 'pending' || order.status === 'ready') && (
+                      {(order.status === 'pending' || order.status === 'ready' || order.status === 'confirmed' || order.status === 'preparing') && (
                         <div className="flex flex-col sm:flex-row gap-2">
                           {order.status === 'pending' && (
                             <Button 
@@ -4717,6 +4777,18 @@ Utvecklad av Skaply
                             >
                               <Truck className="h-4 w-4 mr-2" />
                               🚚 Levererad
+                            </Button>
+                          )}
+                          
+                          {/* Levererat-knapp för alla statusar utom delivered */}
+                          {order.status !== 'delivered' && order.status !== 'cancelled' && (
+                            <Button 
+                              size="sm" 
+                              onClick={() => updateOrderStatus(order.id, 'delivered')}
+                              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium shadow-lg w-full sm:w-auto"
+                            >
+                              <Truck className="h-4 w-4 mr-2" />
+                              📦 Markera som levererad
                             </Button>
                           )}
                         </div>
@@ -4971,6 +5043,65 @@ Utvecklad av Skaply
                     />
                   </div>
 
+                  {/* Hybrid Printing Section */}
+                  <div className="border-t border-[#e4d699]/20 pt-4 mt-4">
+                    <h3 className="text-[#e4d699] font-semibold text-sm sm:text-base mb-3">🔄 Hybrid Utskrift</h3>
+                    <div className="space-y-3">
+                      <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                          <span className="text-blue-200 font-medium text-sm">Nytt Hybrid System</span>
+                        </div>
+                        <p className="text-blue-100/80 text-xs leading-relaxed">
+                          Testar automatiskt alla portar (80, 443, 9100, 8080, 8443) och använder backend proxy som fallback. 
+                          Alla försök loggas i Supabase för felsökning.
+                        </p>
+                      </div>
+                      
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Button
+                          onClick={() => {
+                            if (hybridPrintOrder) {
+                              setShowHybridPrinter(true)
+                              addDebugLog('Hybrid printer modal öppnad manuellt', 'info')
+                            } else {
+                              // Skapa en test-order för demonstration
+                              const testOrder = {
+                                id: 'test-hybrid-' + Date.now(),
+                                order_number: 'TEST-' + Math.floor(Math.random() * 1000),
+                                customer_name: 'Test Kund',
+                                customer_phone: '070-123456',
+                                total_amount: 299,
+                                delivery_method: 'Avhämtning',
+                                items: [
+                                  { name: 'California Roll', quantity: 1, price: 149 },
+                                  { name: 'Lax Sashimi', quantity: 1, price: 150 }
+                                ]
+                              }
+                              setHybridPrintOrder(testOrder)
+                              setShowHybridPrinter(true)
+                              addDebugLog('Test hybrid utskrift startad', 'info')
+                            }
+                          }}
+                          className="bg-blue-600 hover:bg-blue-700 text-white text-sm"
+                          disabled={printerSettings.debugMode}
+                        >
+                          🔄 Testa Hybrid Utskrift
+                        </Button>
+                        
+                        <Button
+                          onClick={() => {
+                            window.open('/api/admin/print-logs', '_blank')
+                          }}
+                          variant="outline"
+                          className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10 text-sm"
+                        >
+                          📊 Visa Print Logs
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label className="text-white font-medium text-sm sm:text-base">Utskriftsmetod</Label>
@@ -5099,7 +5230,7 @@ Utvecklad av Skaply
                           delivery_type: 'delivery',
                           created_at: new Date().toISOString()
                         }
-                        printEPOSReceipt(testOrder)
+                        printEPOSReceipt(testOrder, true)
                       }}
                       variant="outline"
                       className="border-green-500/40 text-green-400 hover:bg-green-500/10 text-xs sm:text-sm"
@@ -5197,6 +5328,70 @@ Utvecklad av Skaply
                 </CardContent>
               </Card>
 
+              {/* Hybrid System Debug Log */}
+              <Card className="border border-blue-500/30 bg-blue-900/10">
+                <CardHeader>
+                  <CardTitle className="text-lg text-blue-300 flex items-center gap-2">
+                    🔄 Hybrid System Debug
+                    <Badge variant="outline" className="border-blue-500/50 text-blue-300">
+                      Live
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-black/50 border border-blue-500/20 rounded-lg p-4 max-h-60 overflow-y-auto">
+                    {(() => {
+                      const hybridLogs = debugLogs.filter(log => 
+                        log.message.includes('hybrid') || 
+                        log.message.includes('Hybrid') ||
+                        log.message.includes('🔄') ||
+                        log.message.includes('🤖') ||
+                        log.message.includes('Modal')
+                      )
+                      
+                      if (hybridLogs.length === 0) {
+                        return (
+                          <p className="text-blue-300/50 text-sm">
+                            Ingen hybrid-aktivitet än... Testa "🔄 Testa Hybrid Utskrift" för att se loggar.
+                          </p>
+                        )
+                      }
+                      
+                      return (
+                        <div className="space-y-2">
+                          {hybridLogs.map((log) => (
+                            <div key={log.id} className="flex items-start gap-3 text-sm">
+                              <span className="text-blue-300/50 text-xs whitespace-nowrap">
+                                {log.timestamp}
+                              </span>
+                              <span className={`text-xs px-2 py-1 rounded whitespace-nowrap ${
+                                log.type === 'error' ? 'bg-red-500/20 text-red-400' :
+                                log.type === 'warning' ? 'bg-orange-500/20 text-orange-400' :
+                                log.type === 'success' ? 'bg-green-500/20 text-green-400' :
+                                'bg-blue-500/20 text-blue-400'
+                              }`}>
+                                {log.type.toUpperCase()}
+                              </span>
+                              <span className="text-blue-100/90 flex-1">
+                                {log.message}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
+                  </div>
+                  
+                  <div className="mt-3 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+                    <p className="text-blue-200/80 text-xs leading-relaxed">
+                      <strong>Hybrid System Info:</strong> Automatisk utskrift använder inte modal-fönstret. 
+                      Endast manuell utskrift via "🔄 Testa Hybrid Utskrift" öppnar modalen. 
+                      Alla hybrid-försök loggas här för enkel felsökning.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Instructions */}
               <Card className="border border-[#e4d699]/30 bg-black/30">
                 <CardHeader>
@@ -5208,11 +5403,22 @@ Utvecklad av Skaply
                     <ol className="list-decimal list-inside space-y-1 ml-4">
                       <li>Anslut TM-M30III till WiFi-nätverket</li>
                       <li>Hitta skrivarens IP-adress (tryck Feed-knappen vid uppstart)</li>
-                      <li>Ange IP-adressen ovan (standard port: 8008)</li>
+                      <li>Ange IP-adressen ovan (standard port: 80)</li>
                       <li>Stäng av Debug-läge</li>
                       <li>Aktivera ePOS-utskrift</li>
                       <li>Testa anslutningen</li>
                     </ol>
+                  </div>
+                  
+                  <div>
+                    <h4 className="text-white font-medium mb-2">🔄 Hybrid Utskrift System:</h4>
+                    <ul className="list-disc list-inside space-y-1 ml-4">
+                      <li><strong>Automatisk utskrift:</strong> Kör i bakgrunden utan modal-fönster</li>
+                      <li><strong>Manuell utskrift:</strong> Visar hybrid-modal med detaljerad status</li>
+                      <li><strong>Felsökning:</strong> Kolla "Hybrid System Debug" för live-loggar</li>
+                      <li><strong>Fallback:</strong> Försöker lokal ePOS först, sedan backend API</li>
+                      <li><strong>Logging:</strong> Alla försök sparas i Supabase för analys</li>
+                    </ul>
                   </div>
                   
                   <div>
