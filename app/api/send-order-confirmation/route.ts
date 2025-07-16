@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendOrderConfirmationSendGrid } from '@/lib/sendgrid-service'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +13,29 @@ export async function POST(request: NextRequest) {
         success: false,
         error: 'Saknade obligatoriska fält: customerEmail, customerName, orderNumber'
       }, { status: 400 })
+    }
+
+    // Kolla om email redan skickats för denna order
+    if (body.orderId) {
+      const { data: existingOrder, error: checkError } = await supabaseAdmin
+        .from('orders')
+        .select('email_sent, email_sent_at, email_message_id')
+        .eq('id', body.orderId)
+        .single()
+
+      if (checkError) {
+        console.error('❌ Error checking existing order:', checkError)
+      } else if (existingOrder?.email_sent) {
+        console.log('⚠️ Email already sent for order:', body.orderId, 'at:', existingOrder.email_sent_at)
+        return NextResponse.json({
+          success: false,
+          error: 'Email redan skickad för denna order',
+          details: {
+            email_sent_at: existingOrder.email_sent_at,
+            message_id: existingOrder.email_message_id
+          }
+        }, { status: 409 }) // 409 Conflict
+      }
     }
 
     // SendGrid förväntar sig ett specifikt format
@@ -43,6 +67,25 @@ export async function POST(request: NextRequest) {
 
     if (result.success) {
       console.log('✅ Order confirmation sent successfully via SendGrid')
+      
+      // Markera order som email skickad om orderId finns
+      if (body.orderId) {
+        const { error: updateError } = await supabaseAdmin
+          .from('orders')
+          .update({ 
+            email_sent: true,
+            email_sent_at: new Date().toISOString(),
+            email_message_id: result.messageId || 'sendgrid-sent'
+          })
+          .eq('id', body.orderId)
+
+        if (updateError) {
+          console.error('❌ Error updating order email status:', updateError)
+        } else {
+          console.log('✅ Order email status updated for order:', body.orderId)
+        }
+      }
+      
       return NextResponse.json({
         success: true,
         message: 'Orderbekräftelse skickad via SendGrid',

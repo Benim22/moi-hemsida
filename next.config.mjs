@@ -15,7 +15,10 @@ const nextConfig = {
     parallelServerCompiles: true,
   },
   // Security headers to fix "INTE SÄKER" warnings
+  // NOTE: 'unsafe-eval' is needed for ePOS SDK and some third-party libraries
   async headers() {
+    const isDev = process.env.NODE_ENV === 'development'
+    
     return [
       {
         source: '/(.*)',
@@ -24,7 +27,9 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live https://maps.googleapis.com https://www.googletagmanager.com https://static.elfsight.com",
+              isDev 
+                ? "script-src 'self' 'unsafe-eval' 'unsafe-inline' https: http: data: blob:"
+                : "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live https://maps.googleapis.com https://www.googletagmanager.com https://static.elfsight.com data:",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "img-src 'self' data: blob: https: http:",
               "font-src 'self' https://fonts.gstatic.com",

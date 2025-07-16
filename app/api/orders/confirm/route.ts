@@ -78,6 +78,19 @@ export async function POST(request: NextRequest) {
         order_id: orderId,
         order_number: order.order_number
       })
+
+      // DUPLICERINGSSKYDD: Kolla om email redan skickats
+      if (order.email_sent) {
+        console.log('⚠️ Email already sent for order:', orderId, 'at:', order.email_sent_at)
+        return NextResponse.json({
+          success: false,
+          message: 'Email redan skickad för denna order',
+          details: {
+            email_sent_at: order.email_sent_at,
+            message_id: order.email_message_id
+          }
+        }, { status: 409 }) // 409 Conflict
+      }
       
       const emailData = {
         customerName: order.customer_name || order.profiles?.name || 'Kära kund',
