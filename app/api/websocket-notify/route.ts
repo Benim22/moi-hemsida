@@ -38,9 +38,13 @@ export async function POST(request: NextRequest) {
         endpoint = '/send-status-update'
         break
       
+      case 'print-event':
+        endpoint = '/send-print-event'
+        break
+      
       default:
         return NextResponse.json(
-          { error: 'Ogiltig typ. Använd: order, booking, status-update' },
+          { error: 'Ogiltig typ. Använd: order, booking, status-update, print-event' },
           { status: 400 }
         )
     }
@@ -93,7 +97,7 @@ export async function GET() {
     message: 'WebSocket notification endpoint',
     endpoints: {
       POST: 'Skicka notifikation till WebSocket server',
-      types: ['order', 'booking', 'status-update']
+      types: ['order', 'booking', 'status-update', 'print-event']
     },
     websocketServerUrl: WEBSOCKET_SERVER_URL
   })

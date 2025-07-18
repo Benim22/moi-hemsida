@@ -277,6 +277,50 @@ app.get('/stats', (req, res) => {
   });
 });
 
+// API-endpoint för att skicka print-events
+app.post('/send-print-event', (req, res) => {
+  const printEvent = req.body;
+  
+  if (!printEvent || !printEvent.order_id || !printEvent.location) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Print event, order ID och location krävs' 
+    });
+  }
+  
+  connectionStats.messagesSent++;
+  connectionStats.lastActivity = new Date();
+  
+  const location = printEvent.location;
+  const connectedCount = connectedTerminals.get(location)?.size || 0;
+  
+  log('info', `Skickar print-event för order ${printEvent.order_number} till ${location}:`, { 
+    connectedTerminals: connectedCount,
+    printedBy: printEvent.printed_by 
+  });
+  
+  // Skicka till alla terminaler för denna plats
+  if (connectedTerminals.has(location)) {
+    connectedTerminals.get(location).forEach(socketId => {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) {
+        socket.emit('print-event', {
+          ...printEvent,
+          timestamp: new Date().toISOString(),
+          serverTime: Date.now()
+        });
+      }
+    });
+  }
+  
+  res.json({ 
+    success: true, 
+    location,
+    connectedTerminals: connectedCount,
+    messageId: `print-${printEvent.order_id}-${Date.now()}`
+  });
+});
+
 // Test endpoint
 app.get('/test', (req, res) => {
   res.json({

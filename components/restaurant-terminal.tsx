@@ -225,6 +225,20 @@ export default function RestaurantTerminal() {
       setWsLastMessage({ type: 'status', data: update, timestamp: new Date() })
     })
 
+    socket.on('print-event', (printEvent) => {
+      addDebugLog(`🖨️ Print-event mottaget: Order ${printEvent.order_number} utskriven av ${printEvent.printed_by}`, 'info')
+      setWsLastMessage({ type: 'print', data: printEvent, timestamp: new Date() })
+      
+      // Visa notifikation om att någon annan har skrivit ut
+      if (printEvent.printed_by !== (profile?.email || 'Okänd användare')) {
+        showBrowserNotification(
+          '🖨️ Kvitto utskrivet av kollega',
+          `Order #${printEvent.order_number} utskrivet av ${printEvent.printed_by}`,
+          false
+        )
+      }
+    })
+
     socket.on('error', (error) => {
       addDebugLog(`WebSocket fel: ${error.message}`, 'error')
     })
@@ -269,12 +283,18 @@ export default function RestaurantTerminal() {
       // Lägg till i autoPrintedOrders för att förhindra dubblering
       setAutoPrintedOrders(prev => new Set([...prev, order.id]))
       
-      // Skriv ut order automatiskt (utan modal)
-      await printEPOSReceipt(order, false)
+      addDebugLog(`🔔 WebSocket: Ny order ${order.order_number} mottagen`, 'info')
+      addDebugLog(`🖨️ Startar automatisk TCP-utskrift för order ${order.id}`, 'info')
       
-      addDebugLog(`WebSocket order ${order.id} utskriven automatiskt`, 'success')
+      // Skriv ut order automatiskt via TCP (utan modal)
+      await printTCPReceipt(order)
+      
+      // Skicka print-event till andra terminaler (automatisk utskrift)
+      await sendPrintEvent(order, 'automatic')
+      
+      addDebugLog(`✅ WebSocket order ${order.order_number} utskriven automatiskt via TCP`, 'success')
     } catch (error) {
-      addDebugLog(`Fel vid WebSocket utskrift: ${error.message}`, 'error')
+      addDebugLog(`❌ Fel vid WebSocket TCP-utskrift: ${error.message}`, 'error')
     }
   }
 
@@ -282,6 +302,41 @@ export default function RestaurantTerminal() {
   const pingWebSocket = () => {
     if (socketRef.current?.connected) {
       socketRef.current.emit('ping')
+    }
+  }
+
+  // Skicka print-event till andra terminaler
+  const sendPrintEvent = async (order, printType = 'manual') => {
+    try {
+      const printEvent = {
+        type: 'print-event',
+        data: {
+          order_id: order.id,
+          order_number: order.order_number,
+          printed_by: profile?.email || 'Okänd användare',
+          printed_at: new Date().toISOString(),
+          print_type: printType, // 'manual' or 'automatic'
+          location: order.location || profile?.location,
+          terminal_id: `terminal-${Date.now()}`
+        }
+      }
+
+      // Skicka via WebSocket för real-time uppdatering
+      const response = await fetch('/api/websocket-notify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(printEvent)
+      })
+
+      if (response.ok) {
+        addDebugLog(`📡 Print-event skickat för order ${order.order_number}`, 'info')
+      } else {
+        addDebugLog(`❌ Kunde inte skicka print-event för order ${order.order_number}`, 'warning')
+      }
+    } catch (error) {
+      addDebugLog(`❌ Fel vid skickande av print-event: ${error.message}`, 'error')
     }
   }
 
@@ -2969,6 +3024,9 @@ Utvecklad av Skaply
       
       // Use direct TCP printing
       await printTCPReceipt(order)
+      
+      // Skicka print-event till andra terminaler
+      await sendPrintEvent(order, 'manual')
       
       addDebugLog(`✅ TCP-utskrift framgångsrik för order #${order.order_number}`, 'success')
       showBrowserNotification(
