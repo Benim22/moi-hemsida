@@ -2952,7 +2952,7 @@ Utvecklad av Skaply
     return discoveredPrinters
   }
 
-  // Print using optimal method (frontend ePOS first, then backend) with loading state
+  // Print using TCP directly to 192.168.1.103:9100
   const printBackendReceiptWithLoading = async (order) => {
     // Check if already printing
     if (printingOrders.has(order.id)) {
@@ -2964,20 +2964,21 @@ Utvecklad av Skaply
     setPrintingOrders(prev => new Set([...prev, order.id]))
     
     try {
-      addDebugLog(`🖨️ Manuell utskrift för order #${order.order_number}`, 'info')
+      addDebugLog(`🖨️ Startar TCP-utskrift för order #${order.order_number}`, 'info')
+      addDebugLog(`📡 Ansluter till TCP-skrivare: 192.168.1.103:9100`, 'info')
       
-      // Use the same logic as automatic printing (frontend ePOS first) - men öppna modal för manuell utskrift
-      await printEPOSReceipt(order, true)
+      // Use direct TCP printing
+      await printTCPReceipt(order)
       
-      addDebugLog(`✅ Manuell utskrift framgångsrik för order #${order.order_number}`, 'success')
+      addDebugLog(`✅ TCP-utskrift framgångsrik för order #${order.order_number}`, 'success')
       showBrowserNotification(
         '🖨️ Kvitto utskrivet!', 
-        `Order #${order.order_number} utskrivet framgångsrikt`,
+        `Order #${order.order_number} utskrivet via TCP`,
         false
       )
       return true
     } catch (error) {
-      addDebugLog(`❌ Manuell utskrift misslyckades: ${error.message}`, 'error')
+      addDebugLog(`❌ TCP-utskrift misslyckades: ${error.message}`, 'error')
       setPrinterStatus(prev => ({ ...prev, error: error.message }))
       return false
     } finally {
@@ -2987,6 +2988,49 @@ Utvecklad av Skaply
         newSet.delete(order.id)
         return newSet
       })
+    }
+  }
+
+  // Print using TCP directly to 192.168.1.103:9100
+  const printTCPReceipt = async (order) => {
+    addDebugLog(`🖨️ TCP-utskrift för order #${order.order_number}`, 'info')
+    
+    try {
+      // Prepare receipt data
+      const items = order.cart_items || order.items
+      const itemsArray = typeof items === 'string' ? JSON.parse(items) : items || []
+      
+      addDebugLog(`📄 Kvitto data förberett: ${itemsArray.length} produkter`, 'info')
+      addDebugLog(`💰 Totalt: ${order.total_price || order.amount} kr`, 'info')
+
+      const response = await fetch('/api/printer/tcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          printerIP: '192.168.1.103',
+          port: 9100,
+          order: order
+        })
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        addDebugLog(`✅ TCP-utskrift framgångsrik för order #${order.order_number}`, 'success')
+        addDebugLog(`🖨️ Kvitto skickat till 192.168.1.103:9100`, 'success')
+        setPrinterStatus(prev => ({ ...prev, lastTest: new Date(), error: null, connected: true }))
+        return true
+      } else {
+        addDebugLog(`❌ TCP-utskrift misslyckades: ${result.error}`, 'error')
+        setPrinterStatus(prev => ({ ...prev, error: result.error, connected: false }))
+        return false
+      }
+    } catch (error) {
+      addDebugLog(`❌ TCP API-fel vid utskrift: ${error.message}`, 'error')
+      setPrinterStatus(prev => ({ ...prev, error: error.message, connected: false }))
+      return false
     }
   }
 
@@ -4809,10 +4853,10 @@ Utvecklad av Skaply
                           }`}
                           title={
                             printingOrders.has(order.id) 
-                              ? 'Skriver ut kvitto...'
+                              ? 'Skriver ut kvitto via TCP...'
                               : printerSettings.enabled 
-                                ? 'Skriv ut kvitto via frontend ePOS (direkt till skrivare)' 
-                                : 'Skrivare inte aktiverad'
+                                ? 'Skriv ut kvitto via TCP (192.168.1.103:9100)' 
+                                : 'TCP-skrivare inte aktiverad'
                           }
                         >
                           {printingOrders.has(order.id) ? (
@@ -4990,173 +5034,12 @@ Utvecklad av Skaply
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 sm:space-y-6">
-              {/* Printer Configuration */}
+              {/* TCP Printer Settings */}
               <Card className="border border-[#e4d699]/30 bg-black/30">
                 <CardHeader>
-                  <CardTitle className="text-base sm:text-lg text-[#e4d699]">⚙️ Skrivarkonfiguration</CardTitle>
+                  <CardTitle className="text-base sm:text-lg text-[#e4d699]">🖨️ TCP Skrivarinställningar</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
-                    <div className="flex-1">
-                      <Label className="text-white font-medium text-sm sm:text-base">Aktivera ePOS-utskrift</Label>
-                      <p className="text-white/60 text-xs sm:text-sm">Slå på/av termisk kvittoutskrift</p>
-                    </div>
-                    <Switch
-                      checked={printerSettings.enabled}
-                      onCheckedChange={(checked) => {
-                        setPrinterSettings(prev => ({ ...prev, enabled: checked }))
-                        addDebugLog(`ePOS-utskrift ${checked ? 'aktiverad' : 'avaktiverad'}`, checked ? 'success' : 'warning')
-                      }}
-                    />
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
-                    <div className="flex-1">
-                      <Label className="text-white font-medium text-sm sm:text-base">Automatisk utskrift</Label>
-                      <p className="text-white/60 text-xs sm:text-sm">Skriv ut kvitton automatiskt för nya beställningar</p>
-                    </div>
-                    <Switch
-                      checked={printerSettings.autoprintEnabled}
-                      onCheckedChange={(checked) => {
-                        setPrinterSettings(prev => ({ ...prev, autoprintEnabled: checked }))
-                        addDebugLog(`Automatisk utskrift ${checked ? 'aktiverad' : 'avaktiverad'}`, checked ? 'success' : 'warning')
-                      }}
-                      disabled={!printerSettings.enabled}
-                    />
-                  </div>
-
-
-
-
-
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
-                    <div className="flex-1">
-                      <Label className="text-white font-medium text-sm sm:text-base">Debug-läge (Simulator)</Label>
-                      <p className="text-white/60 text-xs sm:text-sm">Använd simulator istället för riktig skrivare</p>
-                    </div>
-                    <Switch
-                      checked={printerSettings.debugMode}
-                      onCheckedChange={(checked) => {
-                        setPrinterSettings(prev => ({ ...prev, debugMode: checked }))
-                        addDebugLog(`Debug-läge ${checked ? 'aktiverat' : 'avaktiverat'}`, checked ? 'warning' : 'info')
-                      }}
-                    />
-                  </div>
-
-                  {/* Hybrid Printing Section */}
-                  <div className="border-t border-[#e4d699]/20 pt-4 mt-4">
-                    <h3 className="text-[#e4d699] font-semibold text-sm sm:text-base mb-3">🔄 Hybrid Utskrift</h3>
-                    <div className="space-y-3">
-                      <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3">
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                          <span className="text-blue-200 font-medium text-sm">Nytt Hybrid System</span>
-                        </div>
-                        <p className="text-blue-100/80 text-xs leading-relaxed">
-                          Testar automatiskt alla portar (80, 443, 9100, 8080, 8443) och använder backend proxy som fallback. 
-                          Alla försök loggas i Supabase för felsökning.
-                        </p>
-                      </div>
-                      
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <Button
-                          onClick={() => {
-                            if (hybridPrintOrder) {
-                              setShowHybridPrinter(true)
-                              addDebugLog('Hybrid printer modal öppnad manuellt', 'info')
-                            } else {
-                              // Skapa en test-order för demonstration
-                              const testOrder = {
-                                id: 'test-hybrid-' + Date.now(),
-                                order_number: 'TEST-' + Math.floor(Math.random() * 1000),
-                                customer_name: 'Test Kund',
-                                customer_phone: '070-123456',
-                                total_amount: 299,
-                                delivery_method: 'Avhämtning',
-                                items: [
-                                  { name: 'California Roll', quantity: 1, price: 149 },
-                                  { name: 'Lax Sashimi', quantity: 1, price: 150 }
-                                ]
-                              }
-                              setHybridPrintOrder(testOrder)
-                              setShowHybridPrinter(true)
-                              addDebugLog('Test hybrid utskrift startad', 'info')
-                            }
-                          }}
-                          className="bg-blue-600 hover:bg-blue-700 text-white text-sm"
-                          disabled={printerSettings.debugMode}
-                        >
-                          🔄 Testa Hybrid Utskrift
-                        </Button>
-                        
-                        <Button
-                          onClick={() => {
-                            window.open('/api/admin/print-logs', '_blank')
-                          }}
-                          variant="outline"
-                          className="border-[#e4d699]/30 text-[#e4d699] hover:bg-[#e4d699]/10 text-sm"
-                        >
-                          📊 Visa Print Logs
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-white font-medium text-sm sm:text-base">Utskriftsmetod</Label>
-                      <select
-                        value={printerSettings.printMethod}
-                        onChange={(e) => {
-                          setPrinterSettings(prev => ({ ...prev, printMethod: e.target.value }))
-                          addDebugLog(`Utskriftsmetod ändrad till: ${e.target.value}`, 'info')
-                        }}
-                        className="bg-black/50 border border-[#e4d699]/30 rounded-md px-3 py-2 text-white text-sm w-full"
-                        disabled={printerSettings.debugMode}
-                      >
-                        <option value="backend">Backend (Node.js TCP)</option>
-                        <option value="frontend">Frontend (ePOS SDK)</option>
-                      </select>
-                      <p className="text-white/60 text-xs mt-1">
-                        {printerSettings.printMethod === 'backend' 
-                          ? 'Använder node-thermal-printer via TCP' 
-                          : 'Använder Epson ePOS SDK via HTTP'
-                        }
-                      </p>
-                    </div>
-                    <div>
-                      <Label className="text-white font-medium text-sm sm:text-base">Anslutningstyp</Label>
-                      <select
-                        value={printerSettings.connectionType}
-                        onChange={(e) => {
-                          const newType = e.target.value
-                          let newPort = '80' // Default to HTTP
-                          
-                          if (newType === 'tcp') {
-                            newPort = '9100' // Raw TCP port
-                          } else if (newType === 'wifi') {
-                            newPort = '80' // HTTP port for ePOS-Print
-                          } else if (newType === 'bluetooth') {
-                            newPort = '80' // Default port for Bluetooth
-                          }
-                          
-                          setPrinterSettings(prev => ({ 
-                            ...prev, 
-                            connectionType: newType,
-                            printerPort: newPort
-                          }))
-                          addDebugLog(`Anslutningstyp ändrad till: ${newType} (port: ${newPort})`, 'info')
-                        }}
-                        className="bg-black/50 border border-[#e4d699]/30 rounded-md px-3 py-2 text-white text-sm w-full"
-                        disabled={printerSettings.debugMode}
-                      >
-                        <option value="tcp">TCP (Port 9100) - Direkt kommunikation</option>
-                        <option value="wifi">Wi-Fi HTTP (Port 80) - ePOS-Print</option>
-                        <option value="bluetooth">Bluetooth</option>
-                      </select>
-                    </div>
-                  </div>
-
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label className="text-white font-medium text-sm sm:text-base">Skrivare IP-adress</Label>
@@ -5164,73 +5047,145 @@ Utvecklad av Skaply
                         value={printerSettings.printerIP}
                         onChange={(e) => {
                           setPrinterSettings(prev => ({ ...prev, printerIP: e.target.value }))
-                          addDebugLog(`Skrivare IP uppdaterad: ${e.target.value}`, 'info')
+                          addDebugLog(`TCP Skrivare IP uppdaterad: ${e.target.value}`, 'info')
                         }}
                         placeholder="192.168.1.100"
                         className="bg-black/50 border-[#e4d699]/30 text-white text-sm"
-                        disabled={printerSettings.debugMode}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-white font-medium text-sm sm:text-base">Port</Label>
-                      <Input
-                        value={printerSettings.printerPort}
-                        onChange={(e) => {
-                          setPrinterSettings(prev => ({ ...prev, printerPort: e.target.value }))
-                          addDebugLog(`Skrivare port uppdaterad: ${e.target.value}`, 'info')
-                        }}
-                        placeholder={printerSettings.connectionType === 'tcp' ? '9100' : '80'}
-                        className="bg-black/50 border-[#e4d699]/30 text-white text-sm"
-                        disabled={printerSettings.debugMode}
                       />
                       <p className="text-white/60 text-xs mt-1">
-                        {printerSettings.connectionType === 'tcp' 
-                          ? 'Standard TCP port för thermal printers' 
-                          : 'Standard HTTP port för ePOS'
-                        }
+                        IP-adress till TCP-skrivaren
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-white font-medium text-sm sm:text-base">TCP Port</Label>
+                      <Input
+                        value={printerSettings.printerPort || '9100'}
+                        onChange={(e) => {
+                          setPrinterSettings(prev => ({ ...prev, printerPort: e.target.value }))
+                          addDebugLog(`TCP Port uppdaterad till: ${e.target.value}`, 'info')
+                        }}
+                        placeholder="9100"
+                        className="bg-black/50 border-[#e4d699]/30 text-white text-sm"
+                      />
+                      <p className="text-white/60 text-xs mt-1">
+                        Standard TCP port för termiska skrivare (9100)
                       </p>
                     </div>
                   </div>
 
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
+                    <div className="flex-1">
+                      <Label className="text-white font-medium text-sm sm:text-base">Aktivera TCP-utskrift</Label>
+                      <p className="text-white/60 text-xs sm:text-sm">Slå på/av TCP kvittoutskrift på port 9100</p>
+                    </div>
+                    <Switch
+                      checked={printerSettings.enabled}
+                      onCheckedChange={(checked) => {
+                        setPrinterSettings(prev => ({ ...prev, enabled: checked }))
+                        addDebugLog(`TCP-utskrift ${checked ? 'aktiverad' : 'avaktiverad'}`, checked ? 'success' : 'warning')
+                      }}
+                    />
+                  </div>
+
                   <div className="flex flex-col sm:flex-row gap-2">
                     <Button
-                      onClick={testPrinterConnection}
+                      onClick={async () => {
+                        const ip = printerSettings.printerIP || '192.168.1.103'
+                        const port = printerSettings.printerPort || '9100'
+                        
+                        addDebugLog(`🔍 Startar TCP-anslutningstest...`, 'info')
+                        addDebugLog(`📡 Försöker ansluta till ${ip}:${port}`, 'info')
+                        
+                        // Test actual TCP connection
+                        try {
+                          const response = await fetch('/api/printer/tcp', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                              printerIP: ip,
+                              port: parseInt(port),
+                              order: {
+                                order_number: 'CONNECTION-TEST',
+                                customer_name: 'Test',
+                                created_at: new Date().toISOString(),
+                                cart_items: [],
+                                total_price: 0,
+                                delivery_type: 'pickup'
+                              }
+                            })
+                          })
+                          
+                          if (response.ok) {
+                            addDebugLog(`✅ TCP-anslutning framgångsrik till ${ip}:${port}`, 'success')
+                            setPrinterStatus(prev => ({ ...prev, connected: true, lastTest: new Date(), error: null }))
+                          } else {
+                            addDebugLog(`❌ TCP-anslutning misslyckades`, 'error')
+                            setPrinterStatus(prev => ({ ...prev, connected: false, error: 'Anslutning misslyckades' }))
+                          }
+                        } catch (error) {
+                          addDebugLog(`❌ TCP-anslutning fel: ${error.message}`, 'error')
+                          setPrinterStatus(prev => ({ ...prev, connected: false, error: error.message }))
+                        }
+                      }}
                       variant="outline"
                       className="border-blue-500/40 text-blue-400 hover:bg-blue-500/10 text-xs sm:text-sm"
                       disabled={!printerSettings.enabled}
                       size="sm"
                     >
                       <Wifi className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                      <span className="hidden sm:inline">Testa anslutning</span>
-                      <span className="sm:hidden">Test</span>
+                      Testa TCP-anslutning
                     </Button>
                     
                     <Button
-                      onClick={discoverNetworkPrinters}
-                      variant="outline"
-                      className="border-purple-500/40 text-purple-400 hover:bg-purple-500/10 text-xs sm:text-sm"
-                      size="sm"
-                    >
-                      <Search className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                      <span className="hidden sm:inline">Sök skrivare</span>
-                      <span className="sm:hidden">Sök</span>
-                    </Button>
-                    
-                    <Button
-                      onClick={() => {
+                      onClick={async () => {
+                        const ip = printerSettings.printerIP || '192.168.1.103'
+                        const port = printerSettings.printerPort || '9100'
+                        
                         const testOrder = {
-                          order_number: 'TEST-' + Date.now(),
-                          customer_name: 'Test Kund',
+                          order_number: 'TCP-TEST-' + Date.now(),
+                          customer_name: 'TCP Test Kund',
                           phone: '070-123 45 67',
                           cart_items: [
-                            { name: 'Test Sushi', quantity: 2, price: 89, extras: [{ name: 'Extra wasabi', price: 10 }] },
-                            { name: 'Test Pokébowl', quantity: 1, price: 129 }
+                            { name: 'Test TCP Sushi', quantity: 1, price: 99, options: [{ name: 'Extra wasabi' }], extras: [{ name: 'Ingefära', price: 5 }] }
                           ],
-                          total_price: 317,
-                          delivery_type: 'delivery',
-                          created_at: new Date().toISOString()
+                          total_price: 104,
+                          delivery_type: 'pickup',
+                          created_at: new Date().toISOString(),
+                          special_instructions: 'TEST: Allergi mot skaldjur',
+                          notes: 'Detta är ett test av kökskvittot'
                         }
-                        printEPOSReceipt(testOrder, true)
+                        
+                        addDebugLog(`🖨️ Startar TCP-utskriftstest...`, 'info')
+                        addDebugLog(`📄 Kvitto: ${testOrder.order_number}`, 'info')
+                        addDebugLog(`📡 Skickar till TCP-skrivare på ${ip}:${port}`, 'info')
+                        
+                        // Test actual TCP print
+                        try {
+                          const response = await fetch('/api/printer/tcp', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                              printerIP: ip,
+                              port: parseInt(port),
+                              order: testOrder
+                            })
+                          })
+                          
+                          const result = await response.json()
+                          
+                          if (result.success) {
+                            addDebugLog(`✅ TCP-utskrift framgångsrik!`, 'success')
+                            addDebugLog(`📋 Test-kvitto skickat till ${ip}:${port}`, 'success')
+                          } else {
+                            addDebugLog(`❌ TCP-utskrift misslyckades: ${result.error}`, 'error')
+                          }
+                        } catch (error) {
+                          addDebugLog(`❌ TCP-utskrift fel: ${error.message}`, 'error')
+                        }
                       }}
                       variant="outline"
                       className="border-green-500/40 text-green-400 hover:bg-green-500/10 text-xs sm:text-sm"
@@ -5238,68 +5193,32 @@ Utvecklad av Skaply
                       size="sm"
                     >
                       <Printer className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                      <span className="hidden sm:inline">Testa utskrift</span>
-                      <span className="sm:hidden">Print</span>
-                    </Button>
-
-<Button
-                        onClick={clearDebugLogs}
-                      variant="outline"
-                      className="border-red-500/40 text-red-400 hover:bg-red-500/10 text-xs sm:text-sm"
-                      size="sm"
-                    >
-                      <span className="hidden sm:inline">🗑️ Rensa logg</span>
-                      <span className="sm:hidden">🗑️</span>
+                      Testa TCP-utskrift
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* Printer Status */}
-              <Card className="border border-[#e4d699]/30 bg-black/30">
-                <CardHeader>
-                  <CardTitle className="text-lg text-[#e4d699]">📊 Skriverstatus</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-3 h-3 rounded-full ${printerStatus.connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                      <span className="text-white">
-                        {printerStatus.connected ? 'Ansluten' : 'Inte ansluten'}
-                      </span>
-                    </div>
-                    <div className="text-white/60">
-                      <span className="text-white/80">Senaste test:</span><br />
-                      {printerStatus.lastTest ? new Date(printerStatus.lastTest).toLocaleString('sv-SE') : 'Aldrig'}
-                    </div>
-                    <div className="text-white/60">
-                      <span className="text-white/80">Status:</span><br />
-                      {printerStatus.error ? (
-                        <span className="text-red-400">{printerStatus.error}</span>
-                      ) : (
-                        <span className="text-green-400">OK</span>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {printerSettings.debugMode && (
-                    <div className="mt-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg">
-                      <p className="text-orange-300 text-sm">
-                        🎭 <strong>Simulator-läge aktivt:</strong> Alla utskrifter kommer att simuleras och visas i konsolen. 
-                        Perfekt för utveckling när du inte har tillgång till skrivaren.
-                      </p>
-                    </div>
-                  )}
                 </CardContent>
               </Card>
 
               {/* Debug Log */}
               <Card className="border border-[#e4d699]/30 bg-black/30">
                 <CardHeader>
-                  <CardTitle className="text-lg text-[#e4d699]">🐛 Debug-logg</CardTitle>
+                  <CardTitle className="text-lg text-[#e4d699] flex items-center justify-between">
+                    <span>🐛 Debug-logg</span>
+                    <Button
+                      onClick={() => {
+                        setDebugLogs([])
+                        addDebugLog('Debug-logg rensad', 'info')
+                      }}
+                      variant="outline"
+                      className="border-red-500/40 text-red-400 hover:bg-red-500/10 text-xs"
+                      size="sm"
+                    >
+                      🗑️ Rensa
+                    </Button>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="bg-black/50 border border-[#e4d699]/20 rounded-lg p-4 max-h-60 overflow-y-auto">
+                  <div className="bg-black/50 border border-[#e4d699]/20 rounded-lg p-4 max-h-96 overflow-y-auto">
                     {debugLogs.length === 0 ? (
                       <p className="text-white/50 text-sm">Ingen debug-information än...</p>
                     ) : (
@@ -5325,121 +5244,17 @@ Utvecklad av Skaply
                       </div>
                     )}
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* Hybrid System Debug Log */}
-              <Card className="border border-blue-500/30 bg-blue-900/10">
-                <CardHeader>
-                  <CardTitle className="text-lg text-blue-300 flex items-center gap-2">
-                    🔄 Hybrid System Debug
-                    <Badge variant="outline" className="border-blue-500/50 text-blue-300">
-                      Live
-                    </Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="bg-black/50 border border-blue-500/20 rounded-lg p-4 max-h-60 overflow-y-auto">
-                    {(() => {
-                      const hybridLogs = debugLogs.filter(log => 
-                        log.message.includes('hybrid') || 
-                        log.message.includes('Hybrid') ||
-                        log.message.includes('🔄') ||
-                        log.message.includes('🤖') ||
-                        log.message.includes('Modal')
-                      )
-                      
-                      if (hybridLogs.length === 0) {
-                        return (
-                          <p className="text-blue-300/50 text-sm">
-                            Ingen hybrid-aktivitet än... Testa "🔄 Testa Hybrid Utskrift" för att se loggar.
-                          </p>
-                        )
-                      }
-                      
-                      return (
-                        <div className="space-y-2">
-                          {hybridLogs.map((log) => (
-                            <div key={log.id} className="flex items-start gap-3 text-sm">
-                              <span className="text-blue-300/50 text-xs whitespace-nowrap">
-                                {log.timestamp}
-                              </span>
-                              <span className={`text-xs px-2 py-1 rounded whitespace-nowrap ${
-                                log.type === 'error' ? 'bg-red-500/20 text-red-400' :
-                                log.type === 'warning' ? 'bg-orange-500/20 text-orange-400' :
-                                log.type === 'success' ? 'bg-green-500/20 text-green-400' :
-                                'bg-blue-500/20 text-blue-400'
-                              }`}>
-                                {log.type.toUpperCase()}
-                              </span>
-                              <span className="text-blue-100/90 flex-1">
-                                {log.message}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    })()}
-                  </div>
                   
-                  <div className="mt-3 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
-                    <p className="text-blue-200/80 text-xs leading-relaxed">
-                      <strong>Hybrid System Info:</strong> Automatisk utskrift använder inte modal-fönstret. 
-                      Endast manuell utskrift via "🔄 Testa Hybrid Utskrift" öppnar modalen. 
-                      Alla hybrid-försök loggas här för enkel felsökning.
+                  <div className="mt-4 p-3 bg-gray-800/50 border border-gray-600/30 rounded-lg">
+                    <p className="text-gray-300 text-xs leading-relaxed">
+                      <strong>TCP Debug Info:</strong> Här visas all aktivitet relaterad till TCP-skrivaren på port 9100. 
+                      Alla anslutningsförsök, utskrifter och fel loggas här för enkel felsökning.
                     </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Instructions */}
-              <Card className="border border-[#e4d699]/30 bg-black/30">
-                <CardHeader>
-                  <CardTitle className="text-lg text-[#e4d699]">📖 Instruktioner</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm text-white/70">
-                  <div>
-                    <h4 className="text-white font-medium mb-2">🔧 Setup för riktig skrivare:</h4>
-                    <ol className="list-decimal list-inside space-y-1 ml-4">
-                      <li>Anslut TM-M30III till WiFi-nätverket</li>
-                      <li>Hitta skrivarens IP-adress (tryck Feed-knappen vid uppstart)</li>
-                      <li>Ange IP-adressen ovan (standard port: 80)</li>
-                      <li>Stäng av Debug-läge</li>
-                      <li>Aktivera ePOS-utskrift</li>
-                      <li>Testa anslutningen</li>
-                    </ol>
-                  </div>
-                  
-                  <div>
-                    <h4 className="text-white font-medium mb-2">🔄 Hybrid Utskrift System:</h4>
-                    <ul className="list-disc list-inside space-y-1 ml-4">
-                      <li><strong>Automatisk utskrift:</strong> Kör i bakgrunden utan modal-fönster</li>
-                      <li><strong>Manuell utskrift:</strong> Visar hybrid-modal med detaljerad status</li>
-                      <li><strong>Felsökning:</strong> Kolla "Hybrid System Debug" för live-loggar</li>
-                      <li><strong>Fallback:</strong> Försöker lokal ePOS först, sedan backend API</li>
-                      <li><strong>Logging:</strong> Alla försök sparas i Supabase för analys</li>
-                    </ul>
-                  </div>
-                  
-                  <div>
-                    <h4 className="text-white font-medium mb-2">🎭 Utvecklingsläge:</h4>
-                    <ul className="list-disc list-inside space-y-1 ml-4">
-                      <li>Håll Debug-läge aktiverat för att simulera utskrifter</li>
-                      <li>Kvitton visas i webbläsarkonsolen istället för att skrivas ut</li>
-                      <li>Automatisk utskrift fungerar även i simulatorläge</li>
-                      <li>Perfekt för att testa utan fysisk skrivare</li>
-                    </ul>
-                  </div>
-
-                  <div>
-                    <h4 className="text-white font-medium mb-2">📧 E-postbekräftelser:</h4>
-                    <ul className="list-disc list-inside space-y-1 ml-4">
-                      <li>Skicka orderbekräftelser direkt till kunder via e-post</li>
-                      <li>Automatisk kontroll om kunden har registrerad e-postadress</li>
-                      <li>Professionella HTML-mallar med orderdetaljer</li>
-                      <li>Använd "Testa e-post"-knappen för att testa systemet</li>
-                      <li>E-postaktivitet visas i debug-loggen</li>
-                    </ul>
+                    <div className="mt-2 text-xs text-gray-400">
+                      <p>• TCP IP: {printerSettings.printerIP || 'Inte konfigurerad'}</p>
+                      <p>• TCP Port: {printerSettings.printerPort || '9100'}</p>
+                      <p>• Status: {printerSettings.enabled ? '✅ Aktiverad' : '❌ Avaktiverad'}</p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -5651,10 +5466,10 @@ Utvecklad av Skaply
                     size="sm"
                     title={
                       printingOrders.has(selectedOrder.id) 
-                        ? 'Skriver ut kvitto...'
+                        ? 'Skriver ut kvitto via TCP...'
                         : printerSettings.enabled 
-                          ? 'Skriv ut kvitto via frontend ePOS (direkt till skrivare)' 
-                          : 'Skrivare inte aktiverad'
+                          ? 'Skriv ut kvitto via TCP (192.168.1.103:9100)' 
+                          : 'TCP-skrivare inte aktiverad'
                     }
                   >
                     {printingOrders.has(selectedOrder.id) ? (
