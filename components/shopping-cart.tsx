@@ -892,7 +892,6 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         customer_name: customerName, // Lägg till kundnamn
         customer_email: customerEmail, // Lägg till kund-email
         items: items, // Sparas som JSONB array
-        cart_items: items, // Dubblering för kompatibilitet
         total_price: totalPrice,
         amount: totalPrice, // För kompatibilitet
         location: selectedLocation.id.toLowerCase(), // Använd location_id i små bokstäver för enum
