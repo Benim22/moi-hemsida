@@ -14,6 +14,13 @@ import { Info, MapPin, Loader2, Grid3X3, List, Eye } from "lucide-react"
 import { useLocation } from "@/contexts/LocationContext"
 import { trackMenuInteraction, trackEvent } from "@/lib/analytics"
 import { supabase } from "@/lib/supabase"
+import { 
+  filterAvailableMenuItems, 
+  isLunchMenuAvailable, 
+  getNextLunchAvailability,
+  type MenuItemWithSchedule 
+} from "@/lib/menu-availability"
+import { LunchMenuCountdown } from "@/components/lunch-menu-countdown"
 
 // Ystad food truck priser och tillgängliga rätter
 const ystadPokeBowlPrices = {
@@ -946,14 +953,29 @@ export default function MenuPage() {
   const [scrollY, setScrollY] = useState(0)
   const [selectedItem, setSelectedItem] = useState<FoodItemDetails | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [menuItems, setMenuItems] = useState([])
+  const [menuItems, setMenuItems] = useState<MenuItemWithSchedule[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [categories, setCategories] = useState([])
   const [viewMode, setViewMode] = useState<'category' | 'all'>('category')
-  const [allMenuItems, setAllMenuItems] = useState([])
+  const [allMenuItems, setAllMenuItems] = useState<MenuItemWithSchedule[]>([])
+  const [isLunchTime, setIsLunchTime] = useState(false)
+  const [nextLunchTime, setNextLunchTime] = useState("")
 
   // Define which categories are available for Ystad (food truck)
-  const ystadAvailableCategories = ["Pokébowls", "Drycker", "Såser"]
+  const ystadAvailableCategories = ["Lunchmeny", "Pokébowls", "Drycker", "Såser"]
+
+  // Check lunch time availability
+  useEffect(() => {
+    const checkLunchTime = () => {
+      setIsLunchTime(isLunchMenuAvailable())
+      setNextLunchTime(getNextLunchAvailability())
+    }
+
+    checkLunchTime()
+    // Check every minute
+    const interval = setInterval(checkLunchTime, 60000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Fetch menu items from database
   useEffect(() => {
@@ -972,14 +994,17 @@ export default function MenuPage() {
           return
         }
 
-        setMenuItems(data || [])
-        setAllMenuItems(data || [])
+        // Filter items based on time availability
+        const availableItems = filterAvailableMenuItems(data || [])
+        setMenuItems(availableItems)
+        setAllMenuItems(availableItems)
         
         // Extract unique categories and sort them in preferred order
         const uniqueCategories = [...new Set(data?.map(item => item.category) || [])]
         
         // Define preferred category order
         const preferredOrder = [
+          "Lunchmeny",
           "Mois Rolls",
           "Pokébowls", 
           "Helfriterade Maki",
@@ -1025,7 +1050,7 @@ export default function MenuPage() {
     }
 
     fetchMenuItems()
-  }, [])
+  }, [isLunchTime]) // Re-fetch when lunch time changes
   
   // Filter categories based on location while maintaining order
   const getAvailableCategories = () => {
@@ -1177,6 +1202,62 @@ export default function MenuPage() {
                 Här erbjuder vi ett begränsat men noggrant utvalt sortiment av våra populäraste poké bowls, 
                 drycker och såser. För vårt fullständiga sushi-sortiment, besök oss i Malmö eller Trelleborg.
               </p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Lunch Menu Banner */}
+        {categories.includes("Lunchmeny") && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="mb-6 mx-4 sm:mx-auto sm:max-w-4xl"
+          >
+            <div className={`rounded-xl p-4 sm:p-6 border-2 backdrop-blur-sm ${
+              isLunchTime 
+                ? 'bg-gradient-to-br from-green-900/40 to-green-800/30 border-green-500/60 shadow-green-500/20' 
+                : 'bg-gradient-to-br from-orange-900/40 to-yellow-900/30 border-orange-500/60 shadow-orange-500/20'
+            } shadow-2xl`}>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-2xl">🍱</span>
+                    <h3 className="text-lg sm:text-xl font-bold text-white">
+                      Lunchmeny
+                    </h3>
+                    <div className="bg-[#e4d699] text-black px-2 py-1 rounded-full text-xs font-semibold">
+                      115kr
+                    </div>
+                  </div>
+                  <p className="text-white/90 text-sm sm:text-base font-medium mb-2">
+                    12 Bitar Kockens val eller Valfri pokébowl
+                  </p>
+                                     <div className="flex flex-col sm:flex-row gap-1 sm:gap-2 text-white/70 text-xs">
+                     <span>Mån-Fre: 11:00-15:00</span>
+                     <span className="hidden sm:inline">|</span>
+                     <span>Lördag: 12:00-15:00</span>
+                     <span className="hidden sm:inline">|</span>
+                     <span className="text-white/50">Söndag: Stängt</span>
+                   </div>
+                </div>
+                                 <div className="flex sm:flex-col items-center justify-center sm:items-end gap-2">
+                  {isLunchTime ? (
+                    <Badge className="bg-green-500 hover:bg-green-600 text-white font-semibold px-3 py-1.5 text-sm">
+                      ✓ Tillgänglig nu
+                    </Badge>
+                  ) : (
+                    <div className="flex sm:flex-col items-center justify-center sm:items-end gap-2">
+                      <Badge className="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-3 py-1.5 text-sm">
+                        ⏰ Inte tillgänglig
+                      </Badge>
+                      <p className="text-white/70 text-xs font-medium text-center sm:text-right">
+                        Nästa: {nextLunchTime}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </motion.div>
         )}
@@ -1351,10 +1432,16 @@ export default function MenuPage() {
                 
                 {/* Empty state */}
                 {getItemsForCategory(activeTab).length === 0 && (
-                  <div className="text-center py-12">
-                    <p className="text-white/60 text-lg">Inga rätter tillgängliga i denna kategori än.</p>
-                    <p className="text-white/40 text-sm mt-2">Kom tillbaka snart för fler läckra alternativ!</p>
-                  </div>
+                  <>
+                    {activeTab === "Lunchmeny" ? (
+                      <LunchMenuCountdown nextAvailableTime={nextLunchTime} />
+                    ) : (
+                      <div className="text-center py-12">
+                        <p className="text-white/60 text-lg">Inga rätter tillgängliga i denna kategori än.</p>
+                        <p className="text-white/40 text-sm mt-2">Kom tillbaka snart för fler läckra alternativ!</p>
+                      </div>
+                    )}
+                  </>
                 )}
               </motion.div>
             </AnimatePresence>

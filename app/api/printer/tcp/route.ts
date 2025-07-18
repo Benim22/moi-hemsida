@@ -69,9 +69,20 @@ export async function POST(request: NextRequest) {
     const orderTime = new Date(order.created_at)
     const pickupTime = new Date(orderTime.getTime() + 30 * 60000) // +30 min
     
+    // Använd explicit svensk timezone för korrekt tidsvisning
+    const swedenTimeOptions = {
+      timeZone: 'Europe/Stockholm',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }
+    
     printer.setTextSize(0, 1) // Bred text för tider
-    printer.println(`Beställning: ${orderTime.toLocaleString('sv-SE')}`)
-    printer.println(`Upphämtning: ${pickupTime.toLocaleString('sv-SE')}`)
+    printer.println(`Beställning: ${orderTime.toLocaleString('sv-SE', swedenTimeOptions)}`)
+    printer.println(`Upphämtning: ${pickupTime.toLocaleString('sv-SE', swedenTimeOptions)}`)
     printer.println('')
     
     printer.setTextSize(1, 0) // Hög text för typ

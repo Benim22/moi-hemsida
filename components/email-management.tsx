@@ -395,9 +395,8 @@ export default function EmailManagement() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          action: 'send_test',
-          email: resendTestEmail,
-          testType: 'admin_test'
+          type: 'order',
+          email: resendTestEmail
         })
       })
 

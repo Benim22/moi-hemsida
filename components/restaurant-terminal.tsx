@@ -1056,19 +1056,19 @@ export default function RestaurantTerminal() {
     loadEPOS()
   }, [])
 
-  // Update selectedLocation when profile loads
+  // Update selectedLocation when profile loads or changes
   useEffect(() => {
     console.log('👤 Profile effect triggered:', {
       profileLocation: profile?.location,
       currentSelectedLocation: selectedLocation,
-      shouldUpdate: profile?.location && selectedLocation === 'all'
+      shouldUpdate: profile?.location && profile?.location !== selectedLocation
     })
     
-    if (profile?.location && selectedLocation === 'all') {
+    if (profile?.location && profile?.location !== selectedLocation) {
       console.log('🔄 Uppdaterar selectedLocation från profil:', profile.location)
       setSelectedLocation(profile.location)
     }
-  }, [profile?.location, selectedLocation])
+  }, [profile?.location])
 
   // Advanced user interaction tracking for iOS audio unlock
   useEffect(() => {
@@ -1332,9 +1332,11 @@ export default function RestaurantTerminal() {
           }
           
           // Användare med "all" location ska se ALLA admin-notifikationer
-          // Användare med specifik location ska bara se notifikationer för sin exakta location
+          // Användare med specifik location ska bara se notifikationer för sin location eller allmänna notifikationer
           const shouldShowNotification = profile.location === 'all' || 
-                                       (payload.new.metadata?.location && payload.new.metadata.location === profile.location)
+                                       payload.new.metadata?.location === profile.location ||
+                                       payload.new.metadata?.location === 'all' ||
+                                       !payload.new.metadata?.location // Fallback för notifikationer utan location
 
           if (shouldShowNotification) {
             console.log('✅ Notifikation matchar - kontrollerar duplicering')
@@ -1680,10 +1682,14 @@ export default function RestaurantTerminal() {
         .eq('read', false)
         .order('created_at', { ascending: false })
 
-      // Filtrera på location direkt i query för bättre prestanda
-      if (profile.location !== 'all') {
-        // För specifik location, använd jsonb operator för att filtrera på metadata.location
-        query = query.eq('metadata->>location', profile.location)
+      // Om användaren har location 'all', visa ALLA notifikationer
+      if (profile.location === 'all') {
+        console.log('🌍 Terminal: Användare har location "all" - hämtar ALLA notifikationer')
+        // Ingen location-filter - hämta alla
+      } else {
+        // För specifik location, filtrera på metadata.location
+        query = query.or(`metadata->>location.eq.${profile.location},metadata->>location.eq.all,metadata->>location.is.null`)
+        console.log(`📍 Terminal: Filtrerar notifikationer för location: ${profile.location}`)
       }
 
       const { data, error } = await query.limit(20) // Begränsa till 20 för bättre prestanda
@@ -1706,6 +1712,7 @@ export default function RestaurantTerminal() {
       }
       
       setNotifications(uniqueNotifications.slice(0, 10)) // Visa max 10 notifikationer
+      console.log(`📢 Terminal: Hämtade ${uniqueNotifications.length} unika notifikationer`)
     } catch (error) {
       console.error('Error fetching notifications:', error)
       // Sätt tom array om det blir fel, så terminalen kan fortsätta fungera
@@ -3742,7 +3749,7 @@ Utvecklad av Skaply
     }
   }
 
-  // Assign user to location
+  // Change user's location
   const handleLocationChange = async () => {
     try {
       console.log('🏢 Ändrar plats från', profile?.location, 'till', pendingLocation)
@@ -3751,20 +3758,41 @@ Utvecklad av Skaply
       if (result.error) {
         console.error("❌ Kunde inte uppdatera användarens location:", result.error)
         addDebugLog("Kunde inte ändra plats", 'error')
+        showBrowserNotification(
+          '❌ Fel vid platsändring',
+          'Kunde inte uppdatera din plats. Försök igen.',
+          false
+        )
       } else {
         console.log("✅ Användarens location uppdaterad till:", pendingLocation)
-        setSelectedLocation(pendingLocation)
+        
+        // Visa bekräftelse
+        showBrowserNotification(
+          '✅ Plats ändrad!',
+          `Du har bytts till ${getLocationName(pendingLocation)}`,
+          false
+        )
+        
+        // Stäng modal
         setShowLocationModal(false)
         setPendingLocation('')
         
-        // Starta om för att ladda rätt prenumerationer
+        // selectedLocation uppdateras automatiskt via useEffect när profile.location ändras
+        
+        // Starta om för att ladda rätt prenumerationer efter kort fördröjning
+        addDebugLog(`Startar om för att ladda ${getLocationName(pendingLocation)} prenumerationer...`, 'info')
         setTimeout(() => {
           window.location.reload()
-        }, 1000)
+        }, 1500)
       }
     } catch (error) {
       console.error("❌ Fel vid location-ändring:", error)
       addDebugLog("Ett fel uppstod vid platsändring", 'error')
+      showBrowserNotification(
+        '❌ Fel vid platsändring',
+        'Ett oväntat fel uppstod. Försök igen.',
+        false
+      )
     }
   }
 
@@ -4351,14 +4379,16 @@ Utvecklad av Skaply
                     value={selectedLocation}
                     onChange={(e) => {
                       const newLocation = e.target.value
-                      console.log('🏢 Väljer plats:', newLocation)
+                      console.log('🏢 Väljer plats:', newLocation, 'nuvarande profil location:', profile?.location)
                       
-                      // Om det är en riktig location-ändring (inte bara filter)
-                      if (newLocation !== 'all' && newLocation !== profile?.location) {
+                      // Om det är en riktig location-ändring (inkluderar 'all')
+                      if (newLocation !== profile?.location) {
+                        console.log('🔄 Initierar platsändring från', profile?.location, 'till', newLocation)
                         setPendingLocation(newLocation)
                         setShowLocationModal(true)
                       } else {
-                        // Bara filtrera visningen
+                        // Samma plats som redan är vald
+                        console.log('📋 Samma plats som redan är vald:', newLocation)
                         setSelectedLocation(newLocation)
                       }
                     }}
@@ -5614,6 +5644,14 @@ Utvecklad av Skaply
                   <p><span className="text-white/70">Nuvarande plats:</span> <span className="text-[#e4d699]">{getLocationName(profile?.location)}</span></p>
                   <p><span className="text-white/70">Ny plats:</span> <span className="text-green-400">{getLocationName(pendingLocation)}</span></p>
                 </div>
+                
+                {pendingLocation === 'all' && (
+                  <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-md">
+                    <p className="text-blue-400 text-sm">
+                      🌍 <strong>Alla platser:</strong> Du kommer att få notifikationer från alla restauranger (Malmö, Trelleborg, Ystad).
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3">

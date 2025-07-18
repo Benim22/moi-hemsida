@@ -153,9 +153,10 @@ export default function RestaurantTerminal() {
         // Visa notifikation om det är en admin-notifikation
         if (payload.new.user_role === 'admin') {
           // Användare med "all" location ska se ALLA admin-notifikationer
-          // Användare med specifik location ska bara se notifikationer för sin location
+          // Användare med specifik location ska bara se notifikationer för sin location eller allmänna notifikationer
           const shouldShowNotification = profile.location === 'all' || 
                                        payload.new.metadata?.location === profile.location ||
+                                       payload.new.metadata?.location === 'all' ||
                                        !payload.new.metadata?.location // Fallback för notifikationer utan location
 
           if (shouldShowNotification) {
@@ -294,33 +295,31 @@ export default function RestaurantTerminal() {
 
   const fetchNotifications = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('notifications')
         .select('*')
         .eq('user_role', 'admin')
         .eq('read', false)
         .order('created_at', { ascending: false })
-        .limit(10)
+
+      // Om användaren har location 'all', visa ALLA notifikationer
+      if (profile.location === 'all') {
+        console.log('🌍 Backup Terminal: Användare har location "all" - hämtar ALLA notifikationer')
+        // Ingen location-filter - hämta alla
+      } else {
+        // För specifik location, filtrera på metadata.location
+        query = query.or(`metadata->>location.eq.${profile.location},metadata->>location.eq.all,metadata->>location.is.null`)
+        console.log(`📍 Backup Terminal: Filtrerar notifikationer för location: ${profile.location}`)
+      }
+
+      const { data, error } = await query.limit(10)
 
       if (error) throw error
       
-      // Filtrera notifikationer baserat på location
-      const filteredNotifications = data?.filter(notification => {
-        if (profile.location === 'all') {
-          // Användare med "all" location ser alla admin-notifikationer
-          return true
-        } else {
-          // Användare med specifik location ser endast notifikationer för sin location
-          return notification.metadata?.location === profile.location || 
-                 !notification.metadata?.location // Fallback för notifikationer utan location
-        }
-      }) || []
+      console.log('📢 Backup Terminal: Hämtade notifikationer för location:', profile.location)
+      console.log('📢 Backup Terminal: Totalt antal notifikationer från DB:', data?.length || 0)
       
-      console.log('📢 Hämtade notifikationer för location:', profile.location)
-      console.log('📢 Totalt antal notifikationer från DB:', data?.length || 0)
-      console.log('📢 Filtrerade notifikationer:', filteredNotifications.length)
-      
-      setNotifications(filteredNotifications)
+      setNotifications(data || [])
     } catch (error) {
       console.error('Error fetching notifications:', error)
     }

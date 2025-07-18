@@ -18,8 +18,8 @@ const chatConfig = {
     full: "sm:w-full sm:h-full",
   },
   positions: {
-    "bottom-right": "bottom-20 md:bottom-5 right-5", // Updated to be higher on mobile
-    "bottom-left": "bottom-20 md:bottom-5 left-5", // Updated to be higher on mobile
+    "bottom-right": "bottom-24 md:bottom-30 right-5", // Updated to be higher to avoid footer
+    "bottom-left": "bottom-24 md:bottom-30 left-5", // Updated to be higher to avoid footer
   },
   chatPositions: {
     "bottom-right": "sm:bottom-[calc(100%+10px)] sm:right-0",

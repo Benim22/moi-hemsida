@@ -3736,15 +3736,27 @@ function NotificationManagement() {
 
       const userLocation = currentProfile?.location
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("notifications")
         .select("*")
-        .or(`metadata->>location.eq.all,metadata->>location.eq.${userLocation || 'all'}`)
         .order("created_at", { ascending: false })
         .limit(50)
 
+      // Om användaren har location 'all', visa ALLA notifikationer
+      if (userLocation === 'all') {
+        // Hämta alla notifikationer utan filter
+        console.log('🌍 Användare har location "all" - hämtar ALLA notifikationer')
+      } else {
+        // Filtrera på specifik location eller notifikationer utan location
+        query = query.or(`metadata->>location.eq.${userLocation},metadata->>location.eq.all,metadata->>location.is.null`)
+        console.log(`📍 Filtrerar notifikationer för location: ${userLocation}`)
+      }
+
+      const { data, error } = await query
+
       if (error) throw error
       setNotifications(data || [])
+      console.log(`📢 Hämtade ${data?.length || 0} notifikationer för admin-panel`)
     } catch (error) {
       console.error("Error fetching notifications:", error)
       toast({

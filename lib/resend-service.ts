@@ -3,29 +3,52 @@ import { supabase } from './supabase'
 
 // Get Resend settings from database
 const getResendSettings = async () => {
+  console.log('🔍 [Resend Service] Fetching settings from database...')
   const { data: settings, error } = await supabase
     .from('email_settings')
     .select('setting_key, setting_value')
     .in('setting_key', ['resend_api_key', 'resend_from_email', 'resend_enabled'])
 
   if (error) {
-    console.error('Supabase error:', error)
+    console.error('❌ [Resend Service] Supabase error:', error)
     // Fallback to hardcoded values if database fails
     return {
       apiKey: 're_Vv3GiQLH_Kh7iGsHzpDUKUhFkUfRzLaiP',
-      fromEmail: 'Moi Sushi <onboarding@resend.dev>',
+      fromEmail: 'info@moisushi.se',
       enabled: true
     }
   }
 
-  const settingsMap = {}
+  console.log('📋 [Resend Service] Raw settings from DB:', settings)
+
+  const settingsMap: Record<string, string> = {}
   settings?.forEach(setting => {
     settingsMap[setting.setting_key] = setting.setting_value
   })
 
+  // Clean up from email format - Resend is sensitive to formatting
+  let fromEmail = settingsMap.resend_from_email || 'info@moisushi.se'
+  
+  console.log('🔍 [Resend Service] Settings map:', settingsMap)
+  console.log('🔍 [Resend Service] Raw from email from DB:', settingsMap.resend_from_email)
+  console.log('🔍 [Resend Service] From email before processing:', fromEmail)
+  
+  // Always extract just the email part from formats like "Name <email@domain.com>"
+  const emailMatch = fromEmail.match(/<(.+)>/)
+  if (emailMatch) {
+    fromEmail = emailMatch[1] // Just use the email part
+    console.log('🔍 [Resend Service] Extracted email:', fromEmail)
+  } else {
+    console.log('🔍 [Resend Service] No email extraction needed, using as is:', fromEmail)
+  }
+  
+  // Force use info@moisushi.se since domain is verified
+  fromEmail = 'info@moisushi.se'
+  console.log('🔍 [Resend Service] Final from email (forced):', fromEmail)
+
   return {
-    apiKey: settingsMap.resend_api_key || 're_Vv3GiQLH_Kh7iGsHzpDUKUhFkUfRzLaiP',
-    fromEmail: settingsMap.resend_from_email || 'Moi Sushi <onboarding@resend.dev>',
+    apiKey: settingsMap.resend_api_key || process.env.RESEND_API_KEY || 're_Vv3GiQLH_Kh7iGsHzpDUKUhFkUfRzLaiP',
+    fromEmail: fromEmail,
     enabled: settingsMap.resend_enabled === 'true' || true
   }
 }
@@ -75,8 +98,18 @@ export const sendOrderConfirmationResend = async (orderData: {
   try {
     const settings = await getResendSettings()
     
+    console.log('🔍 Resend Settings:', {
+      apiKey: settings.apiKey ? `${settings.apiKey.substring(0, 10)}...` : 'None',
+      fromEmail: settings.fromEmail,
+      enabled: settings.enabled
+    })
+    
     if (!settings.apiKey) {
       return { success: false, error: 'Resend API-nyckel är inte konfigurerad' }
+    }
+
+    if (!settings.enabled) {
+      return { success: false, error: 'Resend är inte aktiverat' }
     }
 
     const resend = new Resend(settings.apiKey)
@@ -85,85 +118,196 @@ export const sendOrderConfirmationResend = async (orderData: {
       .map(item => `${item.quantity}x ${item.name} - ${item.price * item.quantity} kr`)
       .join('\n')
 
+    console.log('📧 Attempting to send email:', {
+      from: settings.fromEmail,
+      to: orderData.customerEmail,
+      subject: `Orderbekräftelse #${orderData.orderNumber} - Moi Sushi`
+    })
+
+    // Generate HTML content (same as SendGrid)
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Orderbekräftelse - Moi Sushi</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+          .container { max-width: 600px; margin: 0 auto; background: #f5f5f5; }
+          .header { background: #1a1a1a; color: #e4d699; padding: 30px 20px; text-align: center; }
+          .logo { width: 120px; height: 120px; margin: 0 auto 20px; }
+          .logo img { width: 100%; height: 100%; object-fit: contain; }
+          .content { padding: 20px; background: #f5f5f5; }
+          .order-details { background: #1a1a1a; color: #e4d699; padding: 20px; margin: 15px 0; border-radius: 8px; border: 2px solid #e4d699; }
+          .order-details h4 { color: #e4d699; margin-top: 0; border-bottom: 1px solid #e4d699; padding-bottom: 10px; }
+          .item { border-bottom: 1px solid #333; padding: 12px 0; color: #fff; }
+          .item:last-child { border-bottom: none; }
+          .item-name { font-weight: bold; color: #e4d699; }
+          .item-details { color: #ccc; font-size: 0.9em; }
+          .total { font-weight: bold; font-size: 1.4em; color: #e4d699; text-align: center; padding: 15px; background: #2a2a2a; border-radius: 5px; margin: 10px 0; }
+          .footer { text-align: center; padding: 30px 20px; font-size: 0.9em; color: #666; background: #1a1a1a; color: #e4d699; }
+          .warning { background: #2a2a2a; border: 2px solid #e4d699; color: #e4d699; padding: 15px; margin: 15px 0; border-radius: 8px; }
+          .contact-info { background: #2a2a2a; color: #e4d699; padding: 15px; border-radius: 8px; margin: 15px 0; }
+          .next-steps { background: #2a2a2a; color: #e4d699; padding: 15px; border-radius: 8px; margin: 15px 0; }
+          .next-steps ul { color: #fff; }
+          .next-steps li { margin: 8px 0; }
+          .skaply-link { color: #e4d699; text-decoration: none; font-size: 0.8em; }
+          .skaply-link:hover { text-decoration: underline; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">
+              <img src="${process.env.NEXT_PUBLIC_BASE_URL || 'https://moisushi.se'}/logomoiemail.png" alt="Moi Sushi" />
+            </div>
+            <h1 style="margin: 0; font-size: 1.8em;">Moi Sushi & Poké Bowl</h1>
+            <h2 style="margin: 10px 0 0 0; font-size: 1.2em; font-weight: normal;">Orderbekräftelse</h2>
+          </div>
+          
+          <div class="content">
+            <h3 style="text-align: center; color: #1a1a1a; margin-bottom: 30px;">Tack för din beställning, ${orderData.customerName}!</h3>
+            
+            <div class="order-details">
+              <h4>📋 Orderdetaljer</h4>
+              <p><strong>Ordernummer:</strong> #${orderData.orderNumber}</p>
+              <p><strong>Datum:</strong> ${new Date().toLocaleDateString('sv-SE')}</p>
+              <p><strong>Restaurang:</strong> ${orderData.location}</p>
+              <p><strong>Typ:</strong> ${orderData.orderType === 'delivery' ? 'Leverans' : 'Avhämtning'}</p>
+              ${orderData.pickupTime ? `<p><strong>Tid:</strong> ${orderData.pickupTime}</p>` : ''}
+              ${orderData.deliveryAddress ? `<p><strong>Leveransadress:</strong> ${orderData.deliveryAddress}</p>` : ''}
+            </div>
+
+            <div class="order-details">
+              <h4>🍣 Beställda varor</h4>
+              ${orderData.items.map(item => `
+                <div class="item">
+                  <div class="item-name">${item.quantity}x ${item.name}</div>
+                  <div class="item-details">${item.price * item.quantity} kr</div>
+                </div>
+              `).join('')}
+              <div class="total">💰 Totalt: ${orderData.totalPrice} kr</div>
+            </div>
+
+            ${orderData.specialInstructions ? `
+              <div class="warning">
+                <strong>💬 Speciella önskemål:</strong><br>
+                ${orderData.specialInstructions}
+              </div>
+            ` : ''}
+
+            <div class="contact-info">
+              <h4>📞 Kontaktuppgifter</h4>
+              <p><strong>Telefon:</strong> ${orderData.phone}</p>
+              <p><strong>Restaurang:</strong> ${orderData.location}</p>
+            </div>
+
+            <div class="next-steps">
+              <h4>✅ Nästa steg</h4>
+              <ul>
+                <li>Vi förbereder din beställning</li>
+                <li>Betala när du hämtar i restaurangen</li>
+                <li>Visa detta ordernummer vid avhämtning</li>
+              </ul>
+            </div>
+          </div>
+          
+          <div class="footer">
+            <p>Med vänliga hälsningar,<br>Moi Sushi & Poké Bowl</p>
+            <p>Detta är en automatisk bekräftelse. Svara inte på detta meddelande.</p>
+            <p style="margin-top: 20px;">
+              <a href="https://skaply.se" class="skaply-link">Utvecklad av Skaply.se</a>
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `
+
     const data = await resend.emails.send({
       from: settings.fromEmail,
       to: [orderData.customerEmail],
       subject: `Orderbekräftelse #${orderData.orderNumber} - Moi Sushi`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #000; color: #fff; padding: 20px;">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #e4d699; margin: 0;">Moi Sushi</h1>
-            <p style="color: #e4d699; margin: 5px 0;">Tack för din beställning!</p>
-          </div>
-          
-          <div style="background-color: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #e4d699;">
-            <h2 style="color: #e4d699; margin-top: 0;">Orderbekräftelse</h2>
-            
-            <div style="margin-bottom: 20px;">
-              <strong style="color: #e4d699;">Ordernummer:</strong> #${orderData.orderNumber}<br>
-              <strong style="color: #e4d699;">Kund:</strong> ${orderData.customerName}<br>
-              <strong style="color: #e4d699;">Telefon:</strong> ${orderData.phone}<br>
-              <strong style="color: #e4d699;">Restaurang:</strong> ${orderData.location}<br>
-              <strong style="color: #e4d699;">Typ:</strong> ${orderData.orderType === 'delivery' ? 'Leverans' : 'Avhämtning'}
-            </div>
-            
-            <div style="margin-bottom: 20px;">
-              <h3 style="color: #e4d699;">Din beställning:</h3>
-              <div style="background-color: #000; padding: 15px; border-radius: 4px;">
-                ${orderData.items.map(item => 
-                  `<div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                    <span>${item.quantity}x ${item.name}</span>
-                    <span>${item.price * item.quantity} kr</span>
-                  </div>`
-                ).join('')}
-                <hr style="border: 1px solid #e4d699; margin: 15px 0;">
-                <div style="display: flex; justify-content: space-between; font-weight: bold; color: #e4d699;">
-                  <span>Totalt:</span>
-                  <span>${orderData.totalPrice} kr</span>
-                </div>
-              </div>
-            </div>
-            
-            <div style="background-color: #e4d699; color: #000; padding: 15px; border-radius: 4px; text-align: center;">
-              <strong>Vi förbereder din beställning nu!</strong><br>
-              ${orderData.orderType === 'delivery' ? 
-                'Du kommer att få ett meddelande när maten är på väg.' : 
-                'Du kommer att få ett meddelande när maten är redo för avhämtning.'
-              }
-            </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 30px; color: #888;">
-            <p>Har du frågor? Kontakta oss på info@moisushi.se</p>
-            <p style="font-size: 12px;">Moi Sushi - Färsk sushi och poké bowls i Skåne</p>
-          </div>
-        </div>
-      `,
+      html: htmlContent,
       text: `
-Orderbekräftelse #${orderData.orderNumber} - Moi Sushi
+MOI SUSHI & POKÉ BOWL
+Orderbekräftelse
 
-Tack för din beställning!
+Tack för din beställning, ${orderData.customerName}!
 
-Ordernummer: #${orderData.orderNumber}
-Kund: ${orderData.customerName}
-Telefon: ${orderData.phone}
-Restaurang: ${orderData.location}
-Typ: ${orderData.orderType === 'delivery' ? 'Leverans' : 'Avhämtning'}
+Orderdetaljer:
+- Ordernummer: #${orderData.orderNumber}
+- Datum: ${new Date().toLocaleDateString('sv-SE')}
+- Restaurang: ${orderData.location}
+- Typ: ${orderData.orderType === 'delivery' ? 'Leverans' : 'Avhämtning'}
+${orderData.pickupTime ? `- Tid: ${orderData.pickupTime}` : ''}
+${orderData.deliveryAddress ? `- Leveransadress: ${orderData.deliveryAddress}` : ''}
 
-Din beställning:
-${itemsList}
+Beställda varor:
+${orderData.items.map(item => `${item.quantity}x ${item.name} - ${item.price * item.quantity} kr`).join('\n')}
 
 Totalt: ${orderData.totalPrice} kr
 
-Vi förbereder din beställning nu!
+${orderData.specialInstructions ? `Speciella önskemål: ${orderData.specialInstructions}\n` : ''}
 
-Har du frågor? Kontakta oss på info@moisushi.se
+Nästa steg:
+- Vi förbereder din beställning
+- Betala när du hämtar i restaurangen
+- Visa detta ordernummer vid avhämtning
+
+Kontakt: ${orderData.phone}
+Restaurang: ${orderData.location}
+
+Med vänliga hälsningar,
+Moi Sushi & Poké Bowl
+
+Utvecklad av Skaply.se
       `
     })
 
+    console.log('✅ Email sent successfully:', data)
+    
+    // Logga email-sändning
+    try {
+      const { supabaseAdmin } = await import('./supabase-admin')
+      await supabaseAdmin
+        .from('email_logs')
+        .insert({
+          recipient_email: orderData.customerEmail,
+          subject: `Orderbekräftelse #${orderData.orderNumber} - Moi Sushi`,
+          status: 'sent',
+          service: 'resend',
+          message_id: data.data?.id || 'resend-success'
+        })
+    } catch (logError) {
+      console.error('Error logging email:', logError)
+    }
+    
     return { success: true, data }
   } catch (error) {
-    console.error('Error sending order confirmation via Resend:', error)
+    console.error('❌ Error sending order confirmation via Resend:', error)
+    console.error('Error details:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack
+    })
+    
+    // Logga email-fel
+    try {
+      const { supabaseAdmin } = await import('./supabase-admin')
+      await supabaseAdmin
+        .from('email_logs')
+        .insert({
+          recipient_email: orderData.customerEmail,
+          subject: `Orderbekräftelse #${orderData.orderNumber} - Moi Sushi`,
+          status: 'failed',
+          service: 'resend',
+          error_message: error.message
+        })
+    } catch (logError) {
+      console.error('Error logging email error:', logError)
+    }
+    
     return { success: false, error: `Failed to send order confirmation: ${error.message}` }
   }
 }

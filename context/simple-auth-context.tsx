@@ -338,25 +338,32 @@ export function SimpleAuthProvider({ children }: { children: ReactNode }) {
 
     try {
       console.log("🏢 Updating user location to:", location)
+      console.log("🏢 Current user ID:", user.id)
+      console.log("🏢 Current profile location:", profile?.location)
       
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("profiles")
         .update({
           location: location,
           updated_at: new Date().toISOString()
         })
         .eq("id", user.id)
+        .select()
 
       if (error) throw error
 
+      console.log("🏢 Database update result:", data)
+
       if (profile) {
-        setProfile({
+        const updatedProfile = {
           ...profile,
           location: location
-        })
+        }
+        console.log("🏢 Setting new profile state:", updatedProfile)
+        setProfile(updatedProfile)
       }
 
-      console.log("✅ Location updated successfully")
+      console.log("✅ Location updated successfully in database and state")
       return { error: null }
     } catch (error) {
       console.error("❌ Update location error:", error)

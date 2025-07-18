@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { sendOrderConfirmationSendGrid } from '@/lib/sendgrid-service'
+import { sendOrderConfirmationWithBackup } from '@/lib/email-backup-service'
 
 // Helper functions för restauranginformation
 function getRestaurantPhone(location: string): string {
@@ -115,10 +115,10 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        const emailResult = await sendOrderConfirmationSendGrid(emailData)
+        const emailResult = await sendOrderConfirmationWithBackup(emailData)
         
         if (emailResult.success) {
-          console.log('✅ Order confirmation email sent via SendGrid:', emailResult.messageId)
+          console.log('✅ Order confirmation email sent via backup service:', emailResult.service, emailResult.data)
           
           // Logga email-sändning i orders tabellen
           await supabaseAdmin
