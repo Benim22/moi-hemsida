@@ -891,7 +891,8 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         user_id: user?.id || ANONYMOUS_USER_ID,
         customer_name: customerName, // Lägg till kundnamn
         customer_email: customerEmail, // Lägg till kund-email
-        items: items,
+        items: items, // Sparas som JSONB array
+        cart_items: items, // Dubblering för kompatibilitet
         total_price: totalPrice,
         amount: totalPrice, // För kompatibilitet
         location: selectedLocation.id.toLowerCase(), // Använd location_id i små bokstäver för enum
@@ -904,6 +905,14 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
         payment_method: 'cash', // Betala i restaurangen
         order_number: orderNumber
       }
+
+      console.log("=== ORDERDATA FÖRE SPARNING ===")
+      console.log("Items:", items)
+      console.log("Items typ:", typeof items)
+      console.log("Items är array:", Array.isArray(items))
+      console.log("Items längd:", items?.length)
+      console.log("Total price:", totalPrice)
+      console.log("================================")
 
       // Save to database
       const { data, error } = await supabase
@@ -935,8 +944,12 @@ function CheckoutView({ onBack }: { onBack: () => void }) {
       console.log("User_id sparad som:", data.user_id)
       console.log("Avhämtningstid:", getPickupTimeText())
       console.log("Notes fält:", orderData.notes)
-      console.log("Varor:", items)
-      console.log("Totalt:", totalPrice, "kr")
+      console.log("Varor (original):", items)
+      console.log("Varor (sparade):", data.items)
+      console.log("Items typ:", typeof data.items)
+      console.log("Items är array:", Array.isArray(data.items))
+      console.log("Totalt (original):", totalPrice, "kr")
+      console.log("Totalt (sparat):", data.total_price, "kr")
       console.log("========================")
 
       // Send location-specific notification to admins using the new function

@@ -3054,9 +3054,25 @@ Utvecklad av Skaply
     addDebugLog(`🖨️ TCP-utskrift för order #${order.order_number}`, 'info')
     
     try {
-      // Prepare receipt data
+      // Prepare receipt data with robust parsing
       const items = order.cart_items || order.items
-      const itemsArray = typeof items === 'string' ? JSON.parse(items) : items || []
+      let itemsArray = []
+      
+      if (items) {
+        try {
+          if (typeof items === 'string') {
+            itemsArray = JSON.parse(items)
+          } else if (Array.isArray(items)) {
+            itemsArray = items
+          } else {
+            console.error('Items is not string or array:', items)
+            itemsArray = []
+          }
+        } catch (e) {
+          console.error('Error parsing items for TCP receipt:', e)
+          itemsArray = []
+        }
+      }
       
       addDebugLog(`📄 Kvitto data förberett: ${itemsArray.length} produkter`, 'info')
       addDebugLog(`💰 Totalt: ${order.total_price || order.amount} kr`, 'info')
@@ -4721,13 +4737,25 @@ Utvecklad av Skaply
                           
                           if (order.items) {
                             try {
-                              orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items
+                              if (typeof order.items === 'string') {
+                                orderItems = JSON.parse(order.items)
+                              } else if (Array.isArray(order.items)) {
+                                orderItems = order.items
+                              } else {
+                                console.error('Order items is not string or array:', order.items)
+                              }
                             } catch (e) {
                               console.error('Error parsing order.items:', e)
                             }
                           } else if (order.cart_items) {
                             try {
-                              orderItems = typeof order.cart_items === 'string' ? JSON.parse(order.cart_items) : order.cart_items
+                              if (typeof order.cart_items === 'string') {
+                                orderItems = JSON.parse(order.cart_items)
+                              } else if (Array.isArray(order.cart_items)) {
+                                orderItems = order.cart_items
+                              } else {
+                                console.error('Order cart_items is not string or array:', order.cart_items)
+                              }
                             } catch (e) {
                               console.error('Error parsing order.cart_items:', e)
                             }
@@ -5369,18 +5397,37 @@ Utvecklad av Skaply
                 <div className="bg-black/30 rounded-lg p-3 sm:p-4 border border-[#e4d699]/20">
                   <h4 className="font-medium mb-3 text-[#e4d699] text-sm sm:text-base">🍱 Detaljerad beställning:</h4>
                   {(() => {
-                    // Hantera både 'items' och 'cart_items' kolumner
+                    // Hantera både 'items' och 'cart_items' kolumner med robust parsing
                     let orderItems = []
+                    
+                    console.log('🔍 DEBUG ORDER ITEMS:', {
+                      items: selectedOrder.items,
+                      cart_items: selectedOrder.cart_items,
+                      itemsType: typeof selectedOrder.items,
+                      cart_itemsType: typeof selectedOrder.cart_items
+                    })
                     
                     if (selectedOrder.items) {
                       try {
-                        orderItems = typeof selectedOrder.items === 'string' ? JSON.parse(selectedOrder.items) : selectedOrder.items
+                        if (typeof selectedOrder.items === 'string') {
+                          orderItems = JSON.parse(selectedOrder.items)
+                        } else if (Array.isArray(selectedOrder.items)) {
+                          orderItems = selectedOrder.items
+                        } else {
+                          console.error('Items is not string or array:', selectedOrder.items)
+                        }
                       } catch (e) {
                         console.error('Error parsing selectedOrder.items:', e)
                       }
                     } else if (selectedOrder.cart_items) {
                       try {
-                        orderItems = typeof selectedOrder.cart_items === 'string' ? JSON.parse(selectedOrder.cart_items) : selectedOrder.cart_items
+                        if (typeof selectedOrder.cart_items === 'string') {
+                          orderItems = JSON.parse(selectedOrder.cart_items)
+                        } else if (Array.isArray(selectedOrder.cart_items)) {
+                          orderItems = selectedOrder.cart_items
+                        } else {
+                          console.error('Cart_items is not string or array:', selectedOrder.cart_items)
+                        }
                       } catch (e) {
                         console.error('Error parsing selectedOrder.cart_items:', e)
                       }
