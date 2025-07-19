@@ -36,8 +36,29 @@ export async function POST(request: NextRequest) {
       if (printResponse.ok) {
         console.log(`🖨️ Automatisk utskrift skickad för order ${order.order_number}`)
         
-        // PRINT-EVENT AVSTÄNGT - Förhindrar loopar mellan system
-        console.log(`📋 Webhook utskrift klar - Skickar INTE print-event (förhindrar loopar)`)
+        // Skicka print-event för automatisk utskrift
+        try {
+          await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/websocket-notify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              type: 'print-event',
+              data: {
+                order_id: order.id,
+                order_number: order.order_number,
+                printed_by: 'Automatisk webhook',
+                printed_at: new Date().toISOString(),
+                print_type: 'automatic',
+                location: order.location,
+                terminal_id: 'webhook-server'
+              }
+            })
+          })
+        } catch (printEventError) {
+          console.error('❌ Fel vid skickande av print-event:', printEventError)
+        }
       } else {
         console.error(`❌ Automatisk utskrift misslyckades för order ${order.order_number}`)
       }

@@ -1436,10 +1436,10 @@ export default function MenuPage() {
                     {activeTab === "Lunchmeny" ? (
                       <LunchMenuCountdown nextAvailableTime={nextLunchTime} />
                     ) : (
-                      <div className="text-center py-12">
-                        <p className="text-white/60 text-lg">Inga rätter tillgängliga i denna kategori än.</p>
-                        <p className="text-white/40 text-sm mt-2">Kom tillbaka snart för fler läckra alternativ!</p>
-                      </div>
+                  <div className="text-center py-12">
+                    <p className="text-white/60 text-lg">Inga rätter tillgängliga i denna kategori än.</p>
+                    <p className="text-white/40 text-sm mt-2">Kom tillbaka snart för fler läckra alternativ!</p>
+                  </div>
                     )}
                   </>
                 )}

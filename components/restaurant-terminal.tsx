@@ -200,11 +200,11 @@ export default function RestaurantTerminal() {
       addDebugLog(`Ny order mottagen via WebSocket: ${order.id}`, 'success')
       setWsLastMessage({ type: 'order', data: order, timestamp: new Date() })
       
-      // UTSKRIFT AVSTÄNGD - Hanteras av Webhook System
-      addDebugLog(`WebSocket-utskrift avstängd - Webhook hanterar all utskrift`, 'info')
-      
-      // Endast notifiering
-      handleWebSocketOrder(order)
+      // Automatisk utskrift om aktiverad
+      if (printerSettings.autoprintEnabled && printerSettings.enabled) {
+        addDebugLog(`Auto-utskrift aktiverad för order ${order.id}`, 'info')
+        handleWebSocketOrder(order)
+      }
       
       // 🔕 NOTIFIKATIONER HANTERAS AV NOTIFICATIONS-TABELLEN
       // WebSocket-notifikationer är inte nödvändiga - notifications-subscription hanterar det
@@ -229,7 +229,7 @@ export default function RestaurantTerminal() {
       addDebugLog(`🖨️ Print-event mottaget: Order ${printEvent.order_number} utskriven av ${printEvent.printed_by}`, 'info')
       setWsLastMessage({ type: 'print', data: printEvent, timestamp: new Date() })
       
-      // ENDAST notifikation - INGEN utskrift
+      // Visa notifikation om att någon annan har skrivit ut
       if (printEvent.printed_by !== (profile?.email || 'Okänd användare')) {
         showBrowserNotification(
           '🖨️ Kvitto utskrivet av kollega',
@@ -237,8 +237,6 @@ export default function RestaurantTerminal() {
           false
         )
       }
-      
-      addDebugLog(`📋 Print-event notifikation - Ingen åtgärd (webhook hanterar utskrift)`, 'info')
     })
 
     socket.on('error', (error) => {
@@ -276,18 +274,27 @@ export default function RestaurantTerminal() {
 
   const handleWebSocketOrder = async (order) => {
     try {
+      // Förhindra dubblering
+      if (autoPrintedOrders.has(order.id)) {
+        addDebugLog(`Order ${order.id} redan utskriven via WebSocket`, 'warning')
+        return
+      }
+      
+      // Lägg till i autoPrintedOrders för att förhindra dubblering
+      setAutoPrintedOrders(prev => new Set([...prev, order.id]))
+      
       addDebugLog(`🔔 WebSocket: Ny order ${order.order_number} mottagen`, 'info')
-      addDebugLog(`📋 WebSocket-utskrift avstängd - Webhook hanterar utskrift`, 'info')
+      addDebugLog(`🖨️ Startar automatisk TCP-utskrift för order ${order.id}`, 'info')
       
-      // Endast notifiering, ingen utskrift
-      showBrowserNotification(
-        '🍣 Ny beställning via WebSocket!',
-        `Order #${order.order_number} från ${order.customer_name || 'Kund'}`,
-        true
-      )
+      // Skriv ut order automatiskt via TCP (utan modal)
+      await printTCPReceipt(order)
       
+      // Skicka print-event till andra terminaler (automatisk utskrift)
+      await sendPrintEvent(order, 'automatic')
+      
+      addDebugLog(`✅ WebSocket order ${order.order_number} utskriven automatiskt via TCP`, 'success')
     } catch (error) {
-      addDebugLog(`❌ Fel vid WebSocket-hantering: ${error.message}`, 'error')
+      addDebugLog(`❌ Fel vid WebSocket TCP-utskrift: ${error.message}`, 'error')
     }
   }
 
@@ -1173,16 +1180,44 @@ export default function RestaurantTerminal() {
         location: payload.new.location
       })
 
-      // AUTOMATISK UTSKRIFT AVSTÄNGD - Hanteras av Webhook System
-      // Endast notifiering och UI-uppdatering
-      addDebugLog(`📋 Ny order mottagen: #${payload.new.order_number} - Utskrift hanteras av webhook`, 'info')
-      
-      // Visa notifikation för personalen
-      showBrowserNotification(
-        '🍣 Ny beställning!',
-        `Order #${payload.new.order_number} från ${payload.new.customer_name || 'Kund'}`,
-        true // Viktigt meddelande
-      )
+      // AUTOMATISK UTSKRIFT för nya beställningar
+      if (printerSettings.enabled && printerSettings.autoprintEnabled) {
+        const now = Date.now()
+        
+        // DUBBELT SKYDD mot dupliceringar
+        // 1. Kontrollera Set-baserade kontrollen
+        if (autoPrintedOrders.has(payload.new.id)) {
+          addDebugLog(`⚠️ DUBBLERING BLOCKERAD (Set): Order #${payload.new.order_number} redan utskriven`, 'warning')
+  
+          return
+        }
+        
+        // 2. Kontrollera tid-baserade kontrollen (förhindra samma order inom 10 sekunder)
+        if (lastPrintedOrderId === payload.new.id && lastPrintedTime && (now - lastPrintedTime) < 10000) {
+          addDebugLog(`⚠️ DUBBLERING BLOCKERAD (Tid): Order #${payload.new.order_number} utskriven för ${Math.round((now - lastPrintedTime)/1000)}s sedan`, 'warning')
+
+          return
+        }
+
+        const printTimestamp = Date.now()
+        addDebugLog(`🖨️ STARTAR automatisk utskrift för order #${payload.new.order_number} (ID: ${payload.new.id}) - Timestamp: ${printTimestamp}`, 'info')
+
+        
+        // Markera som utskriven OMEDELBART med båda metoderna
+        setAutoPrintedOrders(prev => {
+          const newSet = new Set([...prev, payload.new.id])
+  
+          return newSet
+        })
+        
+        setLastPrintedOrderId(payload.new.id)
+        setLastPrintedTime(now)
+        
+        setTimeout(() => {
+
+          printBackendReceiptWithLoading(payload.new)
+        }, 1500) // Kort fördröjning för att säkerställa att data är redo
+      }
 
 
     }
@@ -2997,8 +3032,8 @@ Utvecklad av Skaply
       // Use direct TCP printing
       await printTCPReceipt(order)
       
-      // PRINT-EVENT BROADCASTING AVSTÄNGT för att förhindra loopar
-      addDebugLog(`📋 Manual utskrift - Skickar INTE print-event (förhindrar loopar)`, 'info')
+      // Skicka print-event till andra terminaler
+      await sendPrintEvent(order, 'manual')
       
       addDebugLog(`✅ TCP-utskrift framgångsrik för order #${order.order_number}`, 'success')
       showBrowserNotification(

@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
             })
             .eq('id', orderId)
 
-          // Skicka endast status-uppdatering (INGEN utskrift)
+          // Skicka notifikation till WebSocket-servern för att trigga utskrift
           try {
             const websocketResponse = await fetch(`${request.url.replace('/api/orders/confirm', '/api/websocket-notify')}`, {
               method: 'POST',
@@ -138,24 +138,30 @@ export async function POST(request: NextRequest) {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                type: 'order-status-update', // Ändrat från 'order' till 'order-status-update'
+                type: 'order',
                 data: {
                   id: order.id,
                   order_number: order.order_number,
+                  customer_name: order.customer_name || order.profiles?.name,
+                  customer_email: order.customer_email || order.profiles?.email,
+                  items: order.items,
+                  total_amount: order.total_price || order.amount,
+                  location: order.location,
+                  order_type: order.order_type,
+                  special_instructions: order.special_instructions,
                   status: 'confirmed',
-                  confirmed_at: new Date().toISOString(),
-                  message: `Order #${order.order_number} bekräftad - Email skickad till kund`
+                  confirmed_at: new Date().toISOString()
                 }
               })
             })
             
             if (websocketResponse.ok) {
-              console.log('✅ Status-uppdatering skickad för order:', order.id)
+              console.log('✅ WebSocket notification sent for order:', order.id)
             } else {
-              console.error('❌ Kunde inte skicka status-uppdatering:', await websocketResponse.text())
+              console.error('❌ Failed to send WebSocket notification:', await websocketResponse.text())
             }
           } catch (wsError) {
-            console.error('❌ Status-uppdatering fel:', wsError)
+            console.error('❌ WebSocket notification error:', wsError)
           }
 
           return NextResponse.json({
