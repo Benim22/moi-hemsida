@@ -239,6 +239,145 @@ export default function RestaurantTerminal() {
       }
     })
 
+    // Subscribe to print commands via Supabase Realtime
+    const printCommandChannel = supabase.channel(`print-commands-${selectedLocation}`)
+    
+    printCommandChannel.on('broadcast', { event: 'print-command' }, async (payload) => {
+      const printCommandData = payload.payload
+      const { order, printer_ip, printer_port, initiated_by, initiated_from, broadcast_id } = printCommandData
+      
+      addDebugLog(`📡 Print-command mottaget via Realtime från ${initiated_by} (${initiated_from}) för order #${order.order_number}`, 'info')
+      
+      // Show notification about incoming print command
+      showBrowserNotification(
+        '📡 Utskriftskommando mottaget!',
+        `${initiated_by} (${initiated_from}) begär utskrift av order #${order.order_number}`,
+        false
+      )
+      
+      // Execute the print command locally (this will happen on Rock Pi with printer enabled)
+      if (printerSettings.enabled) {
+        try {
+          addDebugLog(`🖨️ Utför utskriftskommando för order #${order.order_number} på denna terminal`, 'info')
+          addDebugLog(`📡 Använder TCP-utskrift till ${printer_ip}:${printer_port}`, 'info')
+          
+          // Use the TCP API endpoint for consistent printing
+          const printResponse = await fetch('/api/printer/tcp', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              printerIP: printer_ip,
+              port: printer_port,
+              order: order
+            })
+          })
+          
+          if (printResponse.ok) {
+            const result = await printResponse.json()
+            addDebugLog(`✅ Utskriftskommando slutfört för order #${order.order_number}`, 'success')
+            
+            // Send confirmation back via Realtime
+            const confirmationChannel = supabase.channel(`print-confirmations-${selectedLocation}`)
+            await confirmationChannel.send({
+              type: 'broadcast',
+              event: 'print-command-completed',
+              payload: {
+                order_id: order.id,
+                order_number: order.order_number,
+                broadcast_id: broadcast_id,
+                executed_by: profile?.email || 'Terminal',
+                executed_on: navigator.userAgent.includes('iPad') ? 'iPad' : navigator.userAgent.includes('Linux') ? 'Rock Pi' : 'Desktop',
+                printer_ip: printer_ip,
+                printer_port: printer_port,
+                timestamp: new Date().toISOString()
+              }
+            })
+            supabase.removeChannel(confirmationChannel)
+            
+            showBrowserNotification(
+              '✅ Utskrift slutförd!',
+              `Order #${order.order_number} utskriven via TCP`,
+              false
+            )
+          } else {
+            const errorText = await printResponse.text()
+            throw new Error(`TCP utskrift misslyckades: ${errorText}`)
+          }
+          
+        } catch (error) {
+          addDebugLog(`❌ Utskriftskommando misslyckades: ${error.message}`, 'error')
+          
+          // Send error back via Realtime
+          const errorChannel = supabase.channel(`print-confirmations-${selectedLocation}`)
+          await errorChannel.send({
+            type: 'broadcast',
+            event: 'print-command-failed',
+            payload: {
+              order_id: order.id,
+              order_number: order.order_number,
+              broadcast_id: broadcast_id,
+              error: error.message,
+              executed_by: profile?.email || 'Terminal',
+              executed_on: navigator.userAgent.includes('iPad') ? 'iPad' : navigator.userAgent.includes('Linux') ? 'Rock Pi' : 'Desktop',
+              timestamp: new Date().toISOString()
+            }
+          })
+          supabase.removeChannel(errorChannel)
+          
+          showBrowserNotification(
+            '❌ Utskrift misslyckades!',
+            `Order #${order.order_number}: ${error.message}`,
+            true
+          )
+        }
+      } else {
+        addDebugLog(`⚠️ Skrivare inte aktiverad på denna terminal - ignorerar print-command`, 'warning')
+        showBrowserNotification(
+          '⚠️ Skrivare inte aktiverad',
+          `Print-command ignorerat - aktivera skrivare i inställningar`,
+          false
+        )
+      }
+    })
+    
+    printCommandChannel.subscribe()
+    
+    // Listen for print command confirmations
+    const confirmationChannel = supabase.channel(`print-confirmations-${selectedLocation}`)
+    
+    confirmationChannel.on('broadcast', { event: 'print-command-completed' }, (payload) => {
+      const { order_number, executed_by, executed_on } = payload.payload
+      addDebugLog(`✅ Print-command bekräftelse: Order ${order_number} utskriven på ${executed_on}`, 'success')
+      showBrowserNotification(
+        '✅ Utskrift bekräftad!',
+        `Order #${order_number} utskriven på ${executed_on} av ${executed_by}`,
+        false
+      )
+    })
+    
+    confirmationChannel.on('broadcast', { event: 'print-command-failed' }, (payload) => {
+      const { order_number, error, executed_on } = payload.payload
+      addDebugLog(`❌ Print-command fel: Order ${order_number} misslyckades på ${executed_on}: ${error}`, 'error')
+      showBrowserNotification(
+        '❌ Utskrift misslyckades!',
+        `Order #${order_number} misslyckades på ${executed_on}: ${error}`,
+        true
+      )
+    })
+    
+    confirmationChannel.subscribe()
+
+    // Cleanup function for Realtime channels
+    const cleanupChannels = () => {
+      supabase.removeChannel(printCommandChannel)
+      supabase.removeChannel(confirmationChannel)
+    }
+    
+    // Cleanup on unmount
+    return cleanupChannels
+
     socket.on('error', (error) => {
       addDebugLog(`WebSocket fel: ${error.message}`, 'error')
     })
@@ -3056,6 +3195,60 @@ Utvecklad av Skaply
     }
   }
 
+  // Broadcast print command to all terminals using Supabase Realtime
+  const broadcastPrintCommand = async (order) => {
+    try {
+      addDebugLog(`📡 Broadcasting print command för order #${order.order_number} via Supabase Realtime`, 'info')
+      
+      // Säkerställ att order har location
+      const orderWithLocation = {
+        ...order,
+        location: order.location || selectedLocation || 'malmo'
+      }
+      
+      const printCommandData = {
+        order: orderWithLocation,
+        printer_ip: '192.168.1.103',
+        printer_port: 9100,
+        initiated_by: profile?.email || 'Okänd användare',
+        initiated_from: navigator.userAgent.includes('iPad') ? 'iPad' : navigator.userAgent.includes('Linux') ? 'Rock Pi' : 'Desktop',
+        timestamp: new Date().toISOString(),
+        broadcast_id: `print-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      }
+
+      // Broadcast via Supabase Realtime channel
+      const channel = supabase.channel(`print-commands-${orderWithLocation.location}`)
+      
+      const response = await channel.send({
+        type: 'broadcast',
+        event: 'print-command',
+        payload: printCommandData
+      })
+
+      if (response === 'ok') {
+        addDebugLog(`✅ Print command broadcast för order ${order.order_number} via Realtime`, 'success')
+        showBrowserNotification(
+          '📡 Utskriftskommando skickat!', 
+          `Order #${order.order_number} skickas till alla terminaler via Realtime`,
+          false
+        )
+      } else {
+        throw new Error('Supabase Realtime broadcast misslyckades')
+      }
+      
+      // Unsubscribe after sending
+      supabase.removeChannel(channel)
+      
+    } catch (error) {
+      addDebugLog(`❌ Fel vid broadcast av print command: ${error.message}`, 'error')
+      showBrowserNotification(
+        '❌ Broadcast misslyckades!', 
+        `Kunde inte skicka utskriftskommando: ${error.message}`,
+        true
+      )
+    }
+  }
+
   // Print using TCP directly to 192.168.1.103:9100
   const printTCPReceipt = async (order) => {
     addDebugLog(`🖨️ TCP-utskrift för order #${order.order_number}`, 'info')
@@ -4955,7 +5148,7 @@ Utvecklad av Skaply
                       )}
                       
                       {/* Action Buttons */}
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-4 gap-2">
                         <Button 
                           size="sm" 
                           onClick={() => printBackendReceiptWithLoading(order)}
@@ -4971,7 +5164,7 @@ Utvecklad av Skaply
                             printingOrders.has(order.id) 
                               ? 'Skriver ut kvitto via TCP...'
                               : printerSettings.enabled 
-                                ? 'Skriv ut kvitto via TCP (192.168.1.103:9100)' 
+                                ? 'Skriv ut kvitto lokalt via TCP (192.168.1.103:9100)' 
                                 : 'TCP-skrivare inte aktiverad'
                           }
                         >
@@ -4984,7 +5177,7 @@ Utvecklad av Skaply
                             {printingOrders.has(order.id) 
                               ? '🖨️ Skriver ut...' 
                               : printerSettings.enabled 
-                                ? '🖨️ Skriv ut' 
+                                ? '🖨️ Lokal' 
                                 : '❌ Inaktiverad'}
                           </span>
                           <span className="sm:hidden">
@@ -4994,6 +5187,18 @@ Utvecklad av Skaply
                                 ? '🖨️' 
                                 : '❌'}
                           </span>
+                        </Button>
+
+                        <Button 
+                          size="sm" 
+                          onClick={() => broadcastPrintCommand(order)}
+                          disabled={printingOrders.has(order.id)}
+                          className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-medium shadow-lg text-xs sm:text-sm"
+                          title="Skicka utskriftskommando till alla terminaler (Rock Pi, iPad, Desktop)"
+                        >
+                          <Printer className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                          <span className="hidden sm:inline">📡 Alla</span>
+                          <span className="sm:hidden">📡</span>
                         </Button>
                         
                         <Button 

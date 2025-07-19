@@ -321,6 +321,59 @@ app.post('/send-print-event', (req, res) => {
   });
 });
 
+// API-endpoint för att skicka print-commands till alla terminaler
+app.post('/send-print-command', (req, res) => {
+  const { data } = req.body;
+  
+  if (!data || !data.order || !data.order.location) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Print command med order och location krävs' 
+    });
+  }
+  
+  const { order, printer_ip, printer_port, initiated_by, initiated_from } = data;
+  const location = order.location;
+  
+  connectionStats.messagesSent++;
+  connectionStats.lastActivity = new Date();
+  
+  const connectedCount = connectedTerminals.get(location)?.size || 0;
+  
+  log('info', `Broadcasting print-command för order ${order.order_number} till ${location}:`, { 
+    connectedTerminals: connectedCount,
+    initiatedBy: initiated_by,
+    initiatedFrom: initiated_from,
+    printerIP: printer_ip,
+    printerPort: printer_port
+  });
+  
+  // Broadcast to all terminals for this location
+  if (connectedTerminals.has(location)) {
+    connectedTerminals.get(location).forEach(socketId => {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) {
+        socket.emit('print-command', {
+          order,
+          printer_ip,
+          printer_port,
+          initiated_by,
+          initiated_from,
+          timestamp: new Date().toISOString(),
+          serverTime: Date.now()
+        });
+      }
+    });
+  }
+  
+  res.json({ 
+    success: true, 
+    location,
+    connectedTerminals: connectedCount,
+    messageId: `print-command-${order.id}-${Date.now()}`
+  });
+});
+
 // Test endpoint
 app.get('/test', (req, res) => {
   res.json({

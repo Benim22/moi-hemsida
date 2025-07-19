@@ -42,9 +42,20 @@ export async function POST(request: NextRequest) {
         endpoint = '/send-print-event'
         break
       
+      case 'print-command':
+        endpoint = '/send-print-command'
+        // Säkerställ att order och location finns
+        if (!payload.data || !payload.data.order || !payload.data.order.location) {
+          return NextResponse.json(
+            { error: 'Print-command kräver order med location' },
+            { status: 400 }
+          )
+        }
+        break
+      
       default:
         return NextResponse.json(
-          { error: 'Ogiltig typ. Använd: order, booking, status-update, print-event' },
+          { error: 'Ogiltig typ. Använd: order, booking, status-update, print-event, print-command' },
           { status: 400 }
         )
     }
