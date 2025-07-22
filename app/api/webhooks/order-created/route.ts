@@ -19,52 +19,8 @@ export async function POST(request: NextRequest) {
     const order = record
     console.log(`📨 Webhook mottagen: Ny order ${order.order_number} för ${order.location}`)
     
-    // 1. Trigga automatisk utskrift till TCP-skrivare (192.168.1.103:9100)
-    try {
-      const printResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/printer/tcp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          printerIP: '192.168.1.103',
-          port: 9100,
-          order: order
-        })
-      })
-      
-      if (printResponse.ok) {
-        console.log(`🖨️ Automatisk utskrift skickad för order ${order.order_number}`)
-        
-        // Skicka print-event för automatisk utskrift
-        try {
-          await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/websocket-notify`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              type: 'print-event',
-              data: {
-                order_id: order.id,
-                order_number: order.order_number,
-                printed_by: 'Automatisk webhook',
-                printed_at: new Date().toISOString(),
-                print_type: 'automatic',
-                location: order.location,
-                terminal_id: 'webhook-server'
-              }
-            })
-          })
-        } catch (printEventError) {
-          console.error('❌ Fel vid skickande av print-event:', printEventError)
-        }
-      } else {
-        console.error(`❌ Automatisk utskrift misslyckades för order ${order.order_number}`)
-      }
-    } catch (printError) {
-      console.error('❌ Fel vid automatisk utskrift:', printError)
-    }
+    // 1. UTSKRIFT HANTERAS AV REALTIME SUBSCRIPTION - ingen direkt utskrift här
+    console.log(`📝 Order ${order.order_number} skapad - utskrift hanteras av terminal via Realtime subscription`)
     
     // 2. Skicka WebSocket-notifikation till alla terminaler
     try {
@@ -77,7 +33,7 @@ export async function POST(request: NextRequest) {
           type: 'order',
           data: {
             ...order,
-            autoprint: true, // Flagga för att visa att detta är automatisk utskrift
+            autoprint: false, // INGEN automatisk utskrift via WebSocket - hanteras av Realtime
             timestamp: new Date().toISOString()
           }
         })
@@ -94,13 +50,14 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({
       success: true,
-      message: `Order ${order.order_number} behandlad - automatisk utskrift och WebSocket-notifikation skickad`,
+      message: `Order ${order.order_number} behandlad - WebSocket-notifikation skickad, automatisk utskrift hanteras av terminal`,
       order: {
         id: order.id,
         order_number: order.order_number,
         location: order.location,
         total_amount: order.total_amount
-      }
+      },
+      note: "Utskrift sker automatiskt via Realtime subscription i terminalen"
     })
     
   } catch (error) {

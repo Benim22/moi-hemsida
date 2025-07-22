@@ -113,6 +113,7 @@ export default function RestaurantTerminal() {
   const [wsConnected, setWsConnected] = useState(false)
   const [wsReconnectAttempts, setWsReconnectAttempts] = useState(0)
   const [wsLastMessage, setWsLastMessage] = useState(null)
+
   const [wsUrl, setWsUrl] = useState(
     'wss://moi-skrivare-websocket.onrender.com'
   )
@@ -194,21 +195,15 @@ export default function RestaurantTerminal() {
 
     socket.on('registration-confirmed', (data) => {
       addDebugLog(`Terminal registrerad för ${data.location}`, 'success')
+      addDebugLog(`📊 Anslutna terminaler för ${data.location}: ${data.connectedTerminals}`, 'info')
     })
 
     socket.on('new-order', (order) => {
       addDebugLog(`Ny order mottagen via WebSocket: ${order.id}`, 'success')
       setWsLastMessage({ type: 'order', data: order, timestamp: new Date() })
       
-      // Automatisk utskrift om aktiverad
-      if (printerSettings.autoprintEnabled && printerSettings.enabled) {
-        addDebugLog(`Auto-utskrift aktiverad för order ${order.id}`, 'info')
-        handleWebSocketOrder(order)
-      }
-      
-      // 🔕 NOTIFIKATIONER HANTERAS AV NOTIFICATIONS-TABELLEN
-      // WebSocket-notifikationer är inte nödvändiga - notifications-subscription hanterar det
-      console.log('📦 WebSocket order mottagen - notifikationer hanteras av notifications-tabellen')
+      // INGEN AUTOMATISK UTSKRIFT VIA WEBSOCKET - hanteras av Realtime subscription
+      console.log('📦 WebSocket order mottagen - utskrift hanteras av Realtime subscription, inte WebSocket')
     })
 
     socket.on('new-booking', (booking) => {
@@ -239,14 +234,16 @@ export default function RestaurantTerminal() {
       }
     })
 
-    // Subscribe to print commands via Supabase Realtime
-    const printCommandChannel = supabase.channel(`print-commands-${selectedLocation}`)
-    
-    printCommandChannel.on('broadcast', { event: 'print-command' }, async (payload) => {
-      const printCommandData = payload.payload
-      const { order, printer_ip, printer_port, initiated_by, initiated_from, broadcast_id } = printCommandData
+    // Listen for print commands from other terminals
+    socket.on('print-command', async (printCommand) => {
+      addDebugLog(`📡 Print-command mottaget:`, 'info')
+      console.log('Print command structure:', printCommand)
       
-      addDebugLog(`📡 Print-command mottaget via Realtime från ${initiated_by} (${initiated_from}) för order #${order.order_number}`, 'info')
+      // Extract data from the nested structure
+      const { data } = printCommand
+      const { order, printer_ip, printer_port, initiated_by, initiated_from } = data
+      
+      addDebugLog(`📡 Print-command från ${initiated_by} (${initiated_from}) för order #${order.order_number}`, 'info')
       
       // Show notification about incoming print command
       showBrowserNotification(
@@ -255,8 +252,14 @@ export default function RestaurantTerminal() {
         false
       )
       
-      // Execute the print command locally (this will happen on Rock Pi with printer enabled)
-      if (printerSettings.enabled) {
+      // Execute the print command locally - använd Smart Print Coordinator
+      const deviceType = getDeviceType()
+      const canPrint = canPrintTCP()
+      
+      addDebugLog(`🔍 Print-command mottaget på ${deviceType}, Can Print: ${canPrint}, Printer Enabled: ${printerSettings.enabled}`, 'info')
+      
+      // ENDAST enheter som KAN skriva ut TCP OCH har skrivare aktiverad ska utföra
+      if (printerSettings.enabled && canPrint) {
         try {
           addDebugLog(`🖨️ Utför utskriftskommando för order #${order.order_number} på denna terminal`, 'info')
           addDebugLog(`📡 Använder TCP-utskrift till ${printer_ip}:${printer_port}`, 'info')
@@ -278,23 +281,16 @@ export default function RestaurantTerminal() {
             const result = await printResponse.json()
             addDebugLog(`✅ Utskriftskommando slutfört för order #${order.order_number}`, 'success')
             
-            // Send confirmation back via Realtime
-            const confirmationChannel = supabase.channel(`print-confirmations-${selectedLocation}`)
-            await confirmationChannel.send({
-              type: 'broadcast',
-              event: 'print-command-completed',
-              payload: {
-                order_id: order.id,
-                order_number: order.order_number,
-                broadcast_id: broadcast_id,
-                executed_by: profile?.email || 'Terminal',
-                executed_on: navigator.userAgent.includes('iPad') ? 'iPad' : navigator.userAgent.includes('Linux') ? 'Rock Pi' : 'Desktop',
-                printer_ip: printer_ip,
-                printer_port: printer_port,
-                timestamp: new Date().toISOString()
-              }
+            // Send confirmation back
+            socket.emit('print-command-completed', {
+              order_id: order.id,
+              order_number: order.order_number,
+              executed_by: profile?.email || 'Terminal',
+              executed_on: navigator.userAgent.includes('iPad') ? 'iPad' : navigator.userAgent.includes('Linux') ? 'Rock Pi' : 'Desktop',
+              printer_ip: printer_ip,
+              printer_port: printer_port,
+              timestamp: new Date().toISOString()
             })
-            supabase.removeChannel(confirmationChannel)
             
             showBrowserNotification(
               '✅ Utskrift slutförd!',
@@ -309,22 +305,15 @@ export default function RestaurantTerminal() {
         } catch (error) {
           addDebugLog(`❌ Utskriftskommando misslyckades: ${error.message}`, 'error')
           
-          // Send error back via Realtime
-          const errorChannel = supabase.channel(`print-confirmations-${selectedLocation}`)
-          await errorChannel.send({
-            type: 'broadcast',
-            event: 'print-command-failed',
-            payload: {
-              order_id: order.id,
-              order_number: order.order_number,
-              broadcast_id: broadcast_id,
-              error: error.message,
-              executed_by: profile?.email || 'Terminal',
-              executed_on: navigator.userAgent.includes('iPad') ? 'iPad' : navigator.userAgent.includes('Linux') ? 'Rock Pi' : 'Desktop',
-              timestamp: new Date().toISOString()
-            }
+          // Send error back
+          socket.emit('print-command-failed', {
+            order_id: order.id,
+            order_number: order.order_number,
+            error: error.message,
+            executed_by: profile?.email || 'Terminal',
+            executed_on: navigator.userAgent.includes('iPad') ? 'iPad' : navigator.userAgent.includes('Linux') ? 'Rock Pi' : 'Desktop',
+            timestamp: new Date().toISOString()
           })
-          supabase.removeChannel(errorChannel)
           
           showBrowserNotification(
             '❌ Utskrift misslyckades!',
@@ -333,50 +322,37 @@ export default function RestaurantTerminal() {
           )
         }
       } else {
-        addDebugLog(`⚠️ Skrivare inte aktiverad på denna terminal - ignorerar print-command`, 'warning')
+        const reason = !printerSettings.enabled ? 'Skrivare inte aktiverad' : 
+                      !canPrint ? `${deviceType} kan inte skriva ut TCP från denna plats` : 'Okänd anledning'
+        
+        addDebugLog(`⚠️ ${reason} - ignorerar print-command`, 'warning')
         showBrowserNotification(
-          '⚠️ Skrivare inte aktiverad',
-          `Print-command ignorerat - aktivera skrivare i inställningar`,
+          '⚠️ Print-command ignorerat',
+          `${reason}`,
           false
         )
       }
     })
-    
-    printCommandChannel.subscribe()
-    
-    // Listen for print command confirmations
-    const confirmationChannel = supabase.channel(`print-confirmations-${selectedLocation}`)
-    
-    confirmationChannel.on('broadcast', { event: 'print-command-completed' }, (payload) => {
-      const { order_number, executed_by, executed_on } = payload.payload
-      addDebugLog(`✅ Print-command bekräftelse: Order ${order_number} utskriven på ${executed_on}`, 'success')
+
+    // Listen for print command completion confirmations
+    socket.on('print-command-completed', (completion) => {
+      addDebugLog(`✅ Print-command slutfört av ${completion.executed_by} på ${completion.executed_on}`, 'success')
       showBrowserNotification(
-        '✅ Utskrift bekräftad!',
-        `Order #${order_number} utskriven på ${executed_on} av ${executed_by}`,
+        '✅ Utskrift slutförd!',
+        `Order #${completion.order_number} utskriven på ${completion.executed_on}`,
         false
       )
     })
-    
-    confirmationChannel.on('broadcast', { event: 'print-command-failed' }, (payload) => {
-      const { order_number, error, executed_on } = payload.payload
-      addDebugLog(`❌ Print-command fel: Order ${order_number} misslyckades på ${executed_on}: ${error}`, 'error')
+
+    // Listen for print command failures
+    socket.on('print-command-failed', (failure) => {
+      addDebugLog(`❌ Print-command misslyckades på ${failure.executed_by}: ${failure.error}`, 'error')
       showBrowserNotification(
         '❌ Utskrift misslyckades!',
-        `Order #${order_number} misslyckades på ${executed_on}: ${error}`,
+        `Order #${failure.order_number}: ${failure.error}`,
         true
       )
     })
-    
-    confirmationChannel.subscribe()
-
-    // Cleanup function for Realtime channels
-    const cleanupChannels = () => {
-      supabase.removeChannel(printCommandChannel)
-      supabase.removeChannel(confirmationChannel)
-    }
-    
-    // Cleanup on unmount
-    return cleanupChannels
 
     socket.on('error', (error) => {
       addDebugLog(`WebSocket fel: ${error.message}`, 'error')
@@ -411,31 +387,7 @@ export default function RestaurantTerminal() {
     }
   }
 
-  const handleWebSocketOrder = async (order) => {
-    try {
-      // Förhindra dubblering
-      if (autoPrintedOrders.has(order.id)) {
-        addDebugLog(`Order ${order.id} redan utskriven via WebSocket`, 'warning')
-        return
-      }
-      
-      // Lägg till i autoPrintedOrders för att förhindra dubblering
-      setAutoPrintedOrders(prev => new Set([...prev, order.id]))
-      
-      addDebugLog(`🔔 WebSocket: Ny order ${order.order_number} mottagen`, 'info')
-      addDebugLog(`🖨️ Startar automatisk TCP-utskrift för order ${order.id}`, 'info')
-      
-      // Skriv ut order automatiskt via TCP (utan modal)
-      await printTCPReceipt(order)
-      
-      // Skicka print-event till andra terminaler (automatisk utskrift)
-      await sendPrintEvent(order, 'automatic')
-      
-      addDebugLog(`✅ WebSocket order ${order.order_number} utskriven automatiskt via TCP`, 'success')
-    } catch (error) {
-      addDebugLog(`❌ Fel vid WebSocket TCP-utskrift: ${error.message}`, 'error')
-    }
-  }
+
 
   // Ping WebSocket för att hålla anslutningen vid liv
   const pingWebSocket = () => {
@@ -443,6 +395,41 @@ export default function RestaurantTerminal() {
       socketRef.current.emit('ping')
     }
   }
+
+  // Smart Device Detection för TCP-utskrift
+  const getDeviceType = () => {
+    const userAgent = navigator.userAgent
+    if (userAgent.includes('Linux') && (userAgent.includes('ARM') || userAgent.includes('aarch64'))) return 'Rock Pi'
+    if (userAgent.includes('iPad') || userAgent.includes('iPhone')) return 'iPad'
+    if (userAgent.includes('Android')) return 'Android'
+    return 'Desktop'
+  }
+
+  const isLocalNetwork = () => {
+    const hostname = window.location.hostname
+    return hostname.startsWith('192.168.') || 
+           hostname.startsWith('10.') || 
+           hostname.startsWith('172.') ||
+           hostname === 'localhost' || 
+           hostname === '127.0.0.1'
+  }
+
+  // Endast Rock Pi eller lokala enheter ska försöka TCP-utskrift
+  const canPrintTCP = () => {
+    const deviceType = getDeviceType()
+    const isLocal = isLocalNetwork()
+    
+    // Rock Pi kan alltid skriva ut (den är på lokalt nätverk med skrivaren)
+    if (deviceType === 'Rock Pi') return true
+    
+    // Lokala enheter (localhost development) kan skriva ut
+    if (isLocal && (deviceType === 'Desktop' || deviceType === 'iPad')) return true
+    
+    // Alla andra enheter (iPad/Desktop från internet) kan INTE skriva ut TCP
+    return false
+  }
+
+
 
   // Skicka print-event till andra terminaler
   const sendPrintEvent = async (order, printType = 'manual') => {
@@ -1319,43 +1306,54 @@ export default function RestaurantTerminal() {
         location: payload.new.location
       })
 
-      // AUTOMATISK UTSKRIFT för nya beställningar
+      // ✅ SMART AUTOMATISK UTSKRIFT - endast enheter som KAN skriva ut
       if (printerSettings.enabled && printerSettings.autoprintEnabled) {
         const now = Date.now()
+        const deviceType = getDeviceType()
+        const canPrint = canPrintTCP()
         
-        // DUBBELT SKYDD mot dupliceringar
+        // ENDAST enheter som kan skriva ut TCP ska reagera på automatisk utskrift
+        if (!canPrint) {
+          addDebugLog(`⚠️ ${deviceType} kan inte skriva ut TCP - hoppar över automatisk utskrift`, 'info')
+          return
+        }
+        
+        addDebugLog(`🔍 ${deviceType} kan skriva ut - fortsätter med automatisk utskrift`, 'info')
+        
+        // FÖRSTÄRKT DUBBLERINGS-SKYDD - endast denna väg för auto-utskrift
         // 1. Kontrollera Set-baserade kontrollen
         if (autoPrintedOrders.has(payload.new.id)) {
           addDebugLog(`⚠️ DUBBLERING BLOCKERAD (Set): Order #${payload.new.order_number} redan utskriven`, 'warning')
-  
           return
         }
         
-        // 2. Kontrollera tid-baserade kontrollen (förhindra samma order inom 10 sekunder)
-        if (lastPrintedOrderId === payload.new.id && lastPrintedTime && (now - lastPrintedTime) < 10000) {
+        // 2. Kontrollera tid-baserade kontrollen (förhindra samma order inom 15 sekunder)
+        if (lastPrintedOrderId === payload.new.id && lastPrintedTime && (now - lastPrintedTime) < 15000) {
           addDebugLog(`⚠️ DUBBLERING BLOCKERAD (Tid): Order #${payload.new.order_number} utskriven för ${Math.round((now - lastPrintedTime)/1000)}s sedan`, 'warning')
-
           return
         }
 
-        const printTimestamp = Date.now()
-        addDebugLog(`🖨️ STARTAR automatisk utskrift för order #${payload.new.order_number} (ID: ${payload.new.id}) - Timestamp: ${printTimestamp}`, 'info')
+        // 3. Extra kontroll - kolla om order är äldre än 30 sekunder (undvik gamla orders vid restart)
+        const orderCreatedAt = new Date(payload.new.created_at).getTime()
+        const orderAge = now - orderCreatedAt
+        if (orderAge > 30000) { // 30 sekunder
+          addDebugLog(`⚠️ GAMMAL ORDER BLOCKERAD: Order #${payload.new.order_number} är ${Math.round(orderAge/1000)}s gammal - hoppar över auto-utskrift`, 'warning')
+          return
+        }
 
-        
-        // Markera som utskriven OMEDELBART med båda metoderna
-        setAutoPrintedOrders(prev => {
-          const newSet = new Set([...prev, payload.new.id])
-  
-          return newSet
-        })
-        
+        addDebugLog(`🖨️ ✅ ${deviceType} REALTIME AUTO-UTSKRIFT: Order #${payload.new.order_number} (ålder: ${Math.round(orderAge/1000)}s)`, 'info')
+
+        // Markera som utskriven OMEDELBART
+        setAutoPrintedOrders(prev => new Set([...prev, payload.new.id]))
         setLastPrintedOrderId(payload.new.id)
         setLastPrintedTime(now)
         
+        // Kort fördröjning för att säkerställa att data är redo
         setTimeout(() => {
-
           printBackendReceiptWithLoading(payload.new)
-        }, 1500) // Kort fördröjning för att säkerställa att data är redo
+        }, 1000)
+      } else {
+        addDebugLog(`⚠️ Auto-utskrift avstängd: enabled=${printerSettings.enabled}, autoprint=${printerSettings.autoprintEnabled}`, 'info')
       }
 
 
@@ -3153,36 +3151,53 @@ Utvecklad av Skaply
     return discoveredPrinters
   }
 
-  // Print using TCP directly to 192.168.1.103:9100
+  // Smart Print Coordinator - endast enheter som KAN skriva ut TCP försöker
   const printBackendReceiptWithLoading = async (order) => {
     // Check if already printing
     if (printingOrders.has(order.id)) {
       addDebugLog(`⏰ Order #${order.order_number} skrivs redan ut...`, 'warning')
-      return
+      return false
     }
 
-    // Set loading state
+    const deviceType = getDeviceType()
+    const canPrint = canPrintTCP()
+    
+    addDebugLog(`🔍 Device: ${deviceType}, Local Network: ${isLocalNetwork()}, Can Print TCP: ${canPrint}`, 'info')
+
+    // Endast enheter som KAN skriva ut TCP ska försöka
+    if (!canPrint) {
+      addDebugLog(`⚠️ ${deviceType} kan inte skriva ut TCP från denna plats - skickar print-command till Rock Pi istället`, 'warning')
+      
+      // Skicka print-command till Rock Pi via WebSocket
+      return await broadcastPrintCommand(order)
+    }
+
+    // Set loading state för enheter som kan skriva ut
     setPrintingOrders(prev => new Set([...prev, order.id]))
     
     try {
-      addDebugLog(`🖨️ Startar TCP-utskrift för order #${order.order_number}`, 'info')
+      addDebugLog(`🖨️ ${deviceType} startar TCP-utskrift för order #${order.order_number}`, 'info')
       addDebugLog(`📡 Ansluter till TCP-skrivare: 192.168.1.103:9100`, 'info')
       
       // Use direct TCP printing
-      await printTCPReceipt(order)
+      const success = await printTCPReceipt(order)
       
-      // Skicka print-event till andra terminaler
-      await sendPrintEvent(order, 'manual')
-      
-      addDebugLog(`✅ TCP-utskrift framgångsrik för order #${order.order_number}`, 'success')
-      showBrowserNotification(
-        '🖨️ Kvitto utskrivet!', 
-        `Order #${order.order_number} utskrivet via TCP`,
-        false
-      )
-      return true
+      // ENDAST skicka print-event om utskrift LYCKAS
+      if (success) {
+        await sendPrintEvent(order, 'manual')
+        addDebugLog(`✅ TCP-utskrift framgångsrik för order #${order.order_number}`, 'success')
+        showBrowserNotification(
+          '🖨️ Kvitto utskrivet!', 
+          `Order #${order.order_number} utskrivet via TCP på ${deviceType}`,
+          false
+        )
+        return true
+      } else {
+        addDebugLog(`❌ TCP-utskrift misslyckades för order #${order.order_number}`, 'error')
+        return false
+      }
     } catch (error) {
-      addDebugLog(`❌ TCP-utskrift misslyckades: ${error.message}`, 'error')
+      addDebugLog(`❌ TCP-utskrift fel: ${error.message}`, 'error')
       setPrinterStatus(prev => ({ ...prev, error: error.message }))
       return false
     } finally {
@@ -3195,54 +3210,64 @@ Utvecklad av Skaply
     }
   }
 
-  // Broadcast print command to all terminals using Supabase Realtime
+  // Broadcast print command to all terminals (especially Rock Pi)
   const broadcastPrintCommand = async (order) => {
     try {
-      addDebugLog(`📡 Broadcasting print command för order #${order.order_number} via Supabase Realtime`, 'info')
+      addDebugLog(`📡 Broadcasting print command för order #${order.order_number}`, 'info')
       
       // Säkerställ att order har location
       const orderWithLocation = {
         ...order,
-        location: order.location || selectedLocation || 'malmo'
+        location: order.location || selectedLocation || 'malmo' // Fallback till current location eller malmo
       }
       
-      const printCommandData = {
-        order: orderWithLocation,
-        printer_ip: '192.168.1.103',
-        printer_port: 9100,
-        initiated_by: profile?.email || 'Okänd användare',
-        initiated_from: navigator.userAgent.includes('iPad') ? 'iPad' : navigator.userAgent.includes('Linux') ? 'Rock Pi' : 'Desktop',
-        timestamp: new Date().toISOString(),
-        broadcast_id: `print-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      const printCommand = {
+        type: 'print-command',
+        data: {
+          data: {
+            order: orderWithLocation,
+            printer_ip: '192.168.1.103',
+            printer_port: 9100,
+            initiated_by: profile?.email || 'Okänd användare',
+            initiated_from: navigator.userAgent.includes('iPad') ? 'iPad' : navigator.userAgent.includes('Linux') ? 'Rock Pi' : 'Desktop',
+            timestamp: new Date().toISOString()
+          }
+        }
       }
 
-      // Broadcast via Supabase Realtime channel
-      const channel = supabase.channel(`print-commands-${orderWithLocation.location}`)
-      
-      const response = await channel.send({
-        type: 'broadcast',
-        event: 'print-command',
-        payload: printCommandData
+      addDebugLog(`🔍 Print command payload för location: ${orderWithLocation.location}`, 'info')
+      console.log(JSON.stringify(printCommand, null, 2))
+
+      // Send via WebSocket to all connected terminals
+      const response = await fetch('/api/websocket-notify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(printCommand)
       })
 
-      if (response === 'ok') {
-        addDebugLog(`✅ Print command broadcast för order ${order.order_number} via Realtime`, 'success')
+      if (response.ok) {
+        const result = await response.json()
+        addDebugLog(`✅ Print command broadcast för order ${order.order_number} - ${result.connectedTerminals} terminaler notifierade`, 'success')
         showBrowserNotification(
           '📡 Utskriftskommando skickat!', 
-          `Order #${order.order_number} skickas till alla terminaler via Realtime`,
+          `Order #${order.order_number} skickas till ${result.connectedTerminals} terminaler`,
           false
         )
       } else {
-        throw new Error('Supabase Realtime broadcast misslyckades')
+        const errorText = await response.text()
+        addDebugLog(`❌ Kunde inte broadcasta print command för order ${order.order_number}: ${response.status} - ${errorText}`, 'error')
+        showBrowserNotification(
+          '❌ Broadcast misslyckades!', 
+          `Kunde inte skicka utskriftskommando: ${errorText}`,
+          true
+        )
       }
-      
-      // Unsubscribe after sending
-      supabase.removeChannel(channel)
-      
     } catch (error) {
       addDebugLog(`❌ Fel vid broadcast av print command: ${error.message}`, 'error')
       showBrowserNotification(
-        '❌ Broadcast misslyckades!', 
+        '❌ Nätverksfel!', 
         `Kunde inte skicka utskriftskommando: ${error.message}`,
         true
       )
@@ -4544,6 +4569,8 @@ Utvecklad av Skaply
                     <span className="text-xs leading-tight">Testa Notis</span>
                   </Button>
                   
+
+
                   {/* Status Badge */}
                   <div className="h-12 flex flex-col items-center justify-center border border-green-500/50 bg-green-500/10 text-green-400 rounded-lg">
                     <div className="h-5 w-5 mb-1 flex items-center justify-center">
@@ -5482,7 +5509,16 @@ Utvecklad av Skaply
                         addDebugLog(`📄 Kvitto: ${testOrder.order_number}`, 'info')
                         addDebugLog(`📡 Skickar till TCP-skrivare på ${ip}:${port}`, 'info')
                         
-                        // Test actual TCP print
+                        // Test actual TCP print - kontrollera först om enheten kan skriva ut
+                        const deviceType = getDeviceType()
+                        const canPrint = canPrintTCP()
+                        
+                        if (!canPrint) {
+                          addDebugLog(`⚠️ ${deviceType} kan inte utföra TCP-test från denna plats`, 'warning')
+                          addDebugLog(`💡 TCP-test fungerar endast på Rock Pi eller lokala enheter`, 'info')
+                          return
+                        }
+                        
                         try {
                           const response = await fetch('/api/printer/tcp', {
                             method: 'POST',
