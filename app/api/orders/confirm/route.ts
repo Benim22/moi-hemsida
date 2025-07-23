@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { sendOrderConfirmationWithBackup } from '@/lib/email-backup-service'
+import { sendOrderConfirmationWithSmartRouting } from '@/lib/email-router-service'
 
 // Helper functions för restauranginformation
 function getRestaurantPhone(location: string): string {
@@ -115,10 +115,10 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        const emailResult = await sendOrderConfirmationWithBackup(emailData)
+        const emailResult = await sendOrderConfirmationWithSmartRouting(emailData)
         
         if (emailResult.success) {
-          console.log('✅ Order confirmation email sent via backup service:', emailResult.service, emailResult.data)
+          console.log('✅ Order confirmation email sent via smart routing:', emailResult.service, emailResult.data)
           
           // Logga email-sändning i orders tabellen
           await supabaseAdmin
@@ -166,8 +166,8 @@ export async function POST(request: NextRequest) {
 
           return NextResponse.json({
             success: true,
-            message: 'Order confirmed and confirmation email sent via SendGrid',
-            messageId: emailResult.messageId || 'sendgrid-sent'
+            message: `Order confirmed and confirmation email sent via ${emailResult.service}`,
+            messageId: emailResult.messageId || `${emailResult.service}-sent`
           })
         } else {
           console.error('❌ Failed to send order confirmation email via SendGrid:', emailResult.error)

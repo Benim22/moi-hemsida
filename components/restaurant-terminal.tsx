@@ -1342,7 +1342,7 @@ export default function RestaurantTerminal() {
         }
 
         addDebugLog(`🖨️ ✅ ${deviceType} REALTIME AUTO-UTSKRIFT: Order #${payload.new.order_number} (ålder: ${Math.round(orderAge/1000)}s)`, 'info')
-
+        
         // Markera som utskriven OMEDELBART
         setAutoPrintedOrders(prev => new Set([...prev, payload.new.id]))
         setLastPrintedOrderId(payload.new.id)
@@ -3184,14 +3184,14 @@ Utvecklad av Skaply
       
       // ENDAST skicka print-event om utskrift LYCKAS
       if (success) {
-        await sendPrintEvent(order, 'manual')
-        addDebugLog(`✅ TCP-utskrift framgångsrik för order #${order.order_number}`, 'success')
-        showBrowserNotification(
-          '🖨️ Kvitto utskrivet!', 
+      await sendPrintEvent(order, 'manual')
+      addDebugLog(`✅ TCP-utskrift framgångsrik för order #${order.order_number}`, 'success')
+      showBrowserNotification(
+        '🖨️ Kvitto utskrivet!', 
           `Order #${order.order_number} utskrivet via TCP på ${deviceType}`,
-          false
-        )
-        return true
+        false
+      )
+      return true
       } else {
         addDebugLog(`❌ TCP-utskrift misslyckades för order #${order.order_number}`, 'error')
         return false
@@ -4570,7 +4570,7 @@ Utvecklad av Skaply
                   </Button>
                   
 
-
+                  
                   {/* Status Badge */}
                   <div className="h-12 flex flex-col items-center justify-center border border-green-500/50 bg-green-500/10 text-green-400 rounded-lg">
                     <div className="h-5 w-5 mb-1 flex items-center justify-center">

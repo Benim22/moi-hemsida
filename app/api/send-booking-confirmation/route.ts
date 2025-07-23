@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sendBookingConfirmationSendGrid } from '@/lib/sendgrid-service'
+import { sendBookingConfirmationWithSmartRouting } from '@/lib/email-router-service'
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,20 +27,20 @@ export async function POST(request: NextRequest) {
       specialRequests: body.specialRequests
     }
 
-    console.log('📧 Sending booking confirmation via SendGrid:', {
+    console.log('📧 Sending booking confirmation via smart routing:', {
       to: bookingData.customerEmail,
       customerName: bookingData.customerName,
       bookingDate: bookingData.bookingDate
     })
 
-    // Skicka via SendGrid
-    const result = await sendBookingConfirmationSendGrid(bookingData)
+    // Skicka via smart routing
+    const result = await sendBookingConfirmationWithSmartRouting(bookingData)
 
     if (result.success) {
-      console.log('✅ Booking confirmation sent successfully via SendGrid')
+      console.log(`✅ Booking confirmation sent successfully via ${result.service}`)
       return NextResponse.json({
         success: true,
-        message: 'Bokningsbekräftelse skickad via SendGrid',
+        message: `Bokningsbekräftelse skickad via ${result.service}`,
         messageId: result.messageId
       })
     } else {

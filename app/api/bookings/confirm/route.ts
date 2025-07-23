@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { sendBookingConfirmationSendGrid } from '@/lib/sendgrid-service'
+import { sendBookingConfirmationWithSmartRouting } from '@/lib/email-router-service'
 
 export async function POST(request: NextRequest) {
   try {
@@ -96,19 +96,19 @@ export async function POST(request: NextRequest) {
 
       console.log('📧 Skickar bokningsbekräftelse till:', customerEmail)
       
-      const emailResult = await sendBookingConfirmationSendGrid(emailData)
+      const emailResult = await sendBookingConfirmationWithSmartRouting(emailData)
       
       if (emailResult.success) {
-        console.log('✅ Bokningsbekräftelse skickad via SendGrid')
+        console.log(`✅ Bokningsbekräftelse skickad via ${emailResult.service}`)
         
         return NextResponse.json({
           success: true,
-          message: 'Booking confirmed and confirmation email sent via SendGrid',
+          message: `Booking confirmed and confirmation email sent via ${emailResult.service}`,
           customerEmail: customerEmail,
           customerName: customerName
         })
       } else {
-        console.error('❌ Failed to send booking confirmation email via SendGrid:', emailResult.error)
+        console.error(`❌ Failed to send booking confirmation email via smart routing:`, emailResult.error)
         
         return NextResponse.json({
           success: false,

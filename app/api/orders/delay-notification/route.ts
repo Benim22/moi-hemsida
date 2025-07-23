@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { sendDelayNotificationWithBackup } from '@/lib/email-backup-service'
+import { sendDelayNotificationWithSmartRouting } from '@/lib/email-router-service'
 
 export async function POST(request: NextRequest) {
   try {
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     // Skicka email om det är begärt
     if (sendEmail && order.customer_email) {
-      const emailResult = await sendDelayNotificationWithBackup({
+      const emailResult = await sendDelayNotificationWithSmartRouting({
         customerEmail: order.customer_email,
         customerName: order.customer_name || 'Kund',
         orderNumber: order.order_number,
@@ -71,6 +71,8 @@ export async function POST(request: NextRequest) {
       if (!emailResult.success) {
         console.error('❌ Email failed:', emailResult.error)
         // Fortsätt ändå - ordern är uppdaterad
+      } else {
+        console.log(`✅ Delay notification sent via ${emailResult.service}`)
       }
     }
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sendOrderConfirmationSendGrid } from '@/lib/sendgrid-service'
+import { sendOrderConfirmationWithSmartRouting } from '@/lib/email-router-service'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(request: NextRequest) {
@@ -56,17 +56,17 @@ export async function POST(request: NextRequest) {
       orderDate: body.orderDate || new Date().toLocaleDateString('sv-SE')
     }
 
-    console.log('📧 Sending order confirmation via SendGrid:', {
+    console.log('📧 Sending order confirmation via smart routing:', {
       to: orderData.customerEmail,
       orderNumber: orderData.orderNumber,
       customerName: orderData.customerName
     })
 
-    // Skicka via SendGrid
-    const result = await sendOrderConfirmationSendGrid(orderData)
+    // Skicka via smart routing
+    const result = await sendOrderConfirmationWithSmartRouting(orderData)
 
     if (result.success) {
-      console.log('✅ Order confirmation sent successfully via SendGrid')
+      console.log(`✅ Order confirmation sent successfully via ${result.service}`)
       
       // Markera order som email skickad om orderId finns
       if (body.orderId) {
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
           .update({ 
             email_sent: true,
             email_sent_at: new Date().toISOString(),
-            email_message_id: result.messageId || 'sendgrid-sent'
+            email_message_id: result.messageId || `${result.service}-sent`
           })
           .eq('id', body.orderId)
 
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
       
       return NextResponse.json({
         success: true,
-        message: 'Orderbekräftelse skickad via SendGrid',
+        message: `Orderbekräftelse skickad via ${result.service}`,
         messageId: result.messageId
       })
     } else {
