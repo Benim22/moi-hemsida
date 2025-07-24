@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useLocation, type Location } from '@/contexts/LocationContext'
+import { MalmoCampaignBanner } from '@/components/malmo-campaign-banner'
 import { MapPin, Clock, Phone, Star, Truck, ShoppingBag, Utensils, X, Loader2 } from 'lucide-react'
 
 export function LocationSelector() {
@@ -81,6 +82,11 @@ export function LocationSelector() {
               </div>
             </CardHeader>
             <CardContent>
+              {/* Malmö Campaign Banner in Modal */}
+              <div className="mb-6">
+                <MalmoCampaignBanner variant="modal" />
+              </div>
+              
               {/* Loading State */}
               {isLoading ? (
                 <div className="text-center py-12">

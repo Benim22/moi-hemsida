@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { motion } from "framer-motion"
 import Link from "next/link"
 import { useLocation } from "@/contexts/LocationContext"
+import { MalmoCampaignBanner } from "@/components/malmo-campaign-banner"
 
 // Foodora URLs mapping
 const foodoraMappings = {
@@ -170,6 +171,11 @@ export default function OrderPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {/* Malmö Campaign Banner on Order Page */}
+                <div className="mb-6">
+                  <MalmoCampaignBanner variant="order" />
+                </div>
+                
                 <div className="grid md:grid-cols-2 gap-6">
                   <div>
                     <Select value={selectedLocation.id} onValueChange={(value) => {

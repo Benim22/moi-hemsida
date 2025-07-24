@@ -21,6 +21,7 @@ import {
   type MenuItemWithSchedule 
 } from "@/lib/menu-availability"
 import { LunchMenuCountdown } from "@/components/lunch-menu-countdown"
+import { MalmoCampaignBanner } from "@/components/malmo-campaign-banner"
 
 // Ystad food truck priser och tillgängliga rätter
 const ystadPokeBowlPrices = {
@@ -1183,6 +1184,11 @@ export default function MenuPage() {
             className="text-lg text-white/80 max-w-2xl mx-auto"
             delay={0.2}
           />
+        </div>
+
+        {/* Malmö Campaign Banner on Menu Page */}
+        <div className="mb-8 max-w-4xl mx-auto">
+          <MalmoCampaignBanner variant="order" />
         </div>
 
         {/* Ystad Location Info */}

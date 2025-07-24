@@ -6,12 +6,15 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { AnimatedSection, AnimatedText } from "@/components/ui-components"
 import { useLocation } from "@/contexts/LocationContext"
+import { MalmoCampaignBanner } from "@/components/malmo-campaign-banner"
+import { useMalmoCampaign } from "@/hooks/use-malmo-campaign"
 
 import { ArrowRight, CalendarCheck, ShoppingBag } from "lucide-react"
 
 export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const { selectedLocation } = useLocation()
+  const { showSticky } = useMalmoCampaign()
 
   // Funktion för att få rätt text baserat på location
   const getLocationText = () => {
@@ -61,6 +64,11 @@ export default function Home() {
 
   return (
     <>
+      {/* Sticky Campaign Banner */}
+      {showSticky && (
+        <MalmoCampaignBanner variant="sticky" />
+      )}
+      
       {/* Strukturerad data för startsidan */}
       <script
         type="application/ld+json"
@@ -195,6 +203,13 @@ export default function Home() {
         >
           <ArrowRight className="h-10 w-10 text-[#e4d699] rotate-90 mx-auto" />
         </motion.div>
+      </section>
+
+      {/* Malmö Campaign Banner - Prominent placement after hero */}
+      <section className="py-8 bg-black/50 overflow-hidden">
+        <div className="container mx-auto px-4">
+          <MalmoCampaignBanner variant="hero" />
+        </div>
       </section>
 
       {/* Featured Section */}
