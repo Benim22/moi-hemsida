@@ -65,9 +65,9 @@ export default function Home() {
   return (
     <>
       {/* Sticky Campaign Banner */}
-      {showSticky && (
+      {/* {showSticky && (
         <MalmoCampaignBanner variant="sticky" />
-      )}
+      )} */}
       
       {/* Strukturerad data för startsidan */}
       <script
